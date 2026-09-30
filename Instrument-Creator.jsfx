@@ -1100,6 +1100,33 @@ function trim_row(c, ex, t0, t1, t2, t3, t4, t5) local(p)
 ( p = TRIM_TAB + c*36 + ex*6; p[0] = t0; p[1] = t1; p[2] = t2; p[3] = t3; p[4] = t4; p[5] = t5; );
 memset(TRIM_TAB, 0, 100);
 //TRIMS_BEGIN
+trim_row(0, 0, -10.1, -18.0, -14.5, -12.4, -20.0, -2.4);
+trim_row(0, 1, 1.0, -12.0, -2.9, -2.5, -11.3, -4.3);
+trim_row(0, 2, -7.7, -3.8, 8.5, 1.1, -2.1, -1.3);
+trim_row(0, 3, -5.2, -1.1, 3.4, -1.6, -6.1, 20.0);
+trim_row(0, 4, -4.0, -0.8, 12.5, 4.5, 2.0, 2.0);
+trim_row(0, 5, -6.2, -3.7, 8.4, 2.2, -2.1, -0.2);
+trim_row(1, 0, -8.7, -12.7, -10.7, -7.4, -18.0, 0.6);
+trim_row(1, 1, 2.6, -1.8, 0.6, -3.0, -7.6, -2.6);
+trim_row(1, 2, 2.0, 5.1, 18.3, 11.0, 7.7, 8.9);
+trim_row(1, 3, -3.1, 4.2, 8.7, 4.3, -0.7, 20.0);
+trim_row(1, 4, 3.1, 6.5, 19.3, 11.8, 8.8, 9.6);
+trim_row(1, 5, 14.3, 16.7, 20.0, 20.0, 19.5, 19.5);
+// PART_TRIM_VALUES = [0.0, 5.4, 0.2, 5.2, 5.5, 1.9, 0.5, 0.0, -0.1, 0.0, -3.8, -2.5, -0.5]
+i = 0; loop(13, PART_TRIM[i] = 0; i += 1;);
+PART_TRIM[0] = 0.0;
+PART_TRIM[1] = 5.4;
+PART_TRIM[2] = 0.2;
+PART_TRIM[3] = 5.2;
+PART_TRIM[4] = 5.5;
+PART_TRIM[5] = 1.9;
+PART_TRIM[6] = 0.5;
+PART_TRIM[7] = 0.0;
+PART_TRIM[8] = -0.1;
+PART_TRIM[9] = 0.0;
+PART_TRIM[10] = -3.8;
+PART_TRIM[11] = -2.5;
+PART_TRIM[12] = -0.5;
 //TRIMS_END
 // lip valve (Trombolese reed.py: brass end of the morph)
 LIP_WIDTH = 0.012; LIP_REST = 0.0003; LIP_CLOSE = 12000; LIP_Q = 15; LIP_Z = 2700000;
