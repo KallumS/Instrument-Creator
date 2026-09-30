@@ -36,6 +36,7 @@ slider19:0<0,1,1{Poly,Mono (legato)}>Play mode
 slider20:120<5,1000,1:log=150>Glide time (ms)
 slider21:0<-100,100,1>Fine tune (cents)
 slider22:0<-36,12,0.1>Output (dB)
+slider23:0<0,100,1>Age / rust (%)
 
 in_pin:none
 out_pin:Left output
@@ -188,11 +189,16 @@ loop(8, nn_i = 1;
 // ---------------------------------------------------------------------------
 // T60 of a mode of material m at frequency f: sigma = pi f eta, T60 = 2.2/(f eta),
 // capped by the losses eta does not describe (mounting, air).
+//
+// Age: rust, cracks and tired joints add loss (more of it at high
+// frequencies, as a corroded or cracked surface rubs), and shorten the
+// longest ring the mounting allows.
+function age_eta(f) ( 1 + age_*age_*(AGE_ETA + AGE_ETA_HF*max(0, f/2000)); );
 function mat_t60(m, f) local(p, eta)
 (
   p = MAT_TAB + m*MAT_STRIDE;
-  eta = p[2]*(max(f, 20)/1000)^p[3];
-  1/(1/p[11] + f*eta/2.2);
+  eta = p[2]*(max(f, 20)/1000)^p[3]*age_eta(f);
+  1/((1 + AGE_TMAX*age_)/p[11] + f*eta/2.2);
 );
 
 function gd1(w, a) ( (1 - a*a)/(1 + 2*a*cos(w) + a*a); );
@@ -367,6 +373,9 @@ function tuning_cents(note) local(d)
   0;                                                          // machine head, slide
 );
 
+// Age: an old instrument is out of tune, differently on every note.
+function age_detune(note) ( AGE_DET*age_*hash1(note*7.31 + 3); );
+
 // Valve instruments play some notes on valve combinations that are
 // famously sharp (1+3, 1+2+3).
 function valve_cents(note) local(k) ( k = (note + 2) % 12; k == 5 ? 12 : k == 6 ? 22 : k == 11 ? 6 : 0; );
@@ -426,7 +435,7 @@ function wg_setup(v, f0) local(sl, d, bb, fb, n, ft, ta, tb, tl, rough, a, ga, g
     ) : (
       (cp == 3 || rs == 0) ? ( v[V_SGN] = 1; v[V_LOOPK] = 2; ) : ( v[V_SGN] = -1; v[V_LOOPK] = 1; );
     );
-    rough = min(2.2, mat(elm, M_ROUGH)*(1 + 0.15*min(6, 1/max(mat(elm, M_E), 0.0001))));
+    rough = min(2.2, mat(elm, M_ROUGH)*(1 + 0.15*min(6, 1/max(mat(elm, M_E), 0.0001))))*(1 + AGE_BORE*age_);
     a = max(0.003, min(0.03, 0.007*(262/f0)^0.3));
     tl = v[V_LOOPK]/(2*f0);
     v[V_TPA] = tl; v[V_TPB] = tl;
@@ -463,7 +472,7 @@ function modal_mode(v, f, wc, wr, nn, extra) local(irr, t)
 (
   t = held_t60(elm, f)*extra;
   mode_put(v, f, wc, wr, t, nn);
-  irr = mat(elm, M_IRR);
+  irr = mat(elm, M_IRR) + AGE_IRR*age_;
   // grain, cracks and bubbles split each mode into a beating pair
   // (buzzing lips cannot choose between two near-equal resonances, so they get one)
   (irr > 0.004 && !(ex_cont && ex_eff == 1)) ? mode_put(v, f*(1 + irr*(0.6 + 0.4*hash1(f))), 0.6*wc, 0.6*wr, t*0.8, nn);
@@ -602,6 +611,8 @@ function voice_pitch(v) local(p)
 (
   p = v[V_PITCH] + v[V_DETC]/100 + v[V_SETL]/100 + fine_st + bend*bend_range + mod_st + v[V_WOB];
   tm_type == 0 ? p += 0.03*sin(0.8*t_now + v[V_NOTE]);
+  // age: a slow, uneven wander in pitch
+  p += AGE_WOW*age_*age_*(sin(0.43*t_now + 1.7*v[V_NOTE]) + 0.5*sin(1.9*t_now + v[V_NOTE]));
   440*2^((p - 69)/12);
 );
 
@@ -685,7 +696,7 @@ function voice_start(v, note, vel) local(vi, vn, f0, rlo, rhi, tl, gr, rm, lg2, 
   vn = max(0.05, vel/127);
   v[V_VEL] = vn;
   v[V_LEVEL] = max(0.02, force*vn^ep_vexp)*(soft_ped ? 0.6 : 1);
-  v[V_DETC] = tuning_cents(note) + (fc_type == 2 ? valve_cents(note) : 0) + (dm_type == 4 ? -15 : 0);
+  v[V_DETC] = tuning_cents(note) + (fc_type == 2 ? valve_cents(note) : 0) + (dm_type == 4 ? -15 : 0) + age_detune(note);
   v[V_PTGT] = note;
   v[V_PITCH] = (fc_type == 3 && last_pitch > 0) ? last_pitch : note;
   tm_type == 3 ? v[V_SETL] = -30;
@@ -767,7 +778,7 @@ function note_on(note, vel) local(v, lg)
       v[V_PTGT] = note; last_pitch = note;
       v[V_NOTE] = note;
       fc_type != 3 ? v[V_PITCH] = note;
-      v[V_DETC] = tuning_cents(note) + (fc_type == 2 ? valve_cents(note) : 0) + (dm_type == 4 ? -15 : 0);
+      v[V_DETC] = tuning_cents(note) + (fc_type == 2 ? valve_cents(note) : 0) + (dm_type == 4 ? -15 : 0) + age_detune(note);
       fc_type == 1 ? v[V_DIP] = 0.012*srate;          // tone holes: a quick blip
       fc_type == 2 ? v[V_DIP] = 0.028*srate;          // valves: a deeper, longer one
       (fc_type == 0 && !ex_cont) ? start_pulse(v, 0.35*v[V_LEVEL]);   // fret: hammer-on
@@ -901,7 +912,7 @@ function voice_tick(v) local(tgt, env, lvl, pp, nz, ba, bb, wp, aout, y, mm, aa,
          v[V_XT] == 3 ? 0.03 + 0.2*lvl :
                         1.0 + 0.25*lvl;
     pp *= env;
-    pp += pp*nz*(ep_noise + (cp == 3 ? 0.02 : 0));
+    pp += pp*nz*(ep_noise + (cp == 3 ? 0.02 : 0) + AGE_LEAK*age_);
     v[V_DRV] = pp; v[V_DRVN] = env*lvl;
   ) : (
     // a steady supply keeps striking: a roll, a tremolo, a buzzer
@@ -974,9 +985,10 @@ function voice_tick(v) local(tgt, env, lvl, pp, nz, ba, bb, wp, aout, y, mm, aa,
   // DC blocker on what leaves the element
   y = out - v[V_DCX] + dc_r*v[V_DCY]; v[V_DCX] = out; v[V_DCY] = y; out = y;
   // a windway hisses
-  (cp == 3 && v[V_CONT]) ? (
+  // a windway hisses, and so does a leaky old instrument
+  ((cp == 3 || age_ > 0) && v[V_CONT]) ? (
     v[V_NS] += 0.3*(nz - v[V_NS]); ns = nz - v[V_NS];
-    out += 0.02*ns*v[V_DRVN];
+    out += ((cp == 3 ? 0.02 : 0) + AGE_HISS*age_*age_)*ns*v[V_DRVN];
   );
   out *= v[V_OG];
   // rattle: past a small gap the material slaps against its fixings; crackle:
@@ -1050,7 +1062,7 @@ function setup_body() local(k, f, q, sc, qm, eta, ee, rho, h, dd, fr)
     loop(12,
       f = k==0?98:k==1?204:k==2?226:k==3?381:k==4?437:k==5?552:k==6?650:k==7?780:k==8?920:k==9?1100:k==10?1450:2000;
       f = (k == 0 ? f : f*sc)/size_;
-      q = k == 0 ? 20 : 1/(mat(rsm, M_ETA)*(f/1000)^mat(rsm, M_SLOPE) + 0.018);
+      q = k == 0 ? 20/(1 + age_) : 1/(mat(rsm, M_ETA)*(f/1000)^mat(rsm, M_SLOPE)*age_eta(f) + 0.018);
       body_mode(f, q, 1/sqrt(1 + 0.5*k), sin(k*2.1 + 0.4), cos(k*1.3 + 0.9));
       k += 1;
     );
@@ -1064,7 +1076,7 @@ function setup_body() local(k, f, q, sc, qm, eta, ee, rho, h, dd, fr)
     k = 2;
     loop(6,
       f = 520*sc*k*(k*k - 1)/sqrt(k*k + 1)/(3*size_);
-      q = 1/(eta*(f/1000)^mat(rsm, M_SLOPE) + 0.004);
+      q = 1/(eta*(f/1000)^mat(rsm, M_SLOPE)*age_eta(f) + 0.004);
       body_mode(f, q, 0.35/sqrt(k), cos(k*0.5), sin(k*2.2));
       k += 1;
     );
@@ -1074,7 +1086,7 @@ function setup_body() local(k, f, q, sc, qm, eta, ee, rho, h, dd, fr)
     k = 0;
     loop(16,
       f = 280*sc*PLATE_TAB[k*3]/PLATE_TAB[0]/size_;
-      q = 1/(eta*(f/1000)^mat(rsm, M_SLOPE) + 0.003);
+      q = 1/(eta*(f/1000)^mat(rsm, M_SLOPE)*age_eta(f) + 0.003);
       body_mode(f, q, 0.9/sqrt(1 + 0.3*k), sin(PLATE_TAB[k*3+1]*2.2), cos(PLATE_TAB[k*3+2]*1.7));
       k += 1;
     );
@@ -1108,6 +1120,7 @@ function setup_radiator() local(o, k, j, f, r, th, p)
 );
 DIFF_TMP = 5900; DIFF_W = 5950;
 
+function blown_now() ( (slider2|0) <= 1; );
 function update_globals()
 (
   en = slider1|0; ex = slider2|0; el = slider3|0; elm = slider4|0;
@@ -1117,7 +1130,11 @@ function update_globals()
   beta_ = slider17/100; res_amt = slider18/100; mono = slider19|0;
   glide_ms = slider20; fine_st = slider21/100; out_g = 10^(slider22/20);
   energy_params(en);
-  mat_rat = mat(elm, M_RAT); mat_crk = mat(elm, M_CRK);
+  // an old instrument is quieter when struck (it rings less); give some back.
+  // Reeds and lips keep blowing at their own level, so they get none.
+  age_ = slider23/100; age_gain = blown_now() ? 1 : 10^(AGE_MAKEUP*age_/20);
+  // age loosens every fixing (rattle) and leaves rust grit (crackle)
+  mat_rat = max(mat(elm, M_RAT), AGE_RAT*age_^1.5); mat_crk = max(mat(elm, M_CRK), AGE_CRK*age_*age_);
   ex_cont = (ex == 0 || ex == 1 || ex == 3);
   // a windway turns lips or a bow into an air jet (a flute); a reed stays a reed (a windcap)
   ex_eff = (cp == 3 && (ex == 1 || ex == 3)) ? 6 : ex;
@@ -1175,7 +1192,9 @@ PART_TRIM[12] = -0.5;
 // lip valve (Trombolese reed.py: brass end of the morph)
 LIP_WIDTH = 0.012; LIP_REST = 0.0003; LIP_CLOSE = 12000; LIP_Q = 15; LIP_Z = 2700000;
 LIP_RATIO = 0.92; LIP_LOOPK = 2; LIP_BORE = 0.88; PSCALE = 4000;
-TH_K = 0.6; RAT_GAP = 0.2; RAT_GAIN = 2.5; DEBUG_BANDED = 0; DBG_NODISP = 0; BOW_SLOPE_B = 3; BAND_G = 3; BAND_GAMMA = 0.7; BOWAIR_SGN = -1; BOWAIR_K = 1;
+TH_K = 0.6;
+AGE_ETA = 2; AGE_ETA_HF = 3; AGE_TMAX = 1.5; AGE_MAKEUP = 6; AGE_BORE = 0.8; AGE_IRR = 0.015; AGE_DET = 25; AGE_WOW = 0.12;
+AGE_LEAK = 0.06; AGE_HISS = 0.04; AGE_RAT = 0.6; AGE_CRK = 0.25; age_ = 0; age_gain = 1; RAT_GAP = 0.2; RAT_GAIN = 2.5; DEBUG_BANDED = 0; DBG_NODISP = 0; BOW_SLOPE_B = 3; BAND_G = 3; BAND_GAMMA = 0.7; BOWAIR_SGN = -1; BOWAIR_K = 1;
 LM_SOFT = 100; LM_EDGE = 0.0045; LIPC_BAR = 124; LIPC_PLATE = 113; LIPC_TINE = 148; BOW_SLOPE = 1.5; BOW_FEXP = 0.5; BOW_TUBE = 1.333; BAND_T60_MIN = 0.3;
 JET_C0 = 16; JET_C1 = 7; BOW_C0 = 6; BOW_C1 = 5;
 dt = 1/srate;
@@ -1369,7 +1388,14 @@ function gell(u, v, rx, ry, f) local(k, a0, a1, cx, cy, x0, y0, x1, y1)
 );
 function gcol(r, g, b) ( gfx_set(r, g, b, 1); );
 function gcola(r, g, b, a) ( gfx_set(r, g, b, a); );
-function gmat(m, k) ( gfx_set(min(1, mat(m, M_CR)*k), min(1, mat(m, M_CG)*k), min(1, mat(m, M_CB)*k), 1); );
+// material colour; with age, metals rust and everything else gets grimy
+function is_metal(m) ( m <= 4 || m == 25 || m >= 27; );
+function gmat(m, k) local(a)
+(
+  a = age_*(is_metal(m) ? 0.65 : 0.35);
+  gfx_set(min(1, (mat(m, M_CR) + a*(0.55 - mat(m, M_CR)))*k), min(1, (mat(m, M_CG) + a*(0.28 - mat(m, M_CG)))*k),
+          min(1, (mat(m, M_CB) + a*(0.13 - mat(m, M_CB)))*k), 1);
+);
 // a sine-ish wobble for animated parts
 function gwob(u, amp) ( amp*sin($pi*u)*sin(anim_ph); );
 
@@ -1450,6 +1476,15 @@ function draw_mat(m) local(k, u, v)
   ) : (                                         // jelly: gloss and wobble
     gmat(m, 1.25); gell(0.35, 0.35, 0.14, 0.09, 1); gcol(1, 1, 1); gell(0.33, 0.33, 0.05, 0.03, 1);
     gmat(m, 0.7); u = 0.1; loop(16, gln(u, 0.78 + 0.04*sin(u*20 + anim_ph), u + 0.05, 0.78 + 0.04*sin((u + 0.05)*20 + anim_ph)); u += 0.05;);
+  );
+  // rust spots and grime
+  age_ > 0.05 ? (
+    k = 0;
+    loop(floor(24*age_),
+      gfx_set(0.45 + 0.1*hash1(k + 90), 0.22, 0.1, 0.5 + 0.4*age_);
+      gci(0.12 + 0.76*(0.5 + 0.5*hash1(k + 17)), 0.18 + 0.64*(0.5 + 0.5*hash1(k + 61)), 0.015 + 0.03*(0.5 + 0.5*hash1(k + 5))*age_, 1);
+      k += 1;
+    );
   );
 );
 
@@ -1885,7 +1920,8 @@ rd == 0 ? (
   yl = tanh_(2*yl)*0.5; yr = tanh_(2*yr)*0.5;
 );
 
-gl = out_g*trem*master_trim;
+// age make-up gain (see update_globals)
+gl = out_g*trem*master_trim*age_gain;
 yl *= gl; yr *= gl;
 // safety limiter: instant attack, slow release, only acts above -3 dBFS
 sab = max(abs(yl), abs(yr));
@@ -1970,6 +2006,7 @@ gfx_setfont(1); gfx_set(0.55, 0.58, 0.65, 1); gfx_x = pad + 230*gsc; gfx_y = 20*
 // is this still the chosen preset, or has a part been changed (here or by automation)?
 cur_preset >= 0 ? ( k = 0; pm = PRESET_TAB + cur_preset*PRESET_STRIDE; loop(12, (slider(k + 1)|0) != pm[k] ? cur_preset = -1; k += 1;); );
 gfx_drawstr(cur_preset >= 0 ? preset_name(cur_preset) : "your own instrument");
+age_ > 0 ? ( sprintf(#agestr, age_ < 0.34 ? "  (a little worn: age %d%%)" : age_ < 0.67 ? "  (old and rusty: age %d%%)" : "  (found in a skip: age %d%%)", age_*100); gfx_set(0.8, 0.5, 0.3, 1); gfx_drawstr(#agestr); );
 bw_ = 104*gsc; bh_ = 28*gsc; bxx = gw - pad - bw_; byy = 11*gsc;
 button(bxx, byy, bw_, bh_, aud_on ? "Playing..." : "Play C4", aud_on) ? ( aud_note = 60; aud_req = 1; );
 bxx -= bw_ + 8*gsc;

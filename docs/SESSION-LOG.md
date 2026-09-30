@@ -194,3 +194,17 @@ ring of 0.3 s fixed all three); lips were silent on cardboard, foil and tin
 until their split twins were removed; the membrane lip correction had to
 follow stiffness (section on pitch pull in PARTS.md). Rattle and crackle
 were added (PARTS.md), with the gap chosen so that velocity 40 is clean.
+
+## 14. Age / rust
+
+A single slider that wears the instrument out. It reuses what the model
+already has: the material's loss factor (up, more so at high frequencies),
+irregularity (split modes), the rattle and crackle added for tin and foil,
+the tuning offsets, and the drive noise. First version lost 8–9 dB at 100 %
+on struck and bowed presets (piano −17.8 → −25.6 LUFS) while blown ones got
+3–5 dB louder (the oscillation makes up the loss, and the hiss adds); make-up
+gain now goes to strikes, plucks and bows only (+6 dB at 100 %), and the loss
+was softened (η factor 3 → 2 at low frequencies, 4 → 3 extra at high). Rattle
+through the same gap as tin's, so soft notes stay clean. Stability sweep
+extended: every energy × exciter × element at age 0 and 100, plus age with
+maximum force and decay: 0 failures.

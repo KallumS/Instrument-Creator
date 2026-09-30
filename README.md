@@ -207,6 +207,30 @@ material (and PVC for the resonator too, if you like).
 | **Glide time** | How long a Slide takes to reach the next note. |
 | **Fine tune** | ± 100 cents. |
 | **Output** | Overall level. |
+| **Age / rust** | How old and neglected the instrument is, from new (0 %) to found in a skip (100 %). See below. |
+
+### Age / rust
+
+Turn it up and the whole instrument wears out, whatever it is made of:
+
+- **it rings for less time and sounds duller**: rust, cracks and tired joints
+  add internal loss, most of all to the high frequencies, and the resonator
+  goes dead too. At 100 % a marble marimba note fades in less than half the
+  time;
+- **it goes uneven**: rust patches and cracks split every resonance into a
+  slowly beating pair, even in materials that were clean;
+- **it goes out of tune**: every note is off by its own amount (up to about
+  a quarter of a semitone) and wanders slowly;
+- **things come loose**: everything starts to rattle when played hard, and
+  gets a little rusty grit;
+- **it leaks**: blown and bowed instruments get wheezy and breathy, and old
+  tubes are rougher inside.
+
+The pictures rust and get grimy to match (metals rust most). Struck,
+plucked and bowed instruments get a little volume back as they age, so an
+old one is only a few dB quieter than a new one. Presets don't change the
+Age slider, so you can make any preset old. Changes to Age apply to the next
+note you play; the tuning wander and the leaks act on notes already playing.
 
 The part choices are also sliders, hidden from the slider list because the
 window shows them, but you can still automate them in REAPER.

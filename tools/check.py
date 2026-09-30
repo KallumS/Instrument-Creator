@@ -32,7 +32,14 @@ def run(s, sr, label):
 
 
 worst = 0
-for sr in (44100, 48000, 96000):
+# every combination, new and fully aged
+for age in (0, 100):
+    for en in range(6):
+        for ex in range(6):
+            for el in range(6):
+                worst = max(worst, run({1: en, 2: ex, 3: el, 23: age}, 48000, f"age {age} {ENERGY[en]}/{EXCITER[ex]}/{ELEMENT[el]}"))
+print(f"age sweep: done, {failures} failure(s) so far", flush=True)
+for sr in (44100, 96000):
     for en in range(6):
         for ex in range(6):
             for el in range(6):
@@ -40,7 +47,8 @@ for sr in (44100, 48000, 96000):
     print(f"sr {sr}: done, {failures} failure(s) so far", flush=True)
 
 extremes = [{13: 0}, {13: 100}, {14: 25}, {14: 400}, {15: -100}, {15: 100}, {16: 10}, {16: 400},
-            {17: 2}, {17: 50}, {18: 0}, {18: 100}, {19: 1}, {21: 100}, {21: -100}, {22: 12}]
+            {17: 2}, {17: 50}, {18: 0}, {18: 100}, {19: 1}, {21: 100}, {21: -100}, {22: 12},
+            {23: 50}, {23: 100}, {23: 100, 13: 100, 16: 400}]
 insts = [{1: 0, 2: 0, 3: 5}, {1: 1, 2: 3, 3: 0}, {1: 0, 2: 1, 3: 2}, {1: 4, 2: 2, 3: 3}, {1: 5, 2: 3, 3: 1}, {1: 0, 2: 3, 3: 4}]
 for inst in insts:
     for e in extremes:

@@ -259,6 +259,25 @@ feed-forward on each voice's element output, after level matching:
 | Damping while held | mute ÷(1 + f/2.5k), palm ÷(1 + f/1.5k) and ≤ 0.35 s, felt ÷√(1 + (f/600)²), hand ÷(1 + f/1.2k) and −15 c |
 | Modulation | keywork: +30 % drive; pedals: release × (1 + 19·mw); valves: −40 c and −30 % level; levers: +2 semitones; electronics: ±30 c vibrato and 30 % tremolo at 5.5 Hz |
 
+## Age / rust
+
+One slider, `a` = 0 … 1, acting on every part at once:
+
+| Effect | Implementation |
+|---|---|
+| Loss | η × (1 + a²(2 + 3·f/2 kHz)) for the element and the soundbox, cavity and body; t_max ÷ (1 + 1.5a) |
+| Corroded bore | air-column wall factor × (1 + 0.8a) |
+| Uneven | irregularity + 0.015a (split twin modes appear on every material from a ≈ 0.27) |
+| Out of tune | ±25a cents per note (fixed per note), plus a slow wander of 0.12a² semitone |
+| Loose parts | rattle ≥ 0.6a^1.5, crackle (grit) ≥ 0.25a² (both through the same gap, so soft notes stay clean) |
+| Leaks | drive noise + 0.06a, hiss 0.04a² × drive out of every sustaining element |
+| Level | + 6a dB for strikes, plucks and bows (their ring shortens); none for reeds and lips, which keep themselves going |
+
+Measured, C4, velocity 100, at a = 0 / 0.5 / 1: Marble Marimba −20 dB after
+0.85 / 0.60 / 0.35 s; Golden Piano 0.75 / 0.50 / 0.10 s. Loudness: saxophone
+−18.4 / −19.2 / −19.3 LUFS, trumpet −19.4 / −19.2 / −18.6, violin −10.9 /
+−11.1 / −12.0, marimba −9.8 / −10.8 / −13.8.
+
 ## Level matching
 
 `tools/trims.py` measures the maximum momentary (400 ms) loudness of one note
