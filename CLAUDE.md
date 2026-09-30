@@ -89,6 +89,17 @@ python3 tools/shot.py out.png 940 640 mx my 3=2 4=8   # then look at the PNG
 - **Any sound change moves loudness**: re-run `trims.py` + `apply_trims.py`
   until the corrections are ~0 (usually three passes).
 
+## Memory map (keep regions disjoint; check this when adding a table)
+
+```
+0      voices (8 x 512)            4600  Bessel zeros     4700 bar   4720 cantilever   4750 plate (60)
+5000   body modes (24 x 8)         5300  head modes       5500 note stack   5600/5700 biquads
+5900   diffusion lengths/pointers  6400  trims (72)       6480 part trims (13)
+11000  scope (2048)                13100 presets (19 x 20)   13600 materials (31 x 16)
+16384  diffusers (8 x 8192)        82000 MIDI queue (1000 x 4)
+131072 delay lines (8 voices x 4 x 16384)
+```
+
 ## Measurement traps
 
 - **`apply_trims.py` once replaced an empty string**, which inserts text
@@ -102,6 +113,10 @@ python3 tools/shot.py out.png 940 640 mx my 3=2 4=8   # then look at the PNG
   point favoured mode (2,2). Look at the weights before adding gain.
 - A waveguide dying far too fast was the tone-hole filter applied on every
   pass, not the string. Suspect whatever is in the loop.
+- **After a parameter search, restore the winner.** The bowed air column
+  shipped silent because a loop-configuration search ended on the losing
+  setting. And after editing a constant with sed, grep it: a replace that
+  missed left `BOW_FEXP` undefined (zero) and two searches measured nothing.
 - `pkill -f <pattern>` matches its own shell. Never pipe a long script to `head`.
 
 ## Known limitations

@@ -158,3 +158,39 @@ note until it is lifted; Electronics adds a 5.5 Hz vibrato.
 
 8-note chords: bowed plate 14 %, bowed string with soundbox 8 %, struck
 plate 7 %, reed 3 % of one core in real time (ysfx, same JIT as REAPER).
+
+## 13. More materials, and three bugs found on the way
+
+Request: plastic, brass, wood, and everything in Reverberator. Brass was
+there. Reverberator's 19 options are objects; mapped to materials, eleven
+were missing: Plastic, PVC, Wood, Leather, Cardboard, Foil, Cling film,
+Tin, Car panel, Chain link, Handpan steel. Appended at indices 20–30 so saved
+projects and presets keep their materials.
+
+Bugs found while adding them:
+
+- **Memory overlap.** The MIDI queue (6000–10000) sat on top of the loudness
+  trims (6400) and the presets (7000): more than about 100 MIDI events in one
+  block would have overwritten them. And 31 materials × 16 would have run into
+  the Bessel table. Everything moved to disjoint regions (map in CLAUDE.md).
+- **The bowed air column was silent in the first release.** A loop
+  configuration search (section 5) ended on the configuration that does not
+  oscillate, and the working one was never restored; its +20 dB trims were
+  compensating for silence. Restored, re-trimmed (now +11 / +15 dB).
+- **Bowed low-loss strings played the octave** at the default 20 % position
+  since the loss-filter change in section 6. Grid of 6 materials × 9
+  positions × 5 notes: bow slope 2 → 9 wrong, 1.5 → 7 wrong (all steels at
+  exactly 1/5 or 1/3 of the string; at 1/3 the tracker is probably fooled by
+  the missing third harmonic). Nudging the bow point off the fraction made it
+  worse (8–15 wrong); extra high-frequency loss had no effect (the tone holes
+  already damp the highs). Kept slope 1.5 with Schelleng's force-vs-position
+  scaling. The first attempts at that scaling measured nothing, because an
+  earlier edit had deleted the constant: always grep the constant after
+  editing it.
+
+New behaviour needed by the new materials: lossy membranes (leather,
+cardboard, film) would not sustain a bow, reed or lips (a minimum driven
+ring of 0.3 s fixed all three); lips were silent on cardboard, foil and tin
+until their split twins were removed; the membrane lip correction had to
+follow stiffness (section on pitch pull in PARTS.md). Rattle and crackle
+were added (PARTS.md), with the gap chosen so that velocity 40 is clean.

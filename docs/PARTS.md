@@ -50,8 +50,9 @@ the wave arriving, `c`.
   0.3 mm, width 12 mm, closing pressure 12 kPa; flow
   `U = w·y·sgn(Δp)·√(2|Δp|/ρ)` is solved exactly against the bore impedance
   (a quadratic in U). Mouth pressure 1.5–6 kPa.
-- **Bow** (STK bowed string): `e = Δv · (|2Δv| + 0.75)⁻⁴` (slope 3 on bars,
-  plates, membranes and tines), bow speed `0.03 + 0.2 × level`.
+- **Bow** (STK bowed string): `e = Δv · (|kΔv| + 0.75)⁻⁴` with k = 1.5 ×
+  (β/0.2)^0.5 on strings (Schelleng: nearer the bridge needs more force), 2 on
+  tubes, 3 on bars, plates, membranes and tines; bow speed `0.03 + 0.2 × level`.
 - **Air jet** (STK flute; a windway turns lips or a bow into this): jet delay
   0.32 × the loop, `e = clip(j(j² − 1)) − c/2`. The bore is tuned to 2/3 of the
   note because the jet overblows to its second resonance, as in STK.
@@ -68,7 +69,8 @@ Each pull was measured across the keyboard and is corrected by retuning:
 | Combination | Pull before | Correction | After (C2–G6) |
 |---|---|---|---|
 | Lips, air column | +181 c | bore × 0.88, lips at 0.92 × note | −9 … +4 c (−18 c at C2) |
-| Lips, bar / plate / membrane / tine | +41 … +148 c | lips and element lowered together by 124 / 113 / 41 / 148 c | ±2 c at C4 |
+| Lips, bar / plate / tine | +113 … +148 c | lips and element lowered together by 124 / 113 / 148 c | −6 … +2 c (median over 8 materials) |
+| Lips, membrane | +50 c (stiff) … +100 c (soft) | 100 c, falling to 50 c as the stretch s goes 0.0045 → 0.0135 | within 25 c on 29 of 31 materials (bone −57, jelly +26) |
 | Jet | +6 … +26 c, rising with pitch | 16 + 7·log₂(f/262) c | −3 … 0 c |
 | Bow, string | +3 … +15 c | 6 + 5·log₂(f/262) c | +1 … +7 c |
 | Reed, air column | none | | −2 … +1 c |
@@ -136,6 +138,13 @@ Irregular materials (irregularity > 0.004: ice, marble, clay, woods, bone,
 jelly...) add a twin to every mode, detuned by `irr × (0.6 + 0.4 × hash)`, at
 60 % amplitude: a slowly beating pair.
 
+Two adjustments for sustaining exciters on these elements: while driven,
+every loop rings for at least 0.3 s × √(f₀/f) (otherwise leather, film and
+cardboard give a bow or lips nothing to push against; the release still
+damps them normally), and buzzing lips get no split twins (they cannot
+choose between two near-equal resonances; cardboard, foil and tin were
+silent with them).
+
 A blown tine adds the chopped airflow, `0.6 × drive × tanh(4c)`: the buzz of
 a harmonica.
 
@@ -176,12 +185,36 @@ release.
 | Rubber | 0.05 | 1100 | 0.035 | 0.3 | 0.01 | 1.2 | 0.12 | 2 | 1.2 |
 | Paper | 3 | 700 | 0.03 | 0.3 | 0.03 | 4.0 | 0.2 | 3 | 1.2 |
 | Jelly | 0.00005 | 1050 | 0.045 | 0.2 | 0.05 | 1.2 | 0.05 | 6 | 1.0 |
+| Plastic (ABS) | 2.3 | 1050 | 0.01 | 0.3 | 0.005 | 1.0 | 0.4 | 2 | 2 |
+| PVC | 3 | 1400 | 0.022 | 0.3 | 0.003 | 1.0 | 0.45 | 2 | 2 |
+| Wood (maple) | 12 | 650 | 0.007 | 0.4 | 0.02 | 1.4 | 0.6 | 3 | 3 |
+| Leather | 0.1 | 900 | 0.04 | 0.3 | 0.02 | 2.0 | 0.2 | 3 | 1.2 |
+| Cardboard | 3 | 700 | 0.04 | 0.3 | 0.03 | 4.0 | 0.25 | 3 | 1.2 |
+| Foil | 69 | 2700 | 0.02 | 0.2 | 0.05 | 1.5 | 0.6 | 1 | 1.5 |
+| Cling film | 0.2 | 920 | 0.05 | 0.3 | 0.01 | 1.5 | 0.1 | 4 | 1.0 |
+| Tin (galvanised) | 207 | 7850 | 0.004 | 0.1 | 0.03 | 1.2 | 0.9 | 1 | 3 |
+| Car panel | 207 | 7850 | 0.003 | 0.1 | 0.01 | 1.0 | 0.9 | 1 | 2.5 |
+| Chain link | 200 | 7850 | 0.0015 | 0.1 | 0.03 | 1.0 | 1.0 | 1 | 4 |
+| Handpan steel | 207 | 7850 | 0.0022 | 0.1 | 0.001 | 1.0 | 1.0 | 1 | 8 |
 
 E, ρ and the order of magnitude of η are handbook values; η for the solids
-matches the values Reverberator uses. Rubber, paper and jelly are made less
-lossy than they really are (really η ~ 0.1–0.3), so that they can still be
-played; see the session log. Jelly also wobbles: up to 0.3 semitone with
-level, plus a slow drift.
+matches the values Reverberator uses where it has them (the eleven added
+last come from Reverberator's objects). Rubber, paper, jelly, PVC, leather,
+cardboard and cling film are made less lossy than they really are (really
+η ~ 0.03–0.3; Reverberator: PVC 0.03, cardboard 0.06, leather 0.06, film
+0.12), so that they can still be played; see the session log. Jelly wobbles:
+up to 0.3 semitone with level, plus a slow drift.
+
+**Rattle and crackle** (Reverberator's contact rattle and foil crinkle),
+feed-forward on each voice's element output, after level matching:
+
+- rattle: whatever exceeds a gap of ±0.2 is high-passed and added back
+  × 2.5 × the material's rattle (cling film 1, chain link 1, tin 0.7, car
+  panel 0.3). Soft notes stay under the gap; loud ones slap and buzz. Measured
+  on a tin bar: energy above 3 kHz −69 dB at velocity 40 (the same as with
+  rattle off), −41 dB at 80, −39 dB at 127.
+- crackle (foil): random pops, 900/s × min(1, 8|out|), each ±(0.05 + |out|),
+  high-passed.
 
 ## Resonator
 

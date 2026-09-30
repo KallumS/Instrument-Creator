@@ -854,7 +854,7 @@ function excite(v, c) local(xt, pp, e, pd, rr, inc, area, kq, flow, dp, acc, dv,
     ) : xt == 3 ? (
       dv = pp - c;
       // Schelleng: nearer the bridge the bow must press harder (a lower slope)
-      bs = abs((dv + 0.001)*(v[V_BANDED] ? BOW_SLOPE_B : BOW_SLOPE*(max(0.02, v[V_BETA])/0.2)^BOW_FEXP)) + 0.75;
+      bs = abs((dv + 0.001)*(v[V_BANDED] ? BOW_SLOPE_B : BOW_SLOPE*(v[V_TWO] ? (max(0.02, v[V_BETA])/0.2)^BOW_FEXP : BOW_TUBE))) + 0.75;
       bs = bs*bs; bs = 1/(bs*bs);
       e = dv*max(0.01, min(0.98, bs));
     ) : (
@@ -1144,39 +1144,39 @@ function trim_row(c, ex, t0, t1, t2, t3, t4, t5) local(p)
 ( p = TRIM_TAB + c*36 + ex*6; p[0] = t0; p[1] = t1; p[2] = t2; p[3] = t3; p[4] = t4; p[5] = t5; );
 memset(TRIM_TAB, 0, 100);
 //TRIMS_BEGIN
-trim_row(0, 0, -10.1, -18.0, -14.5, -12.4, -20.0, -2.4);
-trim_row(0, 1, 1.0, -12.0, -2.9, -2.5, -11.3, -4.3);
-trim_row(0, 2, -7.7, -3.8, 8.5, 1.1, -2.1, -1.3);
-trim_row(0, 3, -5.2, -1.1, 3.4, -1.6, -6.1, 20.0);
-trim_row(0, 4, -4.0, -0.8, 12.5, 4.5, 2.0, 2.0);
+trim_row(0, 0, -10.1, -19.1, -14.5, -12.6, -20.0, -2.5);
+trim_row(0, 1, 1.1, -10.4, -2.7, -2.0, -11.3, -4.3);
+trim_row(0, 2, -7.7, -3.8, 8.5, 1.1, -2.1, -1.4);
+trim_row(0, 3, -5.2, -1.7, 3.4, -1.9, -6.1, 11.0);
+trim_row(0, 4, -4.0, -0.8, 12.5, 4.5, 2.0, 1.9);
 trim_row(0, 5, -6.2, -3.7, 8.4, 2.2, -2.1, -0.2);
-trim_row(1, 0, -8.7, -12.7, -10.7, -7.4, -18.0, 0.6);
-trim_row(1, 1, 2.6, -1.8, 0.6, -3.0, -7.6, -2.6);
+trim_row(1, 0, -8.7, -14.5, -10.7, -7.7, -18.0, 0.6);
+trim_row(1, 1, 2.6, -5.6, 0.0, -1.9, -8.1, -2.7);
 trim_row(1, 2, 2.0, 5.1, 18.3, 11.0, 7.7, 8.9);
-trim_row(1, 3, -3.1, 4.2, 8.7, 4.3, -0.7, 20.0);
+trim_row(1, 3, -3.1, 3.7, 8.7, 4.1, -0.7, 14.8);
 trim_row(1, 4, 3.1, 6.5, 19.3, 11.8, 8.8, 9.6);
-trim_row(1, 5, 14.3, 16.7, 20.0, 20.0, 19.5, 19.5);
-// PART_TRIM_VALUES = [0.0, 5.4, 0.2, 5.2, 5.5, 1.9, 0.5, 0.0, -0.1, 0.0, -3.8, -2.5, -0.5]
+trim_row(1, 5, 14.3, 16.7, 20.0, 20.0, 19.5, 19.4);
+// PART_TRIM_VALUES = [0.0, 5.3, 0.2, 5.0, 5.3, 2.0, 0.6, 0.0, -0.1, 0.0, -3.6, -2.5, -0.5]
 i = 0; loop(13, PART_TRIM[i] = 0; i += 1;);
 PART_TRIM[0] = 0.0;
-PART_TRIM[1] = 5.4;
+PART_TRIM[1] = 5.3;
 PART_TRIM[2] = 0.2;
-PART_TRIM[3] = 5.2;
-PART_TRIM[4] = 5.5;
-PART_TRIM[5] = 1.9;
-PART_TRIM[6] = 0.5;
+PART_TRIM[3] = 5.0;
+PART_TRIM[4] = 5.3;
+PART_TRIM[5] = 2.0;
+PART_TRIM[6] = 0.6;
 PART_TRIM[7] = 0.0;
 PART_TRIM[8] = -0.1;
 PART_TRIM[9] = 0.0;
-PART_TRIM[10] = -3.8;
+PART_TRIM[10] = -3.6;
 PART_TRIM[11] = -2.5;
 PART_TRIM[12] = -0.5;
 //TRIMS_END
 // lip valve (Trombolese reed.py: brass end of the morph)
 LIP_WIDTH = 0.012; LIP_REST = 0.0003; LIP_CLOSE = 12000; LIP_Q = 15; LIP_Z = 2700000;
 LIP_RATIO = 0.92; LIP_LOOPK = 2; LIP_BORE = 0.88; PSCALE = 4000;
-TH_K = 0.6; RAT_GAP = 0.06; RAT_GAIN = 2.5; DEBUG_BANDED = 0; DBG_NODISP = 0; BOW_SLOPE_B = 3; BAND_G = 3; BAND_GAMMA = 0.7; BOWAIR_SGN = 1; BOWAIR_K = 2;
-LM_SOFT = 100; LM_EDGE = 0.0045; LIPC_BAR = 124; LIPC_PLATE = 113; LIPC_TINE = 148; BOW_SLOPE = 1.5; BOW_FEXP = 0.5; BAND_T60_MIN = 0.3;
+TH_K = 0.6; RAT_GAP = 0.2; RAT_GAIN = 2.5; DEBUG_BANDED = 0; DBG_NODISP = 0; BOW_SLOPE_B = 3; BAND_G = 3; BAND_GAMMA = 0.7; BOWAIR_SGN = -1; BOWAIR_K = 1;
+LM_SOFT = 100; LM_EDGE = 0.0045; LIPC_BAR = 124; LIPC_PLATE = 113; LIPC_TINE = 148; BOW_SLOPE = 1.5; BOW_FEXP = 0.5; BOW_TUBE = 1.333; BAND_T60_MIN = 0.3;
 JET_C0 = 16; JET_C1 = 7; BOW_C0 = 6; BOW_C1 = 5;
 dt = 1/srate;
 lvl_decay = exp(-1/(0.05*srate));
@@ -1414,7 +1414,7 @@ function draw_mat(m) local(k, u, v)
       gmat(m, 0.6); gln(0.5, 0.12, 0.5, 0.88);
     ) : m == 29 ? (                             // chain link: diamond mesh
       gmat(m, 0.55); grrf(0.06, 0.12, 0.88, 0.76, 0.12);
-      gmat(m, 1.4); k = 0; loop(6, gln(0.06 + 0.15*k, 0.12, 0.06 + 0.15*k + 0.3, 0.88); gln(0.36 + 0.15*k, 0.12, 0.06 + 0.15*k, 0.88); k += 1;);
+      gmat(m, 1.4); k = 0; loop(5, gln(0.08 + 0.14*k, 0.12, 0.36 + 0.14*k, 0.88); gln(0.36 + 0.14*k, 0.12, 0.08 + 0.14*k, 0.88); k += 1;);
     ) : (                                       // handpan: a tone field and hammer dimples
       gmat(m, 1.5); gell(0.5, 0.5, 0.26, 0.24, 0); gell(0.5, 0.5, 0.12, 0.11, 0);
       gmat(m, 1.25); k = 0; loop(10, gci(0.15 + 0.7*(0.5 + 0.5*hash1(k + 5)), 0.2 + 0.6*(0.5 + 0.5*hash1(k + 50)), 0.012, 1); k += 1;);
@@ -1887,9 +1887,9 @@ rd == 0 ? (
 
 gl = out_g*trem*master_trim;
 yl *= gl; yr *= gl;
-// safety limiter: fast attack, slow release, only acts above -3 dBFS
+// safety limiter: instant attack, slow release, only acts above -3 dBFS
 sab = max(abs(yl), abs(yr));
-lim_env = sab > lim_env ? lim_env + (sab - lim_env)*lim_att : lim_env*lim_rel;
+lim_env = sab > lim_env ? sab : lim_env*lim_rel;
 lim_g = lim_env > 0.7 ? 0.7/lim_env : 1;
 yl *= lim_g; yr *= lim_g;
 // soft ceiling

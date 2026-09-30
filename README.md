@@ -48,7 +48,7 @@ Reverberator makes a very good partner after it.
   that part, what it does, and (for materials) how stiff and heavy it is and
   how long it rings. The green line tells you how your combination will play,
   and the little screen shows the sound's waveform as you play.
-- **Presets** has 16 ready-made instruments to start from. **Surprise me**
+- **Presets** has 19 ready-made instruments to start from. **Surprise me**
   picks every part at random. **Play C4** plays a note so you can hear a change
   without touching your keyboard.
 
@@ -97,13 +97,49 @@ lips, bow) makes each note swell and then fade, like squeezing a bulb.
 
 ### Materials: for the element, and for the resonator
 
-Steel, Brass, Bronze, Aluminium, Gold, Glass, Crystal, Ice, Marble, Clay,
-Spruce, Rosewood, Bamboo, Bone, Gut, Nylon, Carbon fibre, Rubber, Paper and
-Jelly. Each is described by its real stiffness, density and internal loss,
-which decide how long it rings and how bright it stays. Ice, marble, clay,
-wood and bone are irregular inside (bubbles, cracks, grain), which splits each
-resonance into a slowly beating pair. Rubber, paper and jelly are very soft and
-lossy: they thud, and jelly wobbles in pitch.
+31 materials. Each is described by its real stiffness, density and internal
+loss, which decide how long it rings and how bright it stays.
+
+| Family | Materials |
+|---|---|
+| Metals | Steel, Brass, Bronze, Aluminium, Gold, Tin (galvanised roof sheet), Car panel (painted steel), Chain link (steel wire mesh), Handpan steel, Foil (crumpled aluminium) |
+| Glass and stone | Glass, Crystal, Ice, Marble, Clay |
+| Woods | Wood (plain hardwood), Spruce, Rosewood, Bamboo |
+| Plastics | Plastic, PVC, Nylon, Carbon fibre, Cling film |
+| Soft and natural | Bone, Gut, Leather, Rubber, Paper, Cardboard, Jelly |
+
+Ice, marble, clay, wood, bone, foil, tin and chain link are irregular
+inside (bubbles, cracks, grain, creases, ribs), which splits each resonance
+into a slowly beating pair. Some materials also misbehave the way the real
+things do when you play them hard: **tin and chain link rattle**, a **car
+panel clanks**, **cling film slaps and buzzes** like a kazoo, and **foil
+crackles**. Play softly and they stay clean. Rubber, paper, cardboard,
+leather and jelly are very soft and lossy: they thud, and jelly wobbles in
+pitch.
+
+**Every Reverberator option is here.** Reverberator's options are objects;
+these are the materials they are made of:
+
+| Reverberator | Instrument Creator material |
+|---|---|
+| Chain link fence | Chain link |
+| Ice sheet | Ice |
+| Tension wire, piano string, guitar string, metal barrel | Steel |
+| Gong | Bronze |
+| PVC pipe | PVC |
+| Glass, wine bottle | Glass |
+| Marble | Marble |
+| Car body panel | Car panel |
+| Leather | Leather |
+| Violin string | Gut (or Steel) |
+| Steel handpan | Handpan steel |
+| Toilet roll tube | Cardboard |
+| Aluminium foil | Foil |
+| Cling film | Cling film |
+| Corrugated tin roof | Tin |
+
+To make, say, a PVC flute, choose **Air column** with **PVC** as the element
+material (and PVC for the resonator too, if you like).
 
 ### Resonator: what the vibration fills
 
@@ -201,13 +237,16 @@ Velocity, pitch bend, mod wheel (CC1), breath controller (CC2), expression
 | Carbon Trombone | lips, carbon-fibre bore, slide, mono |
 | Buzzing Glockenspiel | an electric buzzer hammering aluminium bars |
 | Bronze Bell Plate | a hammered bronze plate |
+| Plastic Recorder | an air jet in a plastic tube over a plastic pipe |
+| Cling Film Kazoo | lips buzzing a cling-film membrane over a cardboard cavity |
+| Tin Roof Banjo | plucked steel strings, a tin cavity and a drumhead |
 
 ## Tips
 
 - Sustaining instruments (reed, lips, bow, jet) respond to how hard you play,
   to the mod wheel with *Keywork*, and to a breath controller if you have one.
 - For a real legato wind or brass line, set **Play mode** to *Mono*.
-- Very lossy materials (rubber, paper, jelly) are quiet and short when struck.
+- Very lossy materials (rubber, paper, cardboard, leather, jelly) are quiet and short when struck.
   That's what they are like; give them a steady energy source, or turn Decay up.
 - Changing a part changes the next note you play. Notes already sounding
   finish as they started.
