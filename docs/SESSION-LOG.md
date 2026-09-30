@@ -206,5 +206,7 @@ on struck and bowed presets (piano −17.8 → −25.6 LUFS) while blown ones go
 gain now goes to strikes, plucks and bows only (+6 dB at 100 %), and the loss
 was softened (η factor 3 → 2 at low frequencies, 4 → 3 extra at high). Rattle
 through the same gap as tin's, so soft notes stay clean. Stability sweep
-extended: every energy × exciter × element at age 0 and 100, plus age with
-maximum force and decay: 0 failures.
+extended: every energy × exciter × element at age 0 and 100 (48 kHz) and new
+at 44.1 and 96 kHz, then slider extremes (including age 50, 100, and 100 with
+maximum force and decay) and every option of every part, all 31 materials, on
+six instruments: 0 failures. Worst CPU 27.5 % (a three-note chord at 96 kHz).
