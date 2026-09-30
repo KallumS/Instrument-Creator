@@ -1,14 +1,16 @@
 # Session log
 
 **Session 1, 30 September 2026.** The whole of Instrument Creator so far was
-built in this one session, in four requests:
+built in this one session, in six requests:
 
 | # | Request | Result | Commits |
 |---|---|---|---|
 | 1 | "Create a REAPER ReaScript or JSFX that can create entirely new custom instruments" from ten part categories, in any material, with a preview of each part | the instrument, its window, 16 presets, docs, test rig | `dee5ecb` … `b45fe9b` |
 | 2 | "An option to make the instrument plastic, brass, wooden or any of the options from Reverberator" | 11 new materials (31 in all), rattle and crackle, 3 presets, three bugs fixed | `7c95b84`, `c049115` |
 | 3 | "A global age / rust slider that degrades the sound" | the Age / rust slider | `2065f71`, `9999b48` |
-| 4 | "Make sure CLAUDE.md is up to date, create a session log for this session and an ADR which highlights the big decisions, and an in-depth write-up of every part and material" | this log, `docs/adr/`, `docs/PARTS-AND-MATERIALS.md`, CLAUDE.md | `bcd99e9` |
+| 4 | "Make sure CLAUDE.md is up to date, create a session log for this session and an ADR which highlights the big decisions, and an in-depth write-up of every part and material" | this log, `docs/adr/` (18 records), `docs/PARTS-AND-MATERIALS.md`, CLAUDE.md | `bcd99e9`, `ecc039b` |
+| 5 | "It can be scientific, as you're the only one that will read it" | the guide rewritten as a technical reference; `docs/PARTS.md` merged into it and removed | `b9c7ffd` |
+| 6 | "Make sure all of the docs are up to date, then write me a prompt to continue in a fresh session" | docs checked against the code; this table and the handover below | (this commit) |
 
 What was built on: Trombolese and Reverberator, read from their
 repositories (read-only). What was measured, what failed and what was changed
@@ -259,4 +261,25 @@ Open items:
 - Lips on a membrane: bone is 57 c flat, jelly 26 c sharp.
 - A reed cannot play a true cone (ADR 0017).
 - A single push into lips sags in pitch as it fades.
+
+## Handover to the next session
+
+State at the end of session 1: everything is committed and pushed on
+`claude/reaper-custom-instrument-creator-xz08x6`; no pull request has been
+opened; the GitHub repository is still named Wind-Instrument-Creator (the
+user intends to rename it Instrument-Creator; the files already use the new
+name). A fresh container has no `tools/build/` and no Python packages: run
+`pip install numpy scipy matplotlib` and `tools/build_host.sh` first.
+
+Candidate next steps, roughly in order of value:
+
+1. Feedback from trying it in REAPER (menus, clicking, automation, window
+   size, CPU on the user's machine). Nothing has been run in REAPER itself.
+2. The open items above (bowed steel double-slip at 1/5 and 1/3; bone and
+   jelly lips on a membrane; a true conical reed).
+3. Removing the vestigial code listed in PARTS-AND-MATERIALS.md §14 (then
+   render, run `check.py`, commit).
+4. Anything new the user asks for. Before changing a design rule, read its
+   ADR; after any sound change, re-run `trims.py` / `apply_trims.py` and
+   `check.py`, and update PARTS-AND-MATERIALS.md, the README and this log.
 
