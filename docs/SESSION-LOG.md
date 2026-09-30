@@ -10,7 +10,7 @@ built in this one session, in six requests:
 | 3 | "A global age / rust slider that degrades the sound" | the Age / rust slider | `2065f71`, `9999b48` |
 | 4 | "Make sure CLAUDE.md is up to date, create a session log for this session and an ADR which highlights the big decisions, and an in-depth write-up of every part and material" | this log, `docs/adr/` (18 records), `docs/PARTS-AND-MATERIALS.md`, CLAUDE.md | `bcd99e9`, `ecc039b` |
 | 5 | "It can be scientific, as you're the only one that will read it" | the guide rewritten as a technical reference; `docs/PARTS.md` merged into it and removed | `b9c7ffd` |
-| 6 | "Make sure all of the docs are up to date, then write me a prompt to continue in a fresh session" | docs checked against the code; this table and the handover below | (this commit) |
+| 6 | "Make sure all of the docs are up to date, then write me a prompt to continue in a fresh session" | docs checked against the code; this table and the handover below | `c42bd31` |
 
 What was built on: Trombolese and Reverberator, read from their
 repositories (read-only). What was measured, what failed and what was changed
