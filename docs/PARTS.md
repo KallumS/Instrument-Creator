@@ -1,5 +1,9 @@
 # The parts, and the physics behind each
 
+The compact reference. For the long, plain-language version of the same
+material see [`PARTS-AND-MATERIALS.md`](PARTS-AND-MATERIALS.md); for why
+things are the way they are, [`adr/`](adr/README.md).
+
 Everything here is in `Instrument-Creator.jsfx`. Numbers are SI unless stated.
 "Measured" means measured with the headless rig in `tools/` (see
 `SESSION-LOG.md`), not taken from a book.

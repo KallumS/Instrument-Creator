@@ -1,7 +1,20 @@
 # Session log
 
-How Instrument Creator was built, what was measured and what did not work.
-Numbers are from the headless rig (`tools/`), 48 kHz, note C4 unless stated.
+**Session 1, 30 September 2026.** The whole of Instrument Creator so far was
+built in this one session, in four requests:
+
+| # | Request | Result | Commits |
+|---|---|---|---|
+| 1 | "Create a REAPER ReaScript or JSFX that can create entirely new custom instruments" from ten part categories, in any material, with a preview of each part | the instrument, its window, 16 presets, docs, test rig | `dee5ecb` … `b45fe9b` |
+| 2 | "An option to make the instrument plastic, brass, wooden or any of the options from Reverberator" | 11 new materials (31 in all), rattle and crackle, 3 presets, three bugs fixed | `7c95b84`, `c049115` |
+| 3 | "A global age / rust slider that degrades the sound" | the Age / rust slider | `2065f71`, `9999b48` |
+| 4 | "Make sure CLAUDE.md is up to date, create a session log for this session and an ADR which highlights the big decisions, and an in-depth write-up of every part and material" | this log, `docs/adr/`, `docs/PARTS-AND-MATERIALS.md`, CLAUDE.md | (this commit) |
+
+What was built on: Trombolese and Reverberator, read from their
+repositories (read-only). What was measured, what failed and what was changed
+is below, in order. Numbers are from the headless rig (`tools/`), 48 kHz,
+note C4 unless stated. The decisions that came out of it are in
+[`adr/`](adr/README.md).
 
 ## 1. Starting point and choice of form
 
@@ -210,3 +223,37 @@ extended: every energy × exciter × element at age 0 and 100 (48 kHz) and new
 at 44.1 and 96 kHz, then slider extremes (including age 50, 100, and 100 with
 maximum force and decay) and every option of every part, all 31 materials, on
 six instruments: 0 failures. Worst CPU 27.5 % (a three-note chord at 96 kHz).
+
+## 15. Documentation
+
+Request 4. `CLAUDE.md` brought up to date (slider numbers, the Age slider, the
+new docs, the tools added since, the "sleep does not wait" trap, the known
+limitations found in requests 2 and 3). Eighteen architecture decision
+records in `docs/adr/`, each with the measurement that forced it.
+`docs/PARTS-AND-MATERIALS.md`: an in-depth guide to every part and material
+and the physics behind it. The material numbers in it (ring times at 262 Hz
+and 2 kHz, string inharmonicity, soundbox resonance, wall factor) were
+computed from the plugin's own table, not written by hand; checking the guide
+against the code caught one wrong claim (the stretched-tuning range).
+
+## Where things stand
+
+- Every energy × exciter × element combination plays and is stable at 44.1,
+  48 and 96 kHz and at age 0 and 100; all 19 presets play.
+- In tune: plucked, struck and reed notes within a few cents; lips, jets and
+  bows mostly within 10 c (exceptions in PARTS.md).
+- Level-matched within 0.2 dB across parts, except three capped combinations.
+- Worst CPU: a bowed-plate chord at 14 % of a core at 48 kHz; 27.5 % for a
+  three-note chord at 96 kHz.
+
+Open items:
+
+- **Try it in REAPER.** Everything was verified in ysfx (same engine), not in
+  REAPER: the popup menus, clicking, automation and the window's size need a
+  check there.
+- The most lossless steels bowed at exactly 1/5 or 1/3 of the string can
+  flip to the octave.
+- Lips on a membrane: bone is 57 c flat, jelly 26 c sharp.
+- A reed cannot play a true cone (ADR 0017).
+- A single push into lips sags in pitch as it fades.
+

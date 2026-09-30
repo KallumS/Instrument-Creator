@@ -297,9 +297,17 @@ Velocity, pitch bend, mod wheel (CC1), breath controller (CC2), expression
 - All combinations are level-matched, so switching parts doesn't jump in
   volume.
 
-[`docs/PARTS.md`](docs/PARTS.md) has the physics of every part, with the
-numbers, and [`docs/SESSION-LOG.md`](docs/SESSION-LOG.md) records how it was
-built and measured.
+Further reading:
+
+- [`docs/PARTS-AND-MATERIALS.md`](docs/PARTS-AND-MATERIALS.md): the long
+  guide to every part and every material, and the physics behind each, in
+  plain language.
+- [`docs/PARTS.md`](docs/PARTS.md): the same as a compact reference, with the
+  formulas and numbers.
+- [`docs/adr/`](docs/adr/README.md): the big design decisions and why they
+  were made.
+- [`docs/SESSION-LOG.md`](docs/SESSION-LOG.md): how it was built and
+  measured, including what went wrong, and what is still open.
 
 ## Relation to Trombolese and Reverberator
 
