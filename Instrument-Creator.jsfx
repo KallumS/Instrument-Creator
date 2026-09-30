@@ -120,9 +120,9 @@ mat_def(13, 18,    1900,  0.012,   0.3, 0.015, 1.6, 0.8,  3.0, 0.95, 0.92, 0.82,
 mat_def(14, 4,     1300,  0.006,   0.5, 0.005, 1.3, 0.35, 1.3, 0.90, 0.84, 0.66, 5, 0);    // Gut
 mat_def(15, 3,     1140,  0.004,   0.5, 0.002, 1.0, 0.35, 1.3, 0.96, 0.96, 0.92, 6, 0);    // Nylon
 mat_def(16, 150,   1600,  0.002,   0.2, 0.002, 1.0, 0.9,  1.5, 0.30, 0.31, 0.36, 8, 0);    // Carbon fibre
-mat_def(17, 0.05,  1100,  0.12,    0.3, 0.01,  1.2, 0.12, 2.0, 0.80, 0.25, 0.22, 1.2, 0.4); // Rubber
-mat_def(18, 3,     700,   0.05,    0.3, 0.03,  4.0, 0.2,  3.0, 0.86, 0.82, 0.72, 1.2, 0.15);// Paper
-mat_def(19, 0.00005, 1050, 0.25,   0.2, 0.05,  1.2, 0.05, 6.0, 0.95, 0.25, 0.45, 0.8, 1);  // Jelly
+mat_def(17, 0.05,  1100,  0.035,   0.3, 0.01,  1.2, 0.12, 2.0, 0.80, 0.25, 0.22, 1.2, 0.4); // Rubber
+mat_def(18, 3,     700,   0.03,    0.3, 0.03,  4.0, 0.2,  3.0, 0.86, 0.82, 0.72, 1.2, 0.15);// Paper
+mat_def(19, 0.00005, 1050, 0.045,  0.2, 0.05,  1.2, 0.05, 6.0, 0.95, 0.25, 0.45, 1.0, 1);  // Jelly
 
 function mat(m, k) ( MAT_TAB[m*MAT_STRIDE + k]; );
 
@@ -401,7 +401,7 @@ function wg_setup(v, f0) local(sl, d, bb, fb, n, ft, ta, tb, tl, rough, a, ga, g
     ) : (
       (cp == 3 || rs == 0) ? ( v[V_SGN] = 1; v[V_LOOPK] = 2; ) : ( v[V_SGN] = -1; v[V_LOOPK] = 1; );
     );
-    rough = mat(elm, M_ROUGH)*(1 + 0.3*min(10, 1/max(mat(elm, M_E), 0.0001)));
+    rough = min(2.2, mat(elm, M_ROUGH)*(1 + 0.15*min(6, 1/max(mat(elm, M_E), 0.0001))));
     a = max(0.003, min(0.03, 0.007*(262/f0)^0.3));
     tl = v[V_LOOPK]/(2*f0);
     v[V_TPA] = tl; v[V_TPB] = tl;
@@ -1136,6 +1136,7 @@ LIPC_MEM = 41; LIPC_BAR = 124; LIPC_PLATE = 113; LIPC_TINE = 148; BOW_SLOPE = 2;
 JET_C0 = 16; JET_C1 = 7; BOW_C0 = 6; BOW_C1 = 5;
 dt = 1/srate;
 lvl_decay = exp(-1/(0.05*srate));
+vis_dec = exp(-1/(0.3*srate)); vis_lvl = 0;
 expr = 1; cc11 = 1; cc2 = 1; breath_seen = 0; at_press = 0; mw = 0; bend = 0; mod_st = 0;
 sustain = 0; soft_ped = 0; last_pitch = 0; stack_n = 0; age_ctr = 0; t_now = 0; ctl_ctr = 0;
 lfo_ph = 0; trem = 1;
@@ -1145,6 +1146,535 @@ memset(DIFF_W, 0, 8);
 scope_w = 0;
 all_off();
 update_globals();
+
+// ===========================================================================
+// GUI: part names, descriptions, pictures and presets
+// ===========================================================================
+function cat_count(c) ( c==0?6 : c==1?6 : c==2?6 : c==3?20 : c==4?5 : c==5?20 : c==6?4 : c==7?4 : c==8?5 : c==9?4 : 5; );
+function cat_title(c)
+(
+  c==0?"ENERGY SOURCE" : c==1?"EXCITER" : c==2?"VIBRATING ELEMENT" : c==3?"ELEMENT MATERIAL" :
+  c==4?"RESONATOR" : c==5?"RESONATOR MATERIAL" : c==6?"COUPLER" : c==7?"RADIATOR" :
+  c==8?"FREQUENCY CONTROL" : c==9?"TUNING MECHANISM" : c==10?"DAMPING" : "MODULATION / CONTROL";
+);
+function mat_name(i)
+(
+  i==0?"Steel":i==1?"Brass":i==2?"Bronze":i==3?"Aluminium":i==4?"Gold":i==5?"Glass":i==6?"Crystal":
+  i==7?"Ice":i==8?"Marble":i==9?"Clay":i==10?"Spruce":i==11?"Rosewood":i==12?"Bamboo":i==13?"Bone":
+  i==14?"Gut":i==15?"Nylon":i==16?"Carbon fibre":i==17?"Rubber":i==18?"Paper":"Jelly";
+);
+function opt_name(c, i)
+(
+  c==0 ? (i==0?"Breath":i==1?"Bow":i==2?"Finger":i==3?"Plectrum":i==4?"Hammer":"Electricity") :
+  c==1 ? (i==0?"Reed":i==1?"Lips":i==2?"Hammer":i==3?"Bow":i==4?"Plectrum":"Mallet") :
+  c==2 ? (i==0?"String":i==1?"Membrane":i==2?"Bar":i==3?"Plate":i==4?"Reed":"Air column") :
+  (c==3 || c==5) ? mat_name(i) :
+  c==4 ? (i==0?"Bore":i==1?"Soundbox":i==2?"Pipe":i==3?"Cavity":"Body") :
+  c==6 ? (i==0?"Bridge":i==1?"Soundpost":i==2?"Mouthpiece":"Windway") :
+  c==7 ? (i==0?"Bell":i==1?"Soundboard":i==2?"Drumhead":"Cone") :
+  c==8 ? (i==0?"Fret":i==1?"Tone hole":i==2?"Valve":i==3?"Slide":"Key") :
+  c==9 ? (i==0?"Peg":i==1?"Tuning pin":i==2?"Machine head":"Slide") :
+  c==10 ? (i==0?"Damper":i==1?"Mute":i==2?"Palm":i==3?"Felt":"Hand") :
+          (i==0?"Keywork":i==1?"Pedals":i==2?"Valves":i==3?"Levers":"Electronics");
+);
+function mat_desc(i)
+(
+  i==0?"Stiff and dense. Rings for a very long time, bright and pure." :
+  i==1?"Warm metal with a little more internal loss than steel." :
+  i==2?"Bell metal: rings long, with a slightly uneven, shimmering decay." :
+  i==3?"Light and stiff for its weight: a clear, glassy-metal ring." :
+  i==4?"Very heavy and soft for a metal: rich but dull, it stops quickly." :
+  i==5?"Stiff and light with very low loss: bright, glassy and long." :
+  i==6?"Quartz crystal: almost no internal loss, so it rings for ages." :
+  i==7?"Frozen water: fairly soft, and bubbles and cracks split every resonance into a beating pair." :
+  i==8?"Stone: stiff, heavy and a little lossy. Short, stony and pitched." :
+  i==9?"Fired clay: rough and porous, earthy and quick to fade." :
+  i==10?"Light, stiff wood with the grain: the classic soundboard wood." :
+  i==11?"Dense hardwood (marimba bars): warm, woody, medium decay." :
+  i==12?"Light and springy wood: soft and breathy." :
+  i==13?"Hard but lossy: dry and clicky." :
+  i==14?"Soft and lossy string material: warm and mellow." :
+  i==15?"Soft, smooth plastic string: gentle and round." :
+  i==16?"Very stiff and light: bright and precise." :
+  i==17?"Absurdly soft and lossy: thuds, and wobbles in pitch." :
+  i==18?"Light, rough and floppy: a papery buzz that dies at once." :
+        "Hardly a solid at all: very lossy, and it wobbles in pitch.";
+);
+function opt_desc(c, i)
+(
+  c==0 ? (
+    i==0?"A steady stream of air. Notes sustain while held; a breath controller (CC2), expression (CC11) or key pressure sets how hard you blow." :
+    i==1?"A bow drawn at steady speed. Sustains while held, with a little rosin grit." :
+    i==2?"A single soft push from a fingertip. Each note is played once, gently." :
+    i==3?"A single sharp flick. Bright and quick." :
+    i==4?"A single hard blow. Very sensitive to how hard you play." :
+         "A steady, noiseless electric drive. Sustains forever; with a striking exciter it becomes a buzzer.") :
+  c==1 ? (
+    i==0?"A cane reed that chops the airflow into pulses, like a clarinet. Needs a push to get going." :
+    i==1?"Buzzing lips: a valve that blows open, like a trumpet (Trombolese's lip model). Through a windway it becomes a flute's air jet." :
+    i==2?"A hard, short strike, like a piano hammer." :
+    i==3?"Stick-slip friction, like a violin bow. Keeps the element singing while it is driven. Through a windway it becomes an air jet." :
+    i==4?"Pulls the element aside and lets go, like a guitar pick." :
+         "A soft, padded strike, like a marimba mallet.") :
+  c==2 ? (
+    i==0?"A stretched string. Tension sets the pitch; stiff materials (stone, glass, ice) must be thick rods, so they ring like bells." :
+    i==1?"A stretched circular skin, like a drum. Inharmonic: rings near the edge, thuds at the centre." :
+    i==2?"A free bar, like a xylophone key. Its partials sit at 1 : 2.76 : 5.40 : 8.93." :
+    i==3?"A flat sheet, like a bell plate or gong: dense, shimmering and inharmonic." :
+    i==4?"A clamped tongue, like a kalimba tine or harmonica reed. Blown, it buzzes." :
+         "A column of air in a tube, like a clarinet or trumpet. Its losses come from Trombolese's physics.") :
+  (c==3 || c==5) ? mat_desc(i) :
+  c==4 ? (
+    i==0?"A cone-shaped tube tuned to each note. Reinforces every harmonic, like a saxophone." :
+    i==1?"A hollow box, like a guitar body: resonances from about 100 to 2000 Hz, scaled by its material and Size." :
+    i==2?"A stopped tube under each note, like a marimba resonator. Reinforces the odd harmonics." :
+    i==3?"An enclosed pocket of air, like a gourd or bottle: a hollow boom with ringing walls." :
+         "A solid block of the material. Adds the material's own ring: stone clinks, glass shimmers.") :
+  c==6 ? (
+    i==0?"Carries the vibration into the body, with the bright 'bridge hill' around 2.5 kHz." :
+    i==1?"A post that couples strongly into the body: warm and woody, with a shorter ring." :
+    i==2?"A small cup between exciter and element: a vocal, brassy formant." :
+         "A narrow air duct, like a recorder's: breathy. Turns lips or a bow into a flute's air jet.") :
+  c==7 ? (
+    i==0?"A flared bell. Throws the high frequencies forward, and gets brassy when loud." :
+    i==1?"A wide board that spreads and softens the sound." :
+    i==2?"A skin that rings along, like a banjo head: twangy, with a low boom." :
+         "A loudspeaker cone: electric-instrument tone with a little amplifier grit.") :
+  c==8 ? (
+    i==0?"Fixed semitone stops. In Mono mode, a new note hammers on instead of re-plucking." :
+    i==1?"Holes along the element. Harmonics above about 1.5 kHz leak out, like a woodwind. In Mono mode notes change with a quick key blip." :
+    i==2?"Switches lengths of tube in and out. A few notes are famously a little sharp, as on a real trumpet." :
+    i==3?"A continuous length: every note glides from the last one, like a trombone. Pitch bend covers 7 semitones." :
+         "One element per key, like a piano: every note is fresh and independent.") :
+  c==9 ? (
+    i==0?"Friction pegs: never quite in tune, and drifting a little." :
+    i==1?"Piano-style stretched octaves: the bass a little flat, the treble a little sharp." :
+    i==2?"Geared tuners: exact equal temperament." :
+         "A tuning slide: each note starts a little flat and settles into tune.") :
+  c==10 ? (
+    i==0?"A felt damper stops the note when you let go, like a piano. The sustain pedal (CC64) lifts it." :
+    i==1?"A mute: darker and more nasal, with a softer release." :
+    i==2?"A palm resting on it: short, chunky notes." :
+    i==3?"Felt against the element: soft, dark and intimate. Strikes are softer too." :
+         "A hand in the bell: darker and slightly flat, like a horn.") :
+  (
+    i==0?"Plain keys. The mod wheel blows or bows harder." :
+    i==1?"Sustain (CC64) and soft (CC67) pedals. The mod wheel lifts the dampers, so released notes ring on." :
+    i==2?"The mod wheel half-presses a valve: the pitch sags and the tone gets stuffy." :
+    i==3?"The mod wheel bends notes up by as much as a whole tone, like a B-bender." :
+         "The mod wheel adds vibrato and tremolo, like a vibraphone motor."
+  );
+);
+function combo_hint()
+(
+  (cp == 3 && (ex == 1 || ex == 3)) ? "The windway turns this exciter into an air jet: it plays like a flute." :
+  (ep_sus && ex_cont) ? "Notes sustain while you hold the key. Play harder, or push the mod wheel, for more." :
+  (!ep_sus && ex_cont) ? "A single push drives a sustaining exciter: each note swells, then fades." :
+  (ep_sus && !ex_cont) ? "A steady supply keeps striking while you hold the key: a roll, a tremolo, a buzz." :
+                         "Each note is struck once and rings.";
+);
+
+// ---- drawing helpers: coordinates are 0..1 inside the current box
+function gbox(x, y, w, h) ( bx = x; by = y; bw = w; bh = h; bs = min(w, h); );
+function gx(u) ( bx + u*bw; );
+function gy(v) ( by + v*bh; );
+function gln(u1, v1, u2, v2) ( gfx_line(gx(u1), gy(v1), gx(u2), gy(v2), 1); );
+function glnw(u1, v1, u2, v2, t) local(dx, dy, l, nx, ny, k)
+(
+  dx = (u2 - u1)*bw; dy = (v2 - v1)*bh; l = max(0.001, sqrt(dx*dx + dy*dy));
+  nx = -dy/l; ny = dx/l; t = max(1, t*gsc); k = -0.5*(t - 1);
+  loop(ceil(t), gfx_line(gx(u1) + nx*k, gy(v1) + ny*k, gx(u2) + nx*k, gy(v2) + ny*k, 1); k += 1;);
+);
+function grc(u, v, w, h) ( gfx_rect(gx(u), gy(v), max(1, w*bw), max(1, h*bh), 1); );
+function grco(u, v, w, h) ( gfx_rect(gx(u), gy(v), max(1, w*bw), max(1, h*bh), 0); );
+function gci(u, v, r, f) ( gfx_circle(gx(u), gy(v), max(1, r*bs), f, 1); );
+function gtri(u1, v1, u2, v2, u3, v3) ( gfx_triangle(gx(u1), gy(v1), gx(u2), gy(v2), gx(u3), gy(v3)); );
+function gquad(u1, v1, u2, v2, u3, v3, u4, v4) ( gfx_triangle(gx(u1), gy(v1), gx(u2), gy(v2), gx(u3), gy(v3), gx(u4), gy(v4)); );
+function grrf(u, v, w, h, r) local(x, y, ww, hh, rr)
+(
+  x = gx(u); y = gy(v); ww = w*bw; hh = h*bh; rr = min(r*bs, 0.5*min(ww, hh));
+  gfx_rect(x + rr, y, ww - 2*rr, hh, 1); gfx_rect(x, y + rr, ww, hh - 2*rr, 1);
+  gfx_circle(x + rr, y + rr, rr, 1, 1); gfx_circle(x + ww - rr - 1, y + rr, rr, 1, 1);
+  gfx_circle(x + rr, y + hh - rr - 1, rr, 1, 1); gfx_circle(x + ww - rr - 1, y + hh - rr - 1, rr, 1, 1);
+);
+// ellipse: filled (fan of triangles) or outline
+function gell(u, v, rx, ry, f) local(k, a0, a1, cx, cy, x0, y0, x1, y1)
+(
+  cx = gx(u); cy = gy(v); k = 0;
+  loop(28,
+    a0 = 2*$pi*k/28; a1 = 2*$pi*(k + 1)/28;
+    x0 = cx + rx*bw*cos(a0); y0 = cy + ry*bh*sin(a0); x1 = cx + rx*bw*cos(a1); y1 = cy + ry*bh*sin(a1);
+    f ? gfx_triangle(cx, cy, x0, y0, x1, y1) : gfx_line(x0, y0, x1, y1, 1);
+    k += 1;
+  );
+);
+function gcol(r, g, b) ( gfx_set(r, g, b, 1); );
+function gcola(r, g, b, a) ( gfx_set(r, g, b, a); );
+function gmat(m, k) ( gfx_set(min(1, mat(m, M_CR)*k), min(1, mat(m, M_CG)*k), min(1, mat(m, M_CB)*k), 1); );
+// a sine-ish wobble for animated parts
+function gwob(u, amp) ( amp*sin($pi*u)*sin(anim_ph); );
+
+function garc_(u, v, r) local(k, a0, a1)
+(
+  k = 0; loop(12, a0 = -0.5*$pi + $pi*k/12; a1 = -0.5*$pi + $pi*(k + 1)/12;
+    gfx_line(gx(u) + r*bs*cos(a0), gy(v) + r*bs*sin(a0), gx(u) + r*bs*cos(a1), gy(v) + r*bs*sin(a1), 1); k += 1;);
+);
+
+// ---- material swatch with a texture that says what it is
+function draw_mat(m) local(k, u, v)
+(
+  gmat(m, 1); grrf(0.06, 0.12, 0.88, 0.76, 0.12);
+  m <= 4 ? (                                    // metals: a sheen
+    gmat(m, 1.35); k = 0; loop(3, glnw(0.2 + 0.18*k, 0.82, 0.42 + 0.18*k, 0.18, 2); k += 1;);
+  ) : m <= 6 ? (                                // glass, crystal: facets and a glint
+    gmat(m, 1.25); gtri(0.12, 0.2, 0.5, 0.2, 0.3, 0.55); gtri(0.55, 0.8, 0.9, 0.8, 0.9, 0.45);
+    gcol(1, 1, 1); gln(0.66, 0.3, 0.74, 0.3); gln(0.7, 0.26, 0.7, 0.34);
+  ) : m == 7 ? (                                // ice: cracks and bubbles
+    gcol(1, 1, 1); gln(0.2, 0.25, 0.45, 0.5); gln(0.45, 0.5, 0.4, 0.8); gln(0.45, 0.5, 0.8, 0.42); gln(0.8, 0.42, 0.88, 0.2);
+    gci(0.7, 0.68, 0.04, 0); gci(0.25, 0.62, 0.03, 0);
+  ) : m == 8 ? (                                // marble: veins
+    gcol(0.55, 0.55, 0.58); u = 0.08;
+    loop(15, gln(u, 0.3 + 0.12*sin(u*9), u + 0.055, 0.3 + 0.12*sin((u + 0.055)*9)); gln(u, 0.65 + 0.08*sin(u*13 + 1), u + 0.055, 0.65 + 0.08*sin((u + 0.055)*13 + 1)); u += 0.055;);
+  ) : m == 9 ? (                                // clay: grit
+    gmat(m, 0.7); k = 0; loop(14, gci(0.12 + 0.76*(0.5 + 0.5*hash1(k)), 0.2 + 0.6*(0.5 + 0.5*hash1(k + 40)), 0.02, 1); k += 1;);
+  ) : m <= 12 ? (                               // woods: grain (bamboo: nodes)
+    gmat(m, 0.72); k = 0;
+    loop(5, v = 0.22 + 0.14*k; u = 0.08; loop(14, gln(u, v + 0.03*sin(u*11 + k), u + 0.06, v + 0.03*sin((u + 0.06)*11 + k)); u += 0.06;); k += 1;);
+    m == 12 ? ( gmat(m, 0.55); glnw(0.35, 0.12, 0.35, 0.88, 2); glnw(0.7, 0.12, 0.7, 0.88, 2); );
+  ) : m == 13 ? (                               // bone: pores
+    gmat(m, 0.8); k = 0; loop(10, gell(0.15 + 0.7*(0.5 + 0.5*hash1(k + 7)), 0.2 + 0.6*(0.5 + 0.5*hash1(k + 70)), 0.03, 0.02, 1); k += 1;);
+  ) : m <= 15 ? (                               // gut, nylon: fibres
+    gmat(m, 0.78); k = 0; loop(7, gln(0.1, 0.2 + 0.1*k, 0.9, 0.24 + 0.1*k); k += 1;);
+  ) : m == 16 ? (                               // carbon fibre: weave
+    gcol(0.45, 0.46, 0.52); k = 0; loop(8, j = 0; loop(5, ((k + j) & 1) ? grc(0.1 + 0.1*k, 0.18 + 0.13*j, 0.09, 0.12); j += 1;); k += 1;);
+  ) : m == 17 ? (                               // rubber: matte, with a sag
+    gmat(m, 0.7); gell(0.5, 0.55, 0.3, 0.12, 0); gell(0.5, 0.55, 0.2, 0.07, 0);
+  ) : m == 18 ? (                               // paper: ruled
+    gcol(0.6, 0.7, 0.9); k = 0; loop(5, gln(0.1, 0.25 + 0.12*k, 0.9, 0.25 + 0.12*k); k += 1;);
+    gcol(0.9, 0.5, 0.5); gln(0.24, 0.14, 0.24, 0.86);
+  ) : (                                         // jelly: gloss and wobble
+    gmat(m, 1.25); gell(0.35, 0.35, 0.14, 0.09, 1); gcol(1, 1, 1); gell(0.33, 0.33, 0.05, 0.03, 1);
+    gmat(m, 0.7); u = 0.1; loop(16, gln(u, 0.78 + 0.04*sin(u*20 + anim_ph), u + 0.05, 0.78 + 0.04*sin((u + 0.05)*20 + anim_ph)); u += 0.05;);
+  );
+);
+
+// ---- one picture per part. c: category, i: option, big: animate
+function draw_part(c, i, x, y, w, h, big) local(m, k, u, a, v, r0, u2)
+(
+  gbox(x, y, w, h);
+  a = big ? min(0.12, 0.6*vis_lvl) : 0.05;
+  c == 0 ? (
+    i == 0 ? (                                  // breath
+      gcol(0.62, 0.82, 1); k = 0;
+      loop(3, v = 0.3 + 0.2*k; u = 0.08; loop(14, gln(u, v + 0.05*sin(u*14 + anim_ph + k), u + 0.05, v + 0.05*sin((u + 0.05)*14 + anim_ph + k)); u += 0.05;); k += 1;);
+      gci(0.86, 0.34, 0.05, 0); gci(0.9, 0.56, 0.07, 0); gci(0.84, 0.74, 0.04, 0);
+    ) : i == 1 ? (                              // bow
+      gcol(0.58, 0.34, 0.16); u = 0.08;
+      loop(17, glnw(u, 0.3 - 0.1*sin($pi*u), u + 0.05, 0.3 - 0.1*sin($pi*(u + 0.05)), 3); u += 0.05;);
+      gcol(0.95, 0.93, 0.85); gln(0.12, 0.46, 0.93, 0.34);
+      gcol(0.2, 0.18, 0.18); grc(0.08, 0.34, 0.1, 0.16);
+    ) : i == 2 ? (                              // finger
+      gcol(0.95, 0.77, 0.64); grrf(0.36, 0.08, 0.28, 0.84, 0.13);
+      gcol(1, 0.9, 0.88); grrf(0.41, 0.13, 0.18, 0.2, 0.07);
+      gcol(0.8, 0.6, 0.5); gln(0.4, 0.55, 0.6, 0.55); gln(0.41, 0.7, 0.59, 0.7);
+    ) : i == 3 ? (                              // plectrum
+      gcol(0.92, 0.45, 0.18); gtri(0.22, 0.2, 0.78, 0.2, 0.5, 0.86);
+      gci(0.3, 0.26, 0.09, 1); gci(0.7, 0.26, 0.09, 1); grc(0.3, 0.17, 0.4, 0.12);
+      gcol(1, 0.65, 0.4); gell(0.44, 0.34, 0.08, 0.05, 1);
+    ) : i == 4 ? (                              // hammer
+      gcol(0.62, 0.42, 0.2); glnw(0.3, 0.92, 0.56, 0.38, 4);
+      gcol(0.62, 0.64, 0.68); gquad(0.3, 0.3, 0.72, 0.12, 0.84, 0.36, 0.42, 0.54);
+      gcol(0.8, 0.82, 0.86); gquad(0.3, 0.3, 0.72, 0.12, 0.75, 0.18, 0.33, 0.36);
+    ) : (                                       // electricity
+      gcol(1, 0.88, 0.2); gtri(0.62, 0.04, 0.24, 0.56, 0.56, 0.5); gtri(0.44, 0.44, 0.78, 0.44, 0.34, 0.96);
+      gcol(1, 1, 0.7); gln(0.58, 0.1, 0.34, 0.5);
+    );
+  ) : c == 1 ? (
+    i == 0 ? (                                  // reed
+      gcol(0.14, 0.14, 0.17); gquad(0.08, 0.28, 0.72, 0.4, 0.72, 0.56, 0.08, 0.66);
+      gcol(0.92, 0.8, 0.44); gquad(0.14, 0.62, 0.9, 0.55, 0.9, 0.6, 0.14, 0.72);
+      gcol(0.6, 0.6, 0.65); grc(0.2, 0.6, 0.1, 0.16); grc(0.36, 0.58, 0.1, 0.16);
+      gcol(0.62, 0.82, 1); gln(0.76, 0.46, 0.95, 0.44); gln(0.76, 0.5, 0.95, 0.52);
+    ) : i == 1 ? (                              // lips
+      gcol(0.86, 0.38, 0.44); gell(0.46, 0.42, 0.3, 0.12, 1); gell(0.46, 0.6, 0.28, 0.13, 1);
+      gcol(0.4, 0.1, 0.14); gln(0.2, 0.51, 0.72, 0.51);
+      gcol(0.95, 0.6, 0.65); gell(0.42, 0.37, 0.1, 0.03, 1);
+      gcol(0.62, 0.82, 1); k = 0; loop(3, gln(0.8 + 0.05*k, 0.4, 0.8 + 0.05*k, 0.62); k += 1;);
+    ) : i == 2 ? (                              // hammer (piano)
+      gcol(0.72, 0.56, 0.34); glnw(0.12, 0.86, 0.52, 0.5, 3);
+      gcol(0.92, 0.92, 0.86); gell(0.62, 0.4, 0.14, 0.2, 1);
+      gcol(0.75, 0.2, 0.2); gell(0.62, 0.4, 0.07, 0.1, 1);
+      gcol(0.8, 0.8, 0.82); glnw(0.05, 0.14, 0.95, 0.14, 2);
+    ) : i == 3 ? (                              // bow on a string
+      gcol(0.8, 0.8, 0.82); gln(0.5, 0.04, 0.5, 0.96);
+      gcol(0.58, 0.34, 0.16); glnw(0.04, 0.3, 0.96, 0.52, 3);
+      gcol(0.95, 0.93, 0.85); gln(0.04, 0.4, 0.96, 0.62);
+    ) : i == 4 ? (                              // pick on a string
+      gcol(0.8, 0.8, 0.82); gln(0.05, 0.64, 0.5, 0.54); gln(0.5, 0.54, 0.95, 0.64);
+      gcol(0.92, 0.45, 0.18); gtri(0.36, 0.2, 0.64, 0.2, 0.5, 0.54); gci(0.4, 0.23, 0.05, 1); gci(0.6, 0.23, 0.05, 1);
+    ) : (                                       // mallet
+      gcol(0.72, 0.56, 0.34); glnw(0.22, 0.92, 0.56, 0.44, 3);
+      gcol(0.96, 0.85, 0.55); gci(0.62, 0.34, 0.17, 1);
+      gcol(0.8, 0.68, 0.4); garc_(0.62, 0.34, 0.11); garc_(0.62, 0.34, 0.06);
+    );
+  ) : c == 2 ? (
+    m = elm;
+    i == 0 ? (                                  // string
+      gcol(0.25, 0.2, 0.18); grc(0.02, 0.36, 0.06, 0.28); grc(0.92, 0.36, 0.06, 0.28);
+      gmat(m, 1); u = 0.08;
+      loop(21, glnw(u, 0.5 + gwob((u - 0.08)/0.84, a*2.2), u + 0.04, 0.5 + gwob((u + 0.04 - 0.08)/0.84, a*2.2), 2); u += 0.04;);
+    ) : i == 1 ? (                              // membrane
+      gcol(0.35, 0.28, 0.24); gquad(0.08, 0.42, 0.92, 0.42, 0.92, 0.74, 0.08, 0.74); gell(0.5, 0.74, 0.42, 0.14, 1);
+      gmat(m, 1); gell(0.5, 0.42, 0.42, 0.14 + a*0.3, 1);
+      gmat(m, 0.7); gell(0.5, 0.42, 0.42, 0.14, 0); gell(0.5, 0.42, 0.2, 0.06, 0);
+    ) : i == 2 ? (                              // bar
+      gmat(m, 1); u = 0.06;
+      loop(22, v = a*1.5*cos(2*$pi*(u - 0.5))*sin(anim_ph); gquad(u, 0.4 + v, u + 0.042, 0.4 + v, u + 0.042, 0.6 + v, u, 0.6 + v); u += 0.04;);
+      gmat(m, 1.3); gln(0.06, 0.41, 0.94, 0.41);
+      gcol(0.2, 0.2, 0.2); gci(0.244, 0.66, 0.025, 1); gci(0.756, 0.66, 0.025, 1);
+      gcol(0.6, 0.5, 0.4); gln(0.244, 0.66, 0.244, 0.9); gln(0.756, 0.66, 0.756, 0.9);
+    ) : i == 3 ? (                              // plate
+      gmat(m, 1); gquad(0.14, 0.2 - a, 0.96, 0.28, 0.86, 0.8 + a, 0.04, 0.72);
+      gmat(m, 0.72); gln(0.55, 0.24, 0.45, 0.76); gln(0.09, 0.46, 0.91, 0.54);
+      gmat(m, 1.3); gln(0.14, 0.2 - a, 0.96, 0.28);
+    ) : i == 4 ? (                              // reed / tine
+      gcol(0.25, 0.22, 0.2); grc(0.04, 0.3, 0.16, 0.4);
+      gmat(m, 1); u = 0.2;
+      loop(18, v = 3*a*((u - 0.2)/0.74)^2*sin(anim_ph); glnw(u, 0.5 + v, u + 0.04, 0.5 + 3*a*((u + 0.04 - 0.2)/0.74)^2*sin(anim_ph), 4); u += 0.04;);
+    ) : (                                       // air column
+      gmat(m, 1); glnw(0.04, 0.32, 0.96, 0.32, 3); glnw(0.04, 0.68, 0.96, 0.68, 3);
+      gcol(0.25, 0.22, 0.2); grc(0.02, 0.3, 0.03, 0.4);
+      gcol(0.62, 0.82, 1); u = 0.06;
+      loop(22, gln(u, 0.5 + (0.1 + a)*cos($pi*u*1.2)*sin(anim_ph), u + 0.04, 0.5 + (0.1 + a)*cos($pi*(u + 0.04)*1.2)*sin(anim_ph));
+               gln(u, 0.5 - (0.1 + a)*cos($pi*u*1.2)*sin(anim_ph), u + 0.04, 0.5 - (0.1 + a)*cos($pi*(u + 0.04)*1.2)*sin(anim_ph)); u += 0.04;);
+    );
+  ) : (c == 3 || c == 5) ? (
+    draw_mat(i);
+  ) : c == 4 ? (
+    m = rsm;
+    i == 0 ? (                                  // bore (cone)
+      gmat(m, 1); gquad(0.06, 0.44, 0.9, 0.16, 0.9, 0.84, 0.06, 0.56);
+      gmat(m, 0.55); gell(0.9, 0.5, 0.05, 0.34, 1);
+      gmat(m, 1.3); gln(0.06, 0.44, 0.9, 0.16);
+    ) : i == 1 ? (                              // soundbox
+      gmat(m, 1); gell(0.34, 0.52, 0.28, 0.34, 1); gell(0.7, 0.52, 0.22, 0.27, 1); grc(0.34, 0.3, 0.36, 0.44);
+      gcol(0.1, 0.08, 0.08); gci(0.56, 0.52, 0.09, 1);
+      gmat(m, 0.6); gell(0.34, 0.52, 0.28, 0.34, 0);
+    ) : i == 2 ? (                              // pipe
+      gmat(m, 1); grc(0.38, 0.14, 0.24, 0.74);
+      gmat(m, 0.5); gell(0.5, 0.14, 0.12, 0.05, 1);
+      gmat(m, 1.35); gln(0.42, 0.18, 0.42, 0.86);
+      gmat(m, 0.8); gell(0.5, 0.88, 0.12, 0.05, 1);
+    ) : i == 3 ? (                              // cavity (gourd)
+      gmat(m, 1); gci(0.5, 0.62, 0.3, 1); grc(0.43, 0.12, 0.14, 0.26);
+      gmat(m, 0.45); gell(0.5, 0.12, 0.07, 0.03, 1);
+      gmat(m, 1.3); garc_(0.44, 0.56, 0.18);
+    ) : (                                       // solid body
+      gmat(m, 1); grc(0.14, 0.36, 0.6, 0.5);
+      gmat(m, 1.3); gquad(0.14, 0.36, 0.3, 0.2, 0.9, 0.2, 0.74, 0.36);
+      gmat(m, 0.7); gquad(0.74, 0.36, 0.9, 0.2, 0.9, 0.7, 0.74, 0.86);
+    );
+  ) : c == 6 ? (
+    m = rsm;
+    i == 0 ? (                                  // bridge
+      gmat(m, 1); gquad(0.18, 0.78, 0.82, 0.78, 0.68, 0.44, 0.32, 0.44);
+      gcol(0.1, 0.1, 0.1); gtri(0.4, 0.78, 0.6, 0.78, 0.5, 0.62);
+      gcol(0.8, 0.8, 0.82); k = 0; loop(4, gln(0.02, 0.36 + 0.02*k, 0.98, 0.36 + 0.02*k); k += 1;);
+    ) : i == 1 ? (                              // soundpost
+      gmat(m, 1); glnw(0.06, 0.2, 0.94, 0.26, 4); glnw(0.06, 0.82, 0.94, 0.78, 4);
+      gmat(m, 0.75); grc(0.46, 0.24, 0.08, 0.55);
+    ) : i == 2 ? (                              // mouthpiece
+      gmat(m, 1); gci(0.32, 0.5, 0.24, 1);
+      gquad(0.42, 0.42, 0.96, 0.46, 0.96, 0.54, 0.42, 0.58);
+      gcol(0.1, 0.08, 0.08); gell(0.26, 0.5, 0.1, 0.16, 1);
+      gmat(m, 1.3); gell(0.32, 0.5, 0.24, 0.24, 0);
+    ) : (                                       // windway
+      gmat(m, 1); grc(0.06, 0.28, 0.58, 0.44);
+      gcol(0.08, 0.08, 0.1); grc(0.06, 0.47, 0.58, 0.06);
+      gmat(m, 1); gtri(0.72, 0.5, 0.94, 0.3, 0.94, 0.5);
+      gcol(0.62, 0.82, 1); gln(0.64, 0.5, 0.8, 0.48); gln(0.64, 0.5, 0.8, 0.54);
+    );
+  ) : c == 7 ? (
+    m = rsm;
+    i == 0 ? (                                  // bell
+      gmat(m, 1); u = 0.04;
+      loop(20, gquad(u, 0.5 - 0.06 - 0.36*(u/0.84)^3, u + 0.043, 0.5 - 0.06 - 0.36*((u + 0.043)/0.84)^3,
+                     u + 0.043, 0.5 + 0.06 + 0.36*((u + 0.043)/0.84)^3, u, 0.5 + 0.06 + 0.36*(u/0.84)^3); u += 0.042;);
+      gmat(m, 0.5); gell(0.88, 0.5, 0.05, 0.42, 1);
+      gmat(m, 1.35); u = 0.04; loop(20, gln(u, 0.5 - 0.06 - 0.36*(u/0.84)^3, u + 0.042, 0.5 - 0.06 - 0.36*((u + 0.042)/0.84)^3); u += 0.042;);
+    ) : i == 1 ? (                              // soundboard
+      gmat(m, 1); grc(0.06, 0.2, 0.88, 0.6);
+      gmat(m, 0.75); k = 0; loop(6, u = 0.06; loop(15, gln(u, 0.26 + 0.1*k + 0.02*sin(u*9 + k), u + 0.058, 0.26 + 0.1*k + 0.02*sin((u + 0.058)*9 + k)); u += 0.058;); k += 1;);
+    ) : i == 2 ? (                              // drumhead
+      gcol(0.3, 0.3, 0.32); gci(0.5, 0.5, 0.44, 1);
+      gmat(m, 1.1); gci(0.5, 0.5, 0.38, 1);
+      gcol(0.75, 0.75, 0.78); k = 0; loop(12, gln(0.5 + 0.4*cos(k*$pi/6), 0.5 + 0.4*sin(k*$pi/6), 0.5 + 0.46*cos(k*$pi/6), 0.5 + 0.46*sin(k*$pi/6)); k += 1;);
+    ) : (                                       // cone
+      gcol(0.2, 0.2, 0.22); gci(0.5, 0.5, 0.46, 1);
+      gmat(m, 0.8); gci(0.5, 0.5, 0.38, 1);
+      gmat(m, 1); gci(0.5, 0.5, 0.28, 1);
+      gmat(m, 0.6); gci(0.5, 0.5, 0.28, 0); gci(0.5, 0.5, 0.18, 0);
+      gcol(0.15, 0.15, 0.16); gci(0.5, 0.5, 0.1, 1);
+    );
+  ) : c == 8 ? (
+    i == 0 ? (                                  // frets
+      gcol(0.3, 0.2, 0.14); grc(0.04, 0.3, 0.92, 0.4);
+      gcol(0.82, 0.82, 0.85); u = 0.08; k = 0; loop(8, glnw(u, 0.3, u, 0.7, 2); u += 0.16*0.891^k; k += 1;);
+      gcol(0.9, 0.9, 0.9); gci(0.33, 0.5, 0.025, 1);
+    ) : i == 1 ? (                              // tone holes
+      gcol(0.2, 0.18, 0.18); grc(0.04, 0.36, 0.92, 0.28);
+      gcol(0.05, 0.05, 0.05); k = 0; loop(5, gci(0.18 + 0.16*k, 0.5, 0.045, 1); k += 1;);
+      gcol(0.8, 0.8, 0.82); gci(0.82, 0.5, 0.06, 1); gln(0.82, 0.44, 0.95, 0.3);
+    ) : i == 2 ? (                              // valves
+      k = 0;
+      loop(3,
+        gcol(0.85, 0.72, 0.35); grc(0.18 + 0.24*k, 0.3, 0.16, 0.56);
+        gcol(0.95, 0.9, 0.8); gell(0.26 + 0.24*k, 0.22, 0.08, 0.05, 1); grc(0.24 + 0.24*k, 0.22, 0.04, 0.1);
+        k += 1;
+      );
+    ) : i == 3 ? (                              // slide
+      gcol(0.85, 0.72, 0.35); glnw(0.08, 0.36, 0.8, 0.36, 3); glnw(0.08, 0.64, 0.8, 0.64, 3); garc_(0.8, 0.5, 0.14);
+      gcol(0.6, 0.8, 0.95); gln(0.3, 0.5, 0.6, 0.5); gtri(0.6, 0.45, 0.6, 0.55, 0.66, 0.5); gtri(0.3, 0.45, 0.3, 0.55, 0.24, 0.5);
+    ) : (                                       // keys
+      gcol(0.95, 0.95, 0.93); grc(0.06, 0.2, 0.88, 0.62);
+      gcol(0.3, 0.3, 0.3); k = 1; loop(6, gln(0.06 + 0.1257*k, 0.2, 0.06 + 0.1257*k, 0.82); k += 1;);
+      gcol(0.1, 0.1, 0.12); k = 0; loop(6, (k != 2) ? grc(0.15 + 0.1257*k, 0.2, 0.07, 0.38); k += 1;);
+    );
+  ) : c == 9 ? (
+    i == 0 ? (                                  // pegs
+      gcol(0.35, 0.22, 0.15); grc(0.3, 0.1, 0.4, 0.8);
+      gcol(0.12, 0.1, 0.1); k = 0; loop(2, glnw(0.1, 0.32 + 0.36*k, 0.9, 0.32 + 0.36*k, 3); gell(0.12, 0.32 + 0.36*k, 0.08, 0.1, 1); k += 1;);
+    ) : i == 1 ? (                              // tuning pins
+      gcol(0.4, 0.3, 0.22); grc(0.06, 0.25, 0.88, 0.5);
+      k = 0; loop(4, gcol(0.75, 0.75, 0.78); gci(0.18 + 0.21*k, 0.5, 0.06, 1); gcol(0.5, 0.5, 0.52); gci(0.18 + 0.21*k, 0.5, 0.03, 0); gcol(0.8, 0.8, 0.82); gln(0.18 + 0.21*k, 0.44, 0.18 + 0.21*k, 0.05); k += 1;);
+    ) : i == 2 ? (                              // machine head
+      gcol(0.75, 0.75, 0.78); gci(0.4, 0.5, 0.2, 1);
+      gcol(0.55, 0.55, 0.58); k = 0; loop(12, gln(0.4 + 0.2*cos(k*$pi/6), 0.5 + 0.2*sin(k*$pi/6), 0.4 + 0.26*cos(k*$pi/6), 0.5 + 0.26*sin(k*$pi/6)); k += 1;);
+      gcol(0.95, 0.9, 0.8); gell(0.84, 0.5, 0.1, 0.16, 1); gcol(0.75, 0.75, 0.78); glnw(0.6, 0.5, 0.76, 0.5, 3);
+    ) : (                                       // tuning slide
+      gcol(0.85, 0.72, 0.35); glnw(0.1, 0.36, 0.66, 0.36, 3); glnw(0.1, 0.64, 0.66, 0.64, 3); garc_(0.66, 0.5, 0.14);
+      gcol(0.6, 0.8, 0.95); gtri(0.86, 0.44, 0.86, 0.56, 0.94, 0.5);
+    );
+  ) : c == 10 ? (
+    i == 0 ? (                                  // damper
+      gcol(0.8, 0.8, 0.82); glnw(0.04, 0.7, 0.96, 0.7, 2);
+      gcol(0.25, 0.2, 0.18); grc(0.46, 0.08, 0.08, 0.3);
+      gcol(0.75, 0.18, 0.2); grrf(0.3, 0.36, 0.4, 0.32, 0.06);
+    ) : i == 1 ? (                              // mute
+      gcol(0.7, 0.72, 0.75); gquad(0.1, 0.36, 0.1, 0.64, 0.86, 0.9, 0.86, 0.1);
+      gcol(0.55, 0.42, 0.28); grc(0.2, 0.38, 0.14, 0.05); grc(0.2, 0.57, 0.14, 0.05);
+      gcol(0.4, 0.42, 0.45); gell(0.86, 0.5, 0.04, 0.4, 1);
+    ) : i == 2 ? (                              // palm
+      gcol(0.8, 0.8, 0.82); k = 0; loop(4, gln(0.02, 0.6 + 0.06*k, 0.98, 0.6 + 0.06*k); k += 1;);
+      gcol(0.95, 0.77, 0.64); gell(0.5, 0.5, 0.36, 0.26, 1);
+      gcol(0.85, 0.66, 0.54); gell(0.5, 0.56, 0.26, 0.14, 0);
+    ) : i == 3 ? (                              // felt
+      gcol(0.8, 0.8, 0.82); glnw(0.04, 0.62, 0.96, 0.62, 2);
+      gcol(0.72, 0.16, 0.2); grc(0.1, 0.34, 0.8, 0.24);
+      gcol(0.55, 0.1, 0.14); u = 0.12; loop(13, gln(u, 0.36, u + 0.05, 0.56); u += 0.06;);
+    ) : (                                       // hand
+      gcol(0.95, 0.77, 0.64); gell(0.46, 0.64, 0.24, 0.26, 1);
+      k = 0; loop(4, grrf(0.25 + 0.11*k, 0.12 + 0.04*abs(k - 1.5), 0.09, 0.5, 0.045); k += 1;);
+      grrf(0.64, 0.5, 0.26, 0.1, 0.05);
+    );
+  ) : (
+    i == 0 ? (                                  // keywork
+      gcol(0.8, 0.8, 0.82); glnw(0.06, 0.3, 0.94, 0.3, 2);
+      k = 0; loop(3, gln(0.2 + 0.3*k, 0.3, 0.2 + 0.3*k, 0.62); gci(0.2 + 0.3*k, 0.68, 0.09, 1); k += 1;);
+    ) : i == 1 ? (                              // pedals
+      gcol(0.85, 0.72, 0.35); gquad(0.12, 0.32, 0.42, 0.32, 0.46, 0.86, 0.08, 0.86); gquad(0.58, 0.32, 0.88, 0.32, 0.92, 0.86, 0.54, 0.86);
+      gcol(0.6, 0.5, 0.25); grc(0.2, 0.14, 0.14, 0.18); grc(0.66, 0.14, 0.14, 0.18);
+    ) : i == 2 ? (                              // rotary valves
+      k = 0; loop(2, gcol(0.85, 0.72, 0.35); gci(0.3 + 0.4*k, 0.5, 0.18, 1); gcol(0.45, 0.35, 0.15); gquad(0.3 + 0.4*k - 0.1, 0.42, 0.3 + 0.4*k + 0.04, 0.34, 0.3 + 0.4*k + 0.1, 0.58, 0.3 + 0.4*k - 0.04, 0.66); k += 1;);
+    ) : i == 3 ? (                              // lever
+      gcol(0.8, 0.8, 0.82); glnw(0.08, 0.72, 0.9, 0.3, 3);
+      gcol(0.3, 0.3, 0.32); gci(0.4, 0.56, 0.06, 1);
+      gcol(0.6, 0.8, 0.95); u = 0.66; loop(6, gln(u, 0.62, u + 0.03, 0.72); gln(u + 0.03, 0.72, u + 0.06, 0.62); u += 0.06;);
+    ) : (                                       // electronics
+      gcol(0.2, 0.22, 0.25); grrf(0.06, 0.18, 0.88, 0.64, 0.08);
+      gcol(0.4, 1, 0.6); u = 0.12; loop(15, gln(u, 0.42 + 0.14*sin(u*16 + anim_ph), u + 0.05, 0.42 + 0.14*sin((u + 0.05)*16 + anim_ph)); u += 0.05;);
+      gcol(0.8, 0.8, 0.82); gci(0.3, 0.7, 0.06, 1); gci(0.6, 0.7, 0.06, 1);
+    );
+  );
+);
+
+// Word-wrapped text; returns the y below the last line.
+function draw_wrapped(s, x, y, w, lh) local(n, k, ch, tw, th, cy)
+(
+  n = strlen(s); k = 0; cy = y;
+  strcpy(#wl, ""); strcpy(#ww, "");
+  while (k <= n) (
+    ch = k < n ? str_getchar(s, k) : 32;
+    ch == 32 ? (
+      strcpy(#wt, #wl); strlen(#wt) ? strcat(#wt, " "); strcat(#wt, #ww);
+      gfx_measurestr(#wt, tw, th);
+      (tw > w && strlen(#wl)) ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); cy += lh; strcpy(#wl, #ww); ) : strcpy(#wl, #wt);
+      strcpy(#ww, "");
+    ) : (
+      sprintf(#wc, "%c", ch); strcat(#ww, #wc);
+    );
+    k += 1;
+  );
+  strlen(#wl) ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); cy += lh; );
+  cy;
+);
+
+// ---- presets: the ten parts and two materials, then force, size,
+// brightness, decay, position, resonator amount, play mode
+PRESET_TAB = 7000; PRESET_STRIDE = 20; PRESET_N = 16;
+function preset_name(k)
+(
+  k==0?"Bamboo Saxophone":k==1?"Ice Violin":k==2?"Marble Marimba":k==3?"Glass Trumpet":
+  k==4?"Crystal Music Box":k==5?"Rubber Tuba":k==6?"Electric Bone Harp":k==7?"Clay Drum":
+  k==8?"Jelly Gong":k==9?"Steel Flute":k==10?"Bowed Ice Bar":k==11?"Golden Piano":
+  k==12?"Paper Accordion":k==13?"Carbon Trombone":k==14?"Buzzing Glockenspiel":"Bronze Bell Plate";
+);
+function pdef(k, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, f, sz, br, dc, ps, ra, mo) local(p)
+(
+  p = PRESET_TAB + k*PRESET_STRIDE;
+  p[0] = a0; p[1] = a1; p[2] = a2; p[3] = a3; p[4] = a4; p[5] = a5; p[6] = a6; p[7] = a7;
+  p[8] = a8; p[9] = a9; p[10] = a10; p[11] = a11; p[12] = f; p[13] = sz; p[14] = br; p[15] = dc;
+  p[16] = ps; p[17] = ra; p[18] = mo;
+);
+//     en ex el elm rs rsm cp rd fc tm dm md  force size bright decay pos res mono
+pdef( 0, 0, 0, 5, 12, 0, 12, 2, 0, 1, 2, 0, 0,  70, 100,   0, 100, 20, 50, 0);
+pdef( 1, 1, 3, 0,  7, 1,  7, 0, 1, 0, 0, 0, 4,  70, 100,  10, 100, 15, 60, 0);
+pdef( 2, 4, 5, 2,  8, 2,  8, 0, 1, 4, 2, 0, 1,  70, 100,   0, 100, 12, 60, 0);
+pdef( 3, 0, 1, 5,  5, 0,  5, 2, 0, 2, 3, 0, 2,  75, 100,   0, 100, 20, 50, 0);
+pdef( 4, 3, 4, 4,  6, 4,  6, 0, 1, 4, 2, 0, 1,  60, 100,  20, 100, 10, 50, 0);
+pdef( 5, 0, 1, 5, 17, 0, 17, 2, 0, 2, 2, 0, 0,  80, 200,   0, 100, 20, 50, 0);
+pdef( 6, 2, 4, 0, 13, 3, 13, 0, 3, 4, 1, 0, 4,  70, 100,   0, 100, 20, 40, 0);
+pdef( 7, 4, 5, 1,  9, 3,  9, 1, 2, 4, 0, 2, 0,  80, 100,   0, 100, 30, 60, 0);
+pdef( 8, 4, 5, 3, 19, 4, 19, 0, 1, 4, 0, 0, 1,  80, 150,   0, 150, 25, 50, 0);
+pdef( 9, 0, 1, 5,  0, 2,  0, 3, 1, 1, 2, 0, 0,  70, 100,   0, 100, 20, 40, 0);
+pdef(10, 1, 3, 2,  7, 2,  7, 0, 1, 4, 2, 0, 4,  70, 100,   0, 100,  8, 50, 0);
+pdef(11, 2, 2, 0,  4, 1, 10, 0, 1, 4, 1, 0, 1,  70, 100,   0, 100, 12, 50, 0);
+pdef(12, 0, 0, 4, 18, 3, 18, 3, 1, 4, 2, 0, 4,  70, 100,   0, 100, 20, 50, 0);
+pdef(13, 0, 1, 5, 16, 0, 16, 2, 0, 3, 3, 0, 0,  75, 100,   0, 100, 20, 50, 1);
+pdef(14, 5, 2, 2,  3, 2,  3, 0, 3, 4, 2, 0, 4,  60, 100,   0, 100, 15, 50, 0);
+pdef(15, 4, 2, 3,  2, 4,  2, 0, 1, 4, 2, 0, 1,  80, 100,   0, 200, 20, 50, 0);
+
+function apply_preset(k) local(p, j)
+(
+  p = PRESET_TAB + k*PRESET_STRIDE; j = 0;
+  loop(19, slider(j + 1) = p[j]; j += 1;);
+  slider_automate(2^19 - 1);
+  gui_dirty = 1; cur_preset = k;
+);
+function set_part(c, val)
+(
+  val = max(0, min(cat_count(c) - 1, val));
+  slider(c + 1) = val;
+  slider_automate(2^c);
+  gui_dirty = 1; last_cat = c; cur_preset = -1;
+);
+function randomise() local(c)
+(
+  c = 0; loop(12, slider(c + 1) = floor(rand(cat_count(c))); c += 1;);
+  slider_automate(2^12 - 1);
+  gui_dirty = 1; cur_preset = -1;
+);
+cur_preset = 0; last_cat = 2; aud_note = 60;
 
 @slider
 update_globals();
@@ -1262,4 +1792,194 @@ yl *= gl; yr *= gl;
 ay = abs(yl); ay > 0.9 ? yl = sign(yl)*(0.9 + 0.1*tanh_((ay - 0.9)*10));
 ay = abs(yr); ay > 0.9 ? yr = sign(yr)*(0.9 + 0.1*tanh_((ay - 0.9)*10));
 spl0 = yl; spl1 = yr;
+vis_lvl = max(abs(yl), vis_lvl*vis_dec);
 SCOPE_BUF[scope_w] = 0.5*(yl + yr); scope_w = (scope_w + 1) & (SCOPE_LEN - 1);
+
+@gfx 940 640
+
+gsc = max(1, gfx_ext_retina);
+anim_ph += 0.3; anim_ph > 628.3 ? anim_ph -= 628.3;
+gw = gfx_w; gh = gfx_h;
+gfx_set(0.105, 0.11, 0.125, 1); gfx_rect(0, 0, gw, gh, 1);
+pad = 10*gsc; hdr = 50*gsc;
+gfx_setfont(1, "Arial", 13*gsc);
+gfx_setfont(2, "Arial", 15*gsc, 'b');
+gfx_setfont(3, "Arial", 23*gsc, 'b');
+gfx_setfont(4, "Arial", 10*gsc, 'b');
+gfx_setfont(5, "Arial", 19*gsc, 'b');
+
+clicked = (mouse_cap & 1) && !(last_cap & 1);
+last_cap = mouse_cap;
+wheel = mouse_wheel; mouse_wheel = 0;
+hov = -1;
+
+function inbox(x, y, w, h) ( mouse_x >= x && mouse_x < x + w && mouse_y >= y && mouse_y < y + h; );
+function button(x, y, w, h, s, on) local(hv, tw, th)
+(
+  hv = inbox(x, y, w, h);
+  gfx_set(on ? 0.26 : hv ? 0.25 : 0.18, on ? 0.42 : hv ? 0.27 : 0.19, on ? 0.66 : hv ? 0.32 : 0.23, 1);
+  gfx_rect(x, y, w, h, 1);
+  gfx_set(0.3, 0.32, 0.38, 1); gfx_rect(x, y, w, h, 0);
+  gfx_setfont(2); gfx_set(0.93, 0.94, 0.96, 1);
+  gfx_measurestr(s, tw, th); gfx_x = x + 0.5*(w - tw); gfx_y = y + 0.5*(h - th); gfx_drawstr(s);
+  hv && clicked;
+);
+function group_col(c)
+(
+  c <= 1 ? gfx_set(0.95, 0.6, 0.25, 1) : c <= 3 ? gfx_set(0.35, 0.8, 0.95, 1) :
+  c <= 7 ? gfx_set(0.45, 0.85, 0.5, 1) : gfx_set(0.72, 0.55, 0.95, 1);
+);
+function part_menu(c) local(k, r)
+(
+  strcpy(#menu, ""); k = 0;
+  loop(cat_count(c), k > 0 ? strcat(#menu, "|"); (slider(c + 1)|0) == k ? strcat(#menu, "!"); strcat(#menu, opt_name(c, k)); k += 1;);
+  gfx_x = mouse_x; gfx_y = mouse_y;
+  r = gfx_showmenu(#menu);
+  r > 0 ? set_part(c, r - 1);
+);
+function sub_name(c) ( c == 2 ? mat_name(elm) : (c == 4 || c == 6 || c == 7) ? mat_name(rsm) : ""; );
+// a clickable picture of one part of the assembled instrument
+function tile(c, x, y, w, h) local(v, hv, tw, th, s)
+(
+  v = slider(c + 1)|0;
+  hv = inbox(x, y, w, h); hv ? hov = c;
+  gfx_set(hv ? 0.19 : 0.145, hv ? 0.2 : 0.15, hv ? 0.24 : 0.175, 1); gfx_rect(x, y, w, h, 1);
+  group_col(c); gfx_rect(x, y, w, 2*gsc, 1);
+  draw_part(c, v, x + 0.1*w, y + 0.12*h, 0.8*w, 0.6*h, c == 2);
+  gfx_setfont(2); gfx_set(0.93, 0.94, 0.96, 1);
+  s = opt_name(c, v); gfx_measurestr(s, tw, th); gfx_x = x + 0.5*(w - tw); gfx_y = y + h - 2.2*th; gfx_drawstr(s);
+  gfx_setfont(1); gfx_set(0.58, 0.6, 0.67, 1);
+  strlen(sub_name(c)) ? ( s = sub_name(c); gfx_measurestr(s, tw, th); gfx_x = x + 0.5*(w - tw); gfx_y = y + h - 1.15*th; gfx_drawstr(s); );
+  hv && clicked ? part_menu(c);
+);
+function arrow(x1, y1, x2, y2) local(dx, dy, l, ux, uy)
+(
+  gfx_set(0.45, 0.48, 0.55, 1);
+  gfx_line(x1, y1, x2, y2, 1); gfx_line(x1, y1 + 1, x2, y2 + 1, 1);
+  dx = x2 - x1; dy = y2 - y1; l = max(1, sqrt(dx*dx + dy*dy)); ux = dx/l; uy = dy/l;
+  gfx_triangle(x2, y2, x2 - 7*gsc*ux + 4*gsc*uy, y2 - 7*gsc*uy - 4*gsc*ux, x2 - 7*gsc*ux - 4*gsc*uy, y2 - 7*gsc*uy + 4*gsc*ux);
+);
+
+// ---- header
+gfx_setfont(3); gfx_set(0.96, 0.96, 0.98, 1); gfx_x = pad; gfx_y = 12*gsc; gfx_drawstr("Instrument Creator");
+gfx_setfont(1); gfx_set(0.55, 0.58, 0.65, 1); gfx_x = pad + 230*gsc; gfx_y = 20*gsc;
+// is this still the chosen preset, or has a part been changed (here or by automation)?
+cur_preset >= 0 ? ( k = 0; pm = PRESET_TAB + cur_preset*PRESET_STRIDE; loop(12, (slider(k + 1)|0) != pm[k] ? cur_preset = -1; k += 1;); );
+gfx_drawstr(cur_preset >= 0 ? preset_name(cur_preset) : "your own instrument");
+bw_ = 104*gsc; bh_ = 28*gsc; bxx = gw - pad - bw_; byy = 11*gsc;
+button(bxx, byy, bw_, bh_, aud_on ? "Playing..." : "Play C4", aud_on) ? ( aud_note = 60; aud_req = 1; );
+bxx -= bw_ + 8*gsc;
+button(bxx, byy, bw_, bh_, "Surprise me", 0) ? randomise();
+bxx -= bw_ + 8*gsc;
+button(bxx, byy, bw_, bh_, "Presets", 0) ? (
+  strcpy(#menu, ""); k = 0;
+  loop(PRESET_N, k > 0 ? strcat(#menu, "|"); k == cur_preset ? strcat(#menu, "!"); strcat(#menu, preset_name(k)); k += 1;);
+  gfx_x = bxx; gfx_y = byy + bh_;
+  r = gfx_showmenu(#menu);
+  r > 0 ? apply_preset(r - 1);
+);
+
+// ---- the part list: click to choose, wheel to step, arrows to step
+lx = pad; ly = hdr; lw = min(360*gsc, 0.4*gw); rhh = (gh - ly - pad)/12;
+c = 0;
+loop(12,
+  ry = ly + c*rhh; rht = rhh - 3*gsc;
+  hvr = inbox(lx, ry, lw, rht); hvr ? hov = c;
+  gfx_set(hvr ? 0.19 : 0.145, hvr ? 0.2 : 0.15, hvr ? 0.24 : 0.175, 1); gfx_rect(lx, ry, lw, rht, 1);
+  group_col(c); gfx_rect(lx, ry, 3*gsc, rht, 1);
+  val = slider(c + 1)|0;
+  isz = rht - 6*gsc;
+  draw_part(c, val, lx + 9*gsc, ry + 3*gsc, 1.4*isz, isz, 0);
+  tx = lx + 18*gsc + 1.4*isz;
+  gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = tx; gfx_y = ry + 0.16*rht; gfx_drawstr(cat_title(c));
+  gfx_setfont(2); gfx_set(0.95, 0.95, 0.97, 1); gfx_x = tx; gfx_y = ry + 0.5*rht; gfx_drawstr(opt_name(c, val));
+  // step arrows
+  ax1 = lx + lw - 46*gsc; ax2 = lx + lw - 23*gsc; ay1 = ry + 0.5*rht;
+  gfx_set(inbox(ax1, ry, 22*gsc, rht) ? 0.9 : 0.45, 0.5, inbox(ax1, ry, 22*gsc, rht) ? 0.5 : 0.55, 1);
+  gfx_set(0.5, 0.53, 0.6, 1);
+  inbox(ax1, ry, 22*gsc, rht) ? gfx_set(0.9, 0.92, 0.96, 1);
+  gfx_triangle(ax1 + 13*gsc, ay1 - 6*gsc, ax1 + 13*gsc, ay1 + 6*gsc, ax1 + 6*gsc, ay1);
+  gfx_set(0.5, 0.53, 0.6, 1);
+  inbox(ax2, ry, 22*gsc, rht) ? gfx_set(0.9, 0.92, 0.96, 1);
+  gfx_triangle(ax2 + 7*gsc, ay1 - 6*gsc, ax2 + 7*gsc, ay1 + 6*gsc, ax2 + 14*gsc, ay1);
+  hvr && clicked ? (
+    inbox(ax1, ry, 22*gsc, rht) ? set_part(c, (val + cat_count(c) - 1) % cat_count(c)) :
+    inbox(ax2, ry, 22*gsc, rht) ? set_part(c, (val + 1) % cat_count(c)) :
+    part_menu(c);
+  );
+  (hvr && wheel != 0) ? set_part(c, (val + (wheel > 0 ? cat_count(c) - 1 : 1)) % cat_count(c));
+  c += 1;
+);
+
+// ---- the assembled instrument
+ax = lx + lw + pad; aw = gw - ax - pad; ay = ly;
+gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = ax; gfx_y = ay; gfx_drawstr("YOUR INSTRUMENT: CLICK A PART TO CHANGE IT, HOVER FOR A CLOSER LOOK");
+gap = 26*gsc;
+tw_ = (aw - 2*gap)/3; th_ = min(0.78*tw_, 0.27*(gh - ay));
+ty1 = ay + 16*gsc; ty2 = ty1 + th_ + gap;
+tile(0, ax, ty1, tw_, th_);
+tile(1, ax + tw_ + gap, ty1, tw_, th_);
+tile(2, ax + 2*(tw_ + gap), ty1, tw_, th_);
+tile(6, ax + 2*(tw_ + gap), ty2, tw_, th_);
+tile(4, ax + tw_ + gap, ty2, tw_, th_);
+tile(7, ax, ty2, tw_, th_);
+arrow(ax + tw_ + 3*gsc, ty1 + 0.45*th_, ax + tw_ + gap - 3*gsc, ty1 + 0.45*th_);
+arrow(ax + 2*tw_ + gap + 3*gsc, ty1 + 0.45*th_, ax + 2*(tw_ + gap) - 3*gsc, ty1 + 0.45*th_);
+arrow(ax + 2*(tw_ + gap) + 0.5*tw_, ty1 + th_ + 3*gsc, ax + 2*(tw_ + gap) + 0.5*tw_, ty2 - 3*gsc);
+arrow(ax + 2*(tw_ + gap) - 3*gsc, ty2 + 0.45*th_, ax + 2*tw_ + gap + 3*gsc, ty2 + 0.45*th_);
+arrow(ax + tw_ + gap - 3*gsc, ty2 + 0.45*th_, ax + tw_ + 3*gsc, ty2 + 0.45*th_);
+// the four controls
+cy_ = ty2 + th_ + 0.6*gap; ch_ = 0.72*th_; cw_ = (aw - 3*10*gsc)/4;
+k = 0;
+loop(4,
+  cx_ = ax + k*(cw_ + 10*gsc);
+  cc = 8 + k; v = slider(cc + 1)|0;
+  hv = inbox(cx_, cy_, cw_, ch_); hv ? hov = cc;
+  gfx_set(hv ? 0.19 : 0.145, hv ? 0.2 : 0.15, hv ? 0.24 : 0.175, 1); gfx_rect(cx_, cy_, cw_, ch_, 1);
+  group_col(cc); gfx_rect(cx_, cy_, cw_, 2*gsc, 1);
+  draw_part(cc, v, cx_ + 0.2*cw_, cy_ + 0.08*ch_, 0.6*cw_, 0.55*ch_, 0);
+  gfx_setfont(2); gfx_set(0.93, 0.94, 0.96, 1); s = opt_name(cc, v); gfx_measurestr(s, tww, thh);
+  gfx_x = cx_ + 0.5*(cw_ - tww); gfx_y = cy_ + ch_ - 1.4*thh; gfx_drawstr(s);
+  hv && clicked ? part_menu(cc);
+  k += 1;
+);
+
+// ---- the close-up preview of the hovered (or last changed) part
+pc = hov >= 0 ? hov : last_cat;
+py_ = cy_ + ch_ + 12*gsc; ph_ = gh - py_ - pad; pw_ = aw;
+ph_ > 60*gsc ? (
+  gfx_set(0.13, 0.135, 0.155, 1); gfx_rect(ax, py_, pw_, ph_, 1);
+  group_col(pc); gfx_rect(ax, py_, 3*gsc, ph_, 1);
+  psz = min(ph_ - 16*gsc, 0.3*pw_);
+  v = slider(pc + 1)|0;
+  draw_part(pc, v, ax + 12*gsc, py_ + 8*gsc, 1.25*psz, psz, 1);
+  tx = ax + 24*gsc + 1.25*psz; tw2 = pw_ - (tx - ax) - 12*gsc;
+  gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = tx; gfx_y = py_ + 10*gsc; gfx_drawstr(cat_title(pc));
+  gfx_setfont(5); gfx_set(0.97, 0.97, 0.99, 1); gfx_x = tx; gfx_y = py_ + 24*gsc; gfx_drawstr(opt_name(pc, v));
+  gfx_setfont(1); gfx_set(0.8, 0.82, 0.87, 1);
+  yy = draw_wrapped(opt_desc(pc, v), tx, py_ + 52*gsc, tw2, 17*gsc);
+  (pc == 3 || pc == 5) ? (
+    t60 = mat_t60(v, 440);
+    ee = mat(v, M_E);
+    ee >= 1 ? sprintf(#stf, "%g GPa", ee) : ee >= 0.001 ? sprintf(#stf, "%g MPa", ee*1000) : sprintf(#stf, "%g kPa", ee*1000000);
+    t60 >= 1 ? sprintf(#rng, "%.1f s", t60) : sprintf(#rng, "%d ms", t60*1000);
+    sprintf(#info, "Stiffness %s, density %d kg/m3. A 440 Hz ring lasts about %s.", #stf, mat(v, M_RHO), #rng);
+    gfx_set(0.6, 0.63, 0.7, 1); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc);
+  );
+  gfx_set(0.55, 0.85, 0.6, 1); yy = draw_wrapped(combo_hint(), tx, yy + 6*gsc, tw2, 17*gsc);
+  // what it sounds like right now
+  sw = min(tw2, 260*gsc); sh = min(46*gsc, py_ + ph_ - yy - 12*gsc);
+  sh > 16*gsc ? (
+    sx = ax + pw_ - sw - 12*gsc; sy = py_ + ph_ - sh - 10*gsc;
+    gfx_set(0.09, 0.095, 0.11, 1); gfx_rect(sx, sy, sw, sh, 1);
+    st0 = (scope_w - 1024 + SCOPE_LEN) & (SCOPE_LEN - 1); k = 0;
+    while (k < 400 && !(SCOPE_BUF[(st0 + k) & (SCOPE_LEN - 1)] <= 0 && SCOPE_BUF[(st0 + k + 1) & (SCOPE_LEN - 1)] > 0)) ( k += 1; );
+    st0 += k; sc_ = 0.45*sh/max(0.05, vis_lvl);
+    gfx_set(0.45, 0.9, 0.6, 1); k = 0;
+    loop(sw - 1,
+      y0 = SCOPE_BUF[(st0 + floor(k*512/sw)) & (SCOPE_LEN - 1)]; y1 = SCOPE_BUF[(st0 + floor((k + 1)*512/sw)) & (SCOPE_LEN - 1)];
+      gfx_line(sx + k, sy + 0.5*sh - y0*sc_, sx + k + 1, sy + 0.5*sh - y1*sc_, 1);
+      k += 1;
+    );
+  );
+);
