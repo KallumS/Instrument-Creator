@@ -205,8 +205,8 @@ New behaviour needed by the new materials: lossy membranes (leather,
 cardboard, film) would not sustain a bow, reed or lips (a minimum driven
 ring of 0.3 s fixed all three); lips were silent on cardboard, foil and tin
 until their split twins were removed; the membrane lip correction had to
-follow stiffness (section on pitch pull in PARTS.md). Rattle and crackle
-were added (PARTS.md), with the gap chosen so that velocity 40 is clean.
+follow stiffness (PARTS-AND-MATERIALS.md §4.6). Rattle and crackle
+were added (§6.5 there), with the gap chosen so that velocity 40 is clean.
 
 ## 14. Age / rust
 
@@ -231,7 +231,10 @@ new docs, the tools added since, the "sleep does not wait" trap, the known
 limitations found in requests 2 and 3). Eighteen architecture decision
 records in `docs/adr/`, each with the measurement that forced it.
 `docs/PARTS-AND-MATERIALS.md`: an in-depth guide to every part and material
-and the physics behind it. The material numbers in it (ring times at 262 Hz
+and the physics behind it; at the user's request (only agents read it) it
+was then rewritten as a technical reference with derivations and the exact
+expressions and constants, and the older `docs/PARTS.md` was merged into it
+and removed. Checking it against the code corrected two more figures. The material numbers in it (ring times at 262 Hz
 and 2 kHz, string inharmonicity, soundbox resonance, wall factor) were
 computed from the plugin's own table, not written by hand; checking the guide
 against the code caught one wrong claim (the stretched-tuning range).
@@ -241,7 +244,7 @@ against the code caught one wrong claim (the stretched-tuning range).
 - Every energy × exciter × element combination plays and is stable at 44.1,
   48 and 96 kHz and at age 0 and 100; all 19 presets play.
 - In tune: plucked, struck and reed notes within a few cents; lips, jets and
-  bows mostly within 10 c (exceptions in PARTS.md).
+  bows mostly within 10 c (exceptions in PARTS-AND-MATERIALS.md §4.6).
 - Level-matched within 0.2 dB across parts, except three capped combinations.
 - Worst CPU: a bowed-plate chord at 14 % of a core at 48 kHz; 27.5 % for a
   three-note chord at 96 kHz.

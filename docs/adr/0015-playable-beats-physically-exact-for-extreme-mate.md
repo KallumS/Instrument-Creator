@@ -14,7 +14,7 @@ not drive a rubber tube.
 
 Make them lossy but playable: η 0.03–0.05; cap the floppy-wall loss of air
 columns at 2.2 × a smooth wall; give driven modal loops a minimum ring
-(ADR 0006). Record the real values next to the used ones (PARTS.md).
+(ADR 0006). Record the real values next to the used ones (PARTS-AND-MATERIALS.md).
 
 ## Consequences
 

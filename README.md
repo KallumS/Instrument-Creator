@@ -299,11 +299,9 @@ Velocity, pitch bend, mod wheel (CC1), breath controller (CC2), expression
 
 Further reading:
 
-- [`docs/PARTS-AND-MATERIALS.md`](docs/PARTS-AND-MATERIALS.md): the long
-  guide to every part and every material, and the physics behind each, in
-  plain language.
-- [`docs/PARTS.md`](docs/PARTS.md): the same as a compact reference, with the
-  formulas and numbers.
+- [`docs/PARTS-AND-MATERIALS.md`](docs/PARTS-AND-MATERIALS.md): the
+  technical reference: every part and material, with the equations, the
+  constants and the measurements behind them.
 - [`docs/adr/`](docs/adr/README.md): the big design decisions and why they
   were made.
 - [`docs/SESSION-LOG.md`](docs/SESSION-LOG.md): how it was built and

@@ -25,5 +25,5 @@ their own resonance). Nobody can tune by ear.
 
 - Plucked, struck and reed notes are within a few cents across the keyboard;
   lips, jets and bows within about 10 c, a few material-dependent exceptions
-  within 60 c (listed in PARTS.md).
+  within 60 c (listed in PARTS-AND-MATERIALS.md §4.6).
 - Any change to an exciter's constants makes its correction stale: re-measure.

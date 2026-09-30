@@ -1,20 +1,22 @@
-# Every part and every material, and the physics behind them
+# Parts and materials: models, derivations, constants
 
-This is the long version. For each part it explains what the part is in a real
-instrument, the physics of what it does, how Instrument Creator models it, and
-what you hear. For each material it explains what its numbers are and what
-they do to every kind of element.
+Technical reference for `Instrument-Creator.jsfx`. Every expression here is
+the one implemented; function and constant names are given so each can be
+found with grep. Design rationale is in [`adr/`](adr/README.md); the
+measurement history is in [`SESSION-LOG.md`](SESSION-LOG.md); the user-facing
+description is the README.
 
-The short reference tables are in [`PARTS.md`](PARTS.md); the reasons behind
-the big design choices are in [`adr/`](adr/README.md); how it was built and
-measured is in [`SESSION-LOG.md`](SESSION-LOG.md). Numbers here are the ones
-the plugin uses. "Measured" means measured with the headless test rig in
-`tools/`, not taken from a book.
+Conventions: SI units; `fs` sample rate; `f₀` the note's fundamental after
+tuning offsets; `N = fs/f₀` samples per period; `ω = 2πf/fs` normalised
+angular frequency; `a` the Age slider in 0…1; cents `c = 1200 log₂(f/f_ref)`.
+"Measured" = rendered with `tools/render` (ysfx, REAPER's EEL2 JIT) at
+48 kHz and analysed with `tools/analyse.py` (YIN pitch, BS.1770 loudness),
+C4 and velocity 100 unless stated.
 
 ## Contents
 
-1. [A little physics first](#1-a-little-physics-first)
-2. [How a note travels through the instrument](#2-how-a-note-travels-through-the-instrument)
+1. [Architecture](#1-architecture)
+2. [Shared numerical machinery](#2-shared-numerical-machinery)
 3. [Energy sources](#3-energy-sources)
 4. [Exciters](#4-exciters)
 5. [Vibrating elements](#5-vibrating-elements)
@@ -22,979 +24,785 @@ the plugin uses. "Measured" means measured with the headless test rig in
 7. [Resonators](#7-resonators)
 8. [Couplers](#8-couplers)
 9. [Radiators](#9-radiators)
-10. [Frequency controls](#10-frequency-controls)
-11. [Tuning mechanisms](#11-tuning-mechanisms)
-12. [Damping](#12-damping)
-13. [Modulation and control](#13-modulation-and-control)
-14. [Age and rust](#14-age-and-rust)
-15. [After the parts: level, limiter, stereo](#15-after-the-parts-level-limiter-stereo)
-16. [Sources](#16-sources)
+10. [Controls](#10-controls)
+11. [Age](#11-age)
+12. [Output stage and level matching](#12-output-stage-and-level-matching)
+13. [Validation summary](#13-validation-summary)
+14. [Deviations, limitations, vestigial code](#14-deviations-limitations-vestigial-code)
+15. [References](#15-references)
 
 ---
 
-## 1. A little physics first
+## 1. Architecture
 
-Seven ideas explain almost everything below.
+### 1.1 Signal flow
 
-**Resonances.** Anything that can vibrate has a set of frequencies it
-prefers, its *resonances* or *modes*. Tap a wine glass and you hear its
-resonances. The lowest usually sets the pitch you hear; the others set the
-tone.
+```
+per voice (8):
+  energy envelope ─> drive P ─> exciter e = f(P, c) <═> element (waveguide | modes | banded WG)
+                                                              │ out (× trim, DC-blocked)
+                                   rattle / crackle / hiss ───┤ (feed-forward)
+                                                              ├─> per-voice comb (Bore | Pipe) ─> res
+                                                              └─> dir
+summed over voices, stereo (constant-power pan by note):
+  mix = rs∈{Bore,Pipe} ? lerp(dir, res, amount) : dir
+  coupler (2 biquads) ─> [shared body modes, wet = amount × 3 × body] ─> radiator (≤ 3 biquads
+  + saturation | diffusion | head modes) ─> × output × tremolo × master trim × age gain
+  ─> peak limiter (−3 dBFS) ─> soft ceiling ─> out
+```
 
-**Harmonic and inharmonic.** A string or a tube of air has resonances at
-(nearly) whole-number multiples of the lowest: 1, 2, 3, 4… times the note.
-Those are *harmonic*, and the ear fuses them into one clear pitch. A bar, a
-drum skin or a bell plate has resonances at odd ratios (1, 2.76, 5.40… for a
-bar), which are *inharmonic*: the pitch is still there but the sound is
-clangy, bell-like or drum-like.
+The only feedback path is exciter ↔ element within a voice (ADR 0007).
+Everything downstream is LTI except the radiator saturations, the rattle
+nonlinearity and the limiter, all feed-forward.
 
-**Loss and ring time.** Every material turns a little vibration into heat on
-every cycle. The *loss factor* η measures how much. A mode at frequency f
-dies away with a *ring time* (the time to fall by 60 dB, "T60") of
+### 1.2 Rates and threads
 
-> T60 = 2.2 / (f · η)
+- `@sample`: MIDI events are queued in `@block` with their sample offset and
+  dispatched sample-accurately (`MIDIQ`, 1000 events/block).
+- Control rate: every 16 samples `voice_control` updates glide, settle,
+  wobble, the loop delays (phase tuning, §2.2), band/mode coefficients when
+  the frequency changed by > 10⁻⁵ relative, the lip oscillator and the
+  per-voice comb. `mod_st`, `trem` and the LFO (5.5 Hz) are updated at the same
+  rate.
+- `@gfx` runs concurrently with `@sample` in REAPER (separate thread). The
+  only global written by both is `aud_req`.
+- Globals derived from sliders are recomputed by `update_globals` in
+  `@slider`, and in `@block` when the window has changed a slider
+  (`gui_dirty`). Part changes take effect at the next note-on (per-voice
+  setup is done in `voice_start`), except shared-stage filters and the
+  controls, which are global.
 
-so a high note dies faster than a low one, and a lossy material dies faster
-than a stiff, clean one. Steel has η ≈ 0.0003 (rings for many seconds);
-rubber has η ≈ 0.1 (a thud). Real objects also lose energy to their mounting
-and to the air, so each material has a longest possible ring, `t_max`.
+### 1.3 Voices
 
-**Stiffness makes things inharmonic.** A perfectly floppy string is perfectly
-harmonic. A real string also resists bending, and that stiffness pushes its
-high overtones sharp, more and more the higher they go. It is measured by the
-*inharmonicity* B: overtone n sits at `n·f₀·√(1 + B·n²)`. Piano strings have
-B ≈ 0.0002–0.001. A thick, stiff rod has much more, and starts to sound like
-a bell.
+8 voices (`VOICES_MAX`), 512 memory slots each (fields `V_*` 0–101, modes at
+`MODE_OFF` = 160, 24 × 8), and four delay lines of 16384 samples each (A:
+element / band delays; B: second string segment / band descriptors; J: jet
+delay; R: per-voice comb). Allocation (`find_voice`): a free voice, else the
+released voice with the lowest level follower, else the oldest. A voice is
+freed when `t > 50 ms`, the level follower (peak, 50 ms release) < 2·10⁻⁵,
+the drive envelope < 0.002, no pulse is active, and it is released or has a
+non-steady source. Mono mode uses voice 0 with a held-note stack
+(`NOTE_STACK`) for last-note priority.
 
-**Waveguides.** A wave running along a string reflects at each end and comes
-back. A *digital waveguide* is exactly that: a delay line one round trip
-long, with the losses and stiffness of the trip built into filters in the
-loop. It automatically has every harmonic, for almost no computing cost.
-
-**Feedback and self-oscillation.** A struck bar rings and dies. A bowed
-string, a clarinet reed or a buzzing lip keeps a note going, because the
-exciter *listens* to the vibration and pushes in time with it, adding back
-the energy that loss removes. That is feedback, and it has to be built
-carefully, or it runs away and explodes.
-
-**Impedance.** How hard it is to push something into motion. A tube with a
-narrow bore resists airflow more than a wide one; a heavy bar resists a
-hammer more than a light one. The exciter and the element have to be matched
-for energy to flow between them.
+Pan: `p = 0.5 + 0.3·clip((note − 60)/30, ±1)`, gains `√2·cos(πp/2)`,
+`√2·sin(πp/2)`.
 
 ---
 
-## 2. How a note travels through the instrument
+## 2. Shared numerical machinery
+
+### 2.1 Loss per pass and one-pole fits
+
+A mode or loop partial with ring time T60 loses amplitude `10^(−3 t/T60)`;
+over one pass of duration `T_p` the gain is `g = 10^(−3·T_p/T60)`.
+The loop loss filter is `H(z) = b/(1 − p z⁻¹)`, `|H(ω)|² = b²/(1 − 2p cos ω + p²)`.
+
+**`op_fit2(ga, ωa, gb, ωb)`** (loops): fit `|H(ωa)| = ga` at the fundamental,
+`|H(ωb)| = gb` at the reference partial. With `R² = (gb/ga)²`:
 
 ```
- energy source ──> exciter <══> vibrating element ──> bore / pipe (per note)
-   how the power     what         what sets the          │
-   arrives           touches it   pitch                  ▼
-                                          coupler ──> soundbox / cavity / body ──> radiator ──> you
+(1 − R²) p² − 2 (cos ωa − R² cos ωb) p + (1 − R²) = 0
+p = [B − √(B² − A²)] / A,   A = 1 − R²,  B = cos ωa − R² cos ωb
+b = ga · √(1 − 2p cos ωa + p²)
 ```
 
-1. The **energy source** decides how the power arrives: a steady supply or a
-   single push, how quickly it starts and stops, and how much noise it
-   carries.
-2. The **exciter** turns that power into motion of the element. The double
-   arrow is the one feedback loop in the instrument: the exciter feels the
-   element move and pushes back.
-3. The **vibrating element**, made of the chosen material, sets the pitch
-   and most of the character.
-4. A **bore** or **pipe** resonator is tuned to each note and sits on the note
-   itself. The other resonators are shared by all notes, like a real body.
-5. The **coupler** shapes how vibration gets from the element into the body.
-6. The **radiator** shapes how the sound leaves.
-7. The four **controls** decide how notes are played: how pitch changes,
-   how it is tuned, what happens when you let go, and what the mod wheel does.
+then `p ≤ 0.95` and `b ≤ 0.9999995 (1 − p)` (DC gain < 1, so the loop is
+passive at every frequency: `|H|` is monotone decreasing for p ≥ 0). This
+replaced a DC-anchored fit (`op_fit`, Reverberator's), which for steep
+high-frequency losses drove p → 0.9994 and attenuated the fundamental
+(ADR 0008). `op_fit` is still used for the per-voice comb (§7.1), which is
+feed-forward.
 
-Everything after the element is feed-forward: it colours the sound but never
-feeds back into it, so it can never make the instrument unstable
-([ADR 0007](adr/0007-only-the-exciter-and-the-element-form-a-feedback.md)).
+`wg_loss(v, T60_lo, T60_hi)` applies it with `T_p` = the loop's pass time at
+f₀ (`V_TPA`) and at the reference partial (`V_TPB`).
 
-Up to 8 notes sound at once. When a ninth arrives, the plugin reuses a free
-voice, else the quietest released note, else the oldest.
+### 2.2 Phase-exact loop tuning
+
+Every 16 samples the loop delay D (samples) solves
+
+```
+ω·D + φ_lp(ω) + M·φ_ap(ω, a_d) + φ_dc(ω) = K·π
+```
+
+with `ω = 2π·f·F_K/fs` (F_K the pitch-pull correction, §4.6) and K =
+`V_LOOPK` (2: a positive loop at its fundamental; 1: a negative loop, half a
+period; 3: the overblown jet; the lips use `LIP_LOOPK` = 2). Phase lags:
+
+```
+φ_lp = atan2(p sin ω, 1 − p cos ω)                       one-pole loss
+φ_ap = ω − 2 atan(a sin ω / (1 + a cos ω))                first-order allpass (a < 0)
+φ_dc = atan2(R sin ω, 1 − R cos ω) − (π − ω)/2            DC blocker (1 − z⁻¹)/(1 − R z⁻¹), R = 1 − 2π·10/fs
+```
+
+(φ_dc is negative: a lead.) D is clamped to [4, 16376]. The fractional read
+is 4-point Lagrange (`lag_read`) with `n₀ = ⌊D⌋ − 1`, `d = D − n₀ ∈ [1, 2)`:
+
+```
+h₀ = −(d−1)(d−2)(d−3)/6,  h₁ = d(d−2)(d−3)/2,  h₂ = −d(d−1)(d−3)/2,  h₃ = d(d−1)(d−2)/6
+```
+
+on taps at delays n₀ … n₀ + 3. Its phase delay equals d at low frequency;
+the residual error at the fundamental is < 1 c for all tested notes.
+
+### 2.3 Dispersion (stiff strings)
+
+For `f_n = n f₀ √(1 + B n²)` the round-trip group delay at partial n is
+`τ(n) = 1/(df_n/dn) = √(1 + Bn²) / (f₀ (1 + 2Bn²))`. Four identical
+first-order allpasses (group delay `gd(ω, a) = (1 − a²)/(1 + 2a cos ω + a²)`)
+are solved by bisection (`disp_solve`) so that
+
+```
+M·[gd(ω₁, a) − gd(ω_n, a)] = (τ(1) − τ(n))·fs,    a ∈ [a_lim, 0]
+```
+
+where n is the partial nearest f_ref = min(5 kHz, 0.3 fs) (solved by fixed
+point `n ← (n + f_ref/(f₀√(1 + Bn²)))/2`). Budget: `a_lim` starts at −0.9 and
+is raised in steps of 0.02 until `M·φ_ap(ω₁, a_lim) ≤ 0.4·2π`, i.e. the
+allpasses take at most 40 % of the loop phase at the fundamental
+(Reverberator ADR 0005; without it short stiff strings above C5 had negative
+residual delay). Not applied to bowed strings (§4.4).
+
+### 2.4 Two-pole modal resonator and its equivalence to a waveguide
+
+Each mode (`mode_put`) is
+
+```
+y[n] = 2r cos θ · y[n−1] − r² · y[n−2] + (w/N)·(e[n] − e[n−2])
+r = exp(−6.9078/(T60·fs)),  θ = 2πf/fs
+```
+
+At resonance the bandpass numerator gives zero phase (a real admittance) and
+peak gain `≈ b/(1 − r)` with `b = w/N`. A waveguide loop with the same decay
+has per-period gain `g = r^N`, so `1 − g ≈ N(1 − r)` and its peak
+`1/(1 − g) ≈ 1/(N(1 − r))`: equal for w = 1. The impulse response is
+`≈ 2b·rⁿ cos(nθ)`, i.e. amplitude `2w/N`, the same as a waveguide partial
+excited by a unit impulse. This keeps modal and waveguide elements at
+comparable levels before trims. Modes with f ≥ min(0.45 fs, 18 kHz) are
+dropped; at most `MODES_MAX` = 24.
+
+### 2.5 Banded waveguides
+
+For a sustaining exciter on a modal element (`bands_setup`), each mode k
+becomes `y_k = BP_k(g_k·y_k[n − N_k] + w'_k·e)`:
+
+- `N_k = fs/f_k` (linear interpolation; zero-phase BP, so no phase correction),
+  buffer length `⌈2fs/f_k⌉ + 6` (bends down to an octave);
+- `BP_k`: `b₀(x − x₂) − a₁y₁ − a₂y₂`, `R_k = exp(−π·max(8, f_k/4)/fs)`,
+  `b₀ = (1 − R²)/2`, `a₁ = −2R cos θ_k`, `a₂ = R²` (unit peak gain);
+- `g_k = 10^(−3/(f_k·T60_k))`, `T60_k = max(T60_mode, 0.3·√(f₀/f_k))`
+  (`BAND_T60_MIN`);
+- contact `c = Σ w'_k y_k[n − N_k]`, `w'_k = w_k·(f₀/f_k)^0.7` (`BAND_GAMMA`);
+- injection `e_band = e · (1/Σw'²) · (1 + (BAND_G − 1)·min(1, 2·env))`,
+  `BAND_G` = 3: the junction gain is 1 (passive) when the drive envelope is
+  0.
+
+Release (`bands_release`) lowers `g_k` to the release T60 (× 0.6 above 4 f₀).
 
 ---
 
 ## 3. Energy sources
 
-The energy source is not what touches the element (that is the exciter). It is
-*how the power arrives*. It has one big property, whether the supply is
-**steady** or a **single push**, and that combines with the exciter's own big
-property, whether it **sustains** or **strikes**:
+`energy_params(en)` sets globals; the drive envelope is per voice
+(`V_ENV`).
 
-| | Sustaining exciter (reed, lips, bow) | Striking exciter (hammer, plectrum, mallet) |
-|---|---|---|
-| **Steady source** (breath, bow, electricity) | the note lasts as long as you hold the key | the exciter keeps striking: a roll, a tremolo, a buzzer |
-| **Single push** (finger, plectrum, hammer) | each note swells, then fades, like squeezing a bulb | the note is struck once and rings |
+| Source | steady | attack (s) | release (s) | noise | strikes/s ± jitter | hold (s) | decay τ (s) | contact × | velocity exponent k |
+|---|---|---|---|---|---|---|---|---|---|
+| Breath | 1 | 0.035 | 0.06 | 0.035 | 11 ± 25 % | | | 1.3 | 1.0 |
+| Bow | 1 | 0.08 | 0.10 | 0.025 | 15 ± 45 % | | | 1.0 | 1.0 |
+| Finger | 0 | 0.004 | | 0.01 | | 0.15 | 0.5 | 2.2 | 1.3 |
+| Plectrum | 0 | 0.0015 | | 0.02 | | 0.10 | 0.35 | 0.55 | 1.2 |
+| Hammer | 0 | 0.0008 | | 0.01 | | 0.06 | 0.25 | 0.8 | 1.8 |
+| Electricity | 1 | 0.003 | 0.012 | 0 | 25 exact | | | 0.6 | 0.7 |
 
-How hard you play maps to level as `force × velocity^k`: a hammer is very
-dynamic (k = 1.8), electricity hardly at all (k = 0.7).
-
-### Breath
-
-**In real instruments**: the lungs push air at 1–10 kPa through a reed, lips
-or a jet. Breath is never perfectly smooth: turbulence adds a hiss that is
-part of every wind instrument's sound.
-
-**Physics and model**: a steady pressure that rises in 35 ms and falls in
-60 ms when you release, with 3.5 % random turbulence on it. A breath
-controller (CC2), expression (CC11) or aftertouch changes the pressure while
-the note sounds, just like blowing harder. With a striking exciter, breath
-drives a striker at about 11 strikes a second (±25 % irregular), like a
-drum roll powered by air.
-
-**What you hear**: natural, breathing sustain; a soft, quick start; the tone
-grows brighter as you blow harder, because the reed or lips close more
-violently.
-
-### Bow
-
-**In real instruments**: the arm draws the bow at a steady speed; rosin makes
-the hair grip and slip.
-
-**Physics and model**: a steady bow speed, rising over 80 ms (a bow stroke
-takes time to start), stopping in 100 ms, with 2.5 % grain from the rosin.
-Driving a striking exciter, it gives 15 irregular strikes a second (±45 %),
-like a bouncing *ricochet* stroke.
-
-**What you hear**: a slower, swelling attack than breath and a slightly
-gritty sustain.
-
-### Finger
-
-**In real instruments**: a fingertip pressing a key, plucking a string or
-tapping a drum: soft flesh, one gesture per note.
-
-**Physics and model**: a single push. It rises in 4 ms, holds for 150 ms,
-then fades over half a second. Soft flesh means a long contact: finger
-strikes last 2.2 times longer than the exciter's normal strike, so they are
-darker. Velocity response k = 1.3.
-
-**What you hear**: gentle, round notes; a finger into a reed or bow is a soft
-squeeze that blooms and fades.
-
-### Plectrum
-
-**In real instruments**: a guitar pick, a harpsichord quill: a sharp flick.
-
-**Physics and model**: a single push that rises in 1.5 ms, holds 100 ms and
-fades over 0.35 s. Strikes are half as long as usual (bright), plus a little
-pick noise.
-
-**What you hear**: bright, quick, articulate notes.
-
-### Hammer
-
-**In real instruments**: a piano hammer thrown at the strings by the key
-mechanism: a single, hard, very fast blow whose hardness depends on how fast
-it travels.
-
-**Physics and model**: a single push rising in 0.8 ms, holding 60 ms, fading
-over 0.25 s. The most dynamic source (k = 1.8): soft notes are much quieter
-and darker than hard ones, because a faster hammer also makes a shorter
-contact (see Hammer under Exciters).
-
-**What you hear**: percussive, very responsive to your playing.
-
-### Electricity
-
-**In real instruments**: an electromagnet driving a string (an EBow), a
-motor, a solenoid buzzer, a vibraphone motor.
-
-**Physics and model**: a perfectly steady, noise-free supply that starts in
-3 ms and stops in 12 ms. With a striking exciter it drives a solenoid at
-exactly 25 strikes a second, a buzzer.
-
-**What you hear**: machine-like: perfectly even sustain, no breath, no grit.
-With a hammer on a bar: a doorbell.
+- Level: `L = max(0.02, force·v^k)·(0.6 if soft pedal)`, v = velocity/127
+  (≥ 0.05). Live level: `L·expr·(1 + 0.4·aftertouch + 0.3·mw·[keywork])`,
+  `expr = CC11·(CC2 if any CC2 has been received)`.
+- Steady envelope: one-pole towards 1 while gated or held by the sustain
+  pedal, coefficients `1 − exp(−1/(t·fs))`.
+- Single push: `env = t/att` (t < att); 1 (t < att + hold); `exp(−(t − att − hold)/τ)`.
+- Steady source + striking exciter: while `env > 0.02`, a pulse is started
+  every `(1 ± jitter·u)/(rate·(0.6 + 0.8·env·L))` s with amplitude
+  `L·env·(0.85 + 0.3u)`, u uniform.
+- Noise: the drive gets `P ← P(1 + n·(noise + 0.02·[windway] + 0.06a))`,
+  n uniform in ±1, per sample.
 
 ---
 
 ## 4. Exciters
 
-The exciter is the part that actually touches the vibrating element.
-Sustaining exciters (reed, lips, bow, and the air jet a windway makes) are
-feedback loops; striking exciters (hammer, plectrum, mallet) are shaped
-pushes.
+Notation: c is the wave arriving at the junction (sum of arrivals for a
+two-segment string, the band sum for banded elements, `tanh(c)` for plain
+modal elements), e is what the exciter adds to the outgoing wave(s). A
+steady exciter's drive is `P = env·P(L)`. All sustaining forms are passive
+at P = 0 (ADR 0005).
 
-Every sustaining exciter here is written in the same way: from the drive and
-the wave arriving at the contact point, work out what to add to the wave
-leaving it. The forms were chosen because they cannot put out more energy
-than the drive supplies: when you stop blowing or bowing, the instrument
-must fall silent ([ADR 0005](adr/0005-sustaining-exciters-are-passive-reflection-funct.md)).
+### 4.1 Reed (STK clarinet)
 
-### Reed
+`P = 0.6 + 0.3L`. Reflection coefficient of the reed channel
+`R = clip(0.7 − 0.3·(c − P), −1, 1)`; outgoing `P + (c − P)R`, hence
 
-**In real instruments**: a clarinet or saxophone reed, a thin blade of cane
-over a slot. Blowing presses it shut against the mouthpiece; the pressure
-wave coming back up the tube pushes it open again. It chops the airflow into
-pulses in step with the tube.
+```
+e = (P − c)(1 − R)
+```
 
-**Physics**: a pressure-controlled valve that *blows closed*: the harder you
-blow, the more it closes, which is what lets it keep a tube oscillating. On
-a tube closed at the reed end it produces the odd harmonics (1, 3, 5, …) that
-give a clarinet its hollow sound.
+With the first mapping, `0.55 + 0.3L`, notes above C5 fell silent at force
+70 % (near threshold); force 100 % restored them, hence the 0.6 offset.
 
-**Model**: the reed table from Stanford's Synthesis ToolKit (STK). The
-reflection through the reed is `R = clip(0.7 − 0.3·(c − P))`, and the reed
-adds `e = (P − c)(1 − R)`, where P is the mouth pressure (0.6 + 0.3 × level)
-and c the returning wave. It is always used on a cylinder
-([ADR 0017](adr/0017-the-reed-always-plays-a-cylinder.md)): a reed on a cone
-does not oscillate in this form.
+### 4.2 Lips (Trombolese `reed.py`, outward-striking valve)
 
-**Measured**: a breath-blown reed on an air column plays within 2 cents of
-the note from C2 to G6.
+Opening y (m), velocity ẏ:
 
-**What you hear**: clarinet-like on an air column; on a string, a strange
-bowed-reed buzz; on a tine, a harmonica.
+```
+ÿ = Δp/μ − (ω_l/Q)·ẏ − ω_l²·(y − y₀),     1/μ = ω_l²·y₀/p_c
+```
 
-### Lips
+`Q = 15`, `y₀ = 0.3 mm` (`LIP_REST`), width `w = 12 mm`, closing pressure
+`p_c = 12 kPa`; ω_l from the note (below). Semi-implicit Euler at fs, y
+clamped to [0, 3y₀] with the velocity zeroed at the stops. Flow through the
+gap `U = A·sgn(Δp)·√(2|Δp|/ρ)`, `A = w·max(y, 0)`, with
+`Δp = p_inc − Z·U` and `p_inc = P − 2·c·P_s` (the pressure the valve would see
+at zero flow; `P_s = 4000 Pa` scales normalised waves, `Z = 2.7·10⁶ Pa·s/m³`
+≈ ρc/πa² for a = 7 mm). Substituting gives `U² + kZ·U − k·|p_inc| = 0`,
+`k = 2A²/ρ`:
 
-**In real instruments**: a trumpet player's lips, buzzing against a
-mouthpiece. Unlike a reed, lips *blow open*: more pressure pushes them apart.
-The player tunes the lips close to the note; the tube locks them onto it.
+```
+U = ½(−kZ + √((kZ)² + 4k|p_inc|))·sgn(p_inc),    e = Z·U/P_s
+```
 
-**Physics**: Trombolese's lip model, which was measured and verified in that
-project. The lip opening y is a mass on a spring,
+Mouth pressure `P = (1500 + 4500 L)·env` Pa. The lip frequency is
+`f_l = f·LIP_RATIO·(F_K if banded)` = 0.92 f on waveguides. Measured on the
+air column (loop +, one period, with in-loop DC blocker):
 
-> y'' + (ω/Q)·y' + ω²·(y − y₀) = Δp / μ
+| f_l/f | bore/f | played |
+|---|---|---|
+| 0.9 | 1 | no oscillation |
+| 1.0 | 1 | +181 c |
+| 0.88 | 0.88 | −41 c |
+| **0.92** | **0.88** | **+1 c** |
 
-with Q = 15, a 0.3 mm resting gap, 12 mm width and a mass set so that 12 kPa
-would close them. Air flows through the gap by Bernoulli's law,
-`U = w·y·√(2|Δp|/ρ)`. Because the pressure the lips feel depends on the
-flow they let through, the two are solved together exactly (a quadratic),
-which keeps it stable at any pressure.
+i.e. the valve plays ≈ 11 % above its own resonance, locked by the bore.
+Below ≈ 0.9 of the resonance it does not oscillate (as in Trombolese). With
+0.92/0.88: −9 … +4 c from C2 to C6 (−18 c at C2, −33 c at G6).
 
-**Model details**: mouth pressure is 1.5–6 kPa with level. Lips pull the
-pitch up (they play about 11 % above their own resonance on a tube), so the
-plugin tunes the tube to 0.88 × the note and the lips to 0.92 × the note,
-which lands within −9 … +4 cents from C2 to C6. On bars, plates, tines and
-membranes the lips and the element are lowered together by the measured pull
-(113–148 cents; 50–100 on membranes, depending on stiffness). Through a
-windway, the lips become a flute's air jet instead.
+### 4.3 Air jet (STK flute; `ex_eff` = 6 when coupler = Windway and exciter ∈ {lips, bow})
 
-**What you hear**: brass. Louder playing is brighter and more brassy (and the
-Bell radiator adds to that).
+`P = (1.0 + 0.25L)·env`; jet input `j_in = P − c/2` into a delay
+`D_J = 0.32·D` (linear interpolation, line J):
 
-### Hammer
+```
+j = clip(j_out·(j_out² − 1), ±1),     e = j − c/2     (outgoing = j + c/2)
+```
 
-**In real instruments**: a piano hammer: felt over wood, thrown at the
-string and bouncing off.
+Loop: −, K = 3 (the bore is tuned to 2/3 of the note because the jet locks to
+the second resonance, as STK's `lastFrequency = f·0.6667`). Before the
+1.5-period loop it played a fifth sharp. Low notes (C2, G2) produce only odd
+harmonics.
 
-**Physics**: a hammer squashes on contact; the harder it hits, the stiffer
-the squashed felt gets and the shorter the contact. A short contact puts
-energy into high frequencies (bright); a long one only into low ones (dark).
+### 4.4 Bow (STK bowed string)
 
-**Model**: a half-sine push lasting 0.9 ms × the source's softness ×
-(1.3 − 0.6 × velocity) ÷ √(material hardness). So a hard note is shorter and
-brighter, a soft material (rubber, jelly) is hit more softly, and Felt
-damping doubles the contact time.
+Bow speed `v_b = (0.03 + 0.2L)·env`, `Δv = v_b − c`:
 
-**What you hear**: a piano-like attack whose brightness follows your
-velocity.
+```
+e = Δv · clip((|k(Δv + 0.001)| + 0.75)⁻⁴, 0.01, 0.98)
+```
 
-### Bow
+Slope k (inverse bow force): `1.5·(max(0.02, β)/0.2)^0.5` on strings
+(Schelleng: the minimum force rises as the bow approaches the bridge; β =
+excite position), `1.5·1.333 = 2` on tubes (`BOW_TUBE`), 3 on banded
+elements (`BOW_SLOPE_B`). Strings are bowed without dispersion: the
+Helmholtz corner propagates at the group velocity of the high partials, which
+the allpasses make faster; with dispersion every bowed steel note was +20 …
++35 c.
 
-**In real instruments**: a violin bow. Rosined hair grips the string and
-drags it sideways (*stick*), until the string's tension snaps it back
-(*slip*); the string then gets caught again. A sharp kink runs round the
-string once per cycle ("Helmholtz motion"), which gives the bowed sawtooth
-tone.
+Measured octave (double-slip) failures on a grid of 6 low-loss materials ×
+9 positions × 5 notes: k₀ = 2 → 9/270, 1.5 → 7/270, all at β = 0.2 or 0.33
+on steel, chain link or handpan steel. Offsetting β by 3–10 % made it worse
+(8–15/270); extra high-frequency loss had no effect.
 
-**Physics**: friction that falls as sliding gets faster. That falling
-friction is what feeds energy in. How hard you must press depends on where
-you bow: nearer the bridge needs more force (Schelleng's rule).
+### 4.5 Strikes (`start_pulse`)
 
-**Model**: STK's bow table, `e = Δv · (|kΔv| + 0.75)⁻⁴`, where Δv is the bow
-speed minus the string's. The slope k is 1.5 × (position/20 %)^0.5 on
-strings (nearer the bridge presses harder), 2 on tubes and 3 on bars, plates,
-membranes and tines. Bowed strings have no stiffness filter, because the
-kink travels at the speed of the high overtones and the stiffness pulled
-every bowed note sharp. The remaining pull (3–15 cents, rising with pitch) is
-taken out. Bars, plates and membranes use banded waveguides (see below) so
-the bow can grip them, and the bow grips a patch rather than a point, so
-their high modes are down-weighted.
+Duration `τ = τ₀·s_src·(1.3 − 0.6v)/√(hardness)`, ×2 with Felt, clamped to
+[3 samples, 20 ms]; `τ₀` = 0.9 ms (hammer), 1.4 ms (plectrum), 4 ms
+(mallet); `s_src` the source's contact factor (§3). Amplitude L (single
+push) or per-strike (steady source). Shapes, `x = t/τ ∈ [0, 1)`:
 
-**Measured**: bowed strings play the right note at 263 of 270 combinations
-of material, bow position and note tested. The exceptions are the most
-lossless steels bowed at exactly 1/5 or 1/3 of the string, which can flip to
-the octave (real violins do something similar, the "whistle" of a badly
-placed bow). Move the Excite position a little if it happens.
+- hammer, mallet: `A sin(πx)`; mallet then one-pole low-pass at 900 Hz, × 1.5;
+- plectrum: `A·x` (the force ramps as the pick deflects the string, then
+  releases), plus 2 ms of uniform noise at 0.15 A.
 
-**What you hear**: a real bowed sound on strings; singing, glass-harmonica
-tones on bars and plates; a strange rasp on a bowed air column.
+A half-sine of duration τ has its first spectral zero at 1.5/τ (1.7 kHz for
+τ = 0.9 ms), which is how velocity, source, material hardness and Felt set
+brightness.
 
-### Plectrum
+### 4.6 Pitch-pull corrections
 
-**In real instruments**: a guitar pick or harpsichord quill pushes the string
-aside and lets go.
+Applied as `F_K` on the loop frequency (and on the lip frequency for banded
+elements):
 
-**Physics**: the string is pulled into a triangle shape and released. The
-release is sudden, which is what makes a pluck bright; where you pluck
-decides which overtones are missing (plucking at 1/5 of the length removes
-the 5th, 10th, 15th…).
+| Case | Pull measured (uncorrected) | Correction | Residual |
+|---|---|---|---|
+| Lips, waveguide | +181 c | bore × 0.88 (`LIP_BORE`), lips 0.92 × note | −9 … +4 c C2–C6 |
+| Lips, bar / plate / tine | +124 / +113 / +148 c | lips and bands × 2^(−c/1200) | −6 … +2 c (median over 8 materials) |
+| Lips, membrane | ≈ +50 c (stiff) … +100 c (soft) | `100 − 50·clip((s − 0.0045)/0.009, 0, 1)` c, s = min(0.03, 0.0003·E_GPa) | within 25 c on 29/31 materials; bone −57, jelly +26 |
+| Jet | +6 … +26 c, rising with f | `clip(16 + 7 log₂(f/261.6), 0, 26)` c | −3 … 0 c |
+| Bow, string | +3 … +15 c | `clip(6 + 5 log₂(f/261.6), 0, 15)` c | +1 … +7 c |
+| Reed, air column | none | | −2 … +1 c |
 
-**Model**: a force that ramps up for 1.4 ms × softness and then snaps to
-zero, plus 2 ms of pick scrape. On a string, the two-segment waveguide puts
-the pluck at the Excite position, so the missing overtones come out right.
-
-**What you hear**: guitar, harp, harpsichord.
-
-### Mallet
-
-**In real instruments**: a yarn- or rubber-wrapped ball on a stick: a
-marimba or timpani mallet.
-
-**Physics**: a soft, heavy head makes a long contact (several
-milliseconds), which gives a round, dark tone.
-
-**Model**: a 4 ms half-sine × softness, then low-passed at 900 Hz, so the
-highs are soft.
-
-**What you hear**: marimba, vibraphone, timpani.
-
-### Banded waveguides: letting a bow, reed or lips grip a bar
-
-A bar, plate, membrane or tine is modelled as a set of resonators (see
-Vibrating elements). A resonator bank has no travelling waves, and a
-sustaining exciter needs them: a bow on a plain resonator bank made no sound
-at all, because a sticking bow pushes a constant and resonators ignore
-constants. So when a sustaining exciter drives one of these elements, each
-mode becomes its own small waveguide: a delay one period of that mode long,
-with a narrow filter at the mode's frequency inside. This is Essl and Cook's
-*banded waveguide*, as in STK. Three extras, each found by measurement:
-
-- a bow or lip touches a patch, not a point, so mode weights fall as
-  `(f₀/f)^0.7` (without it bars and plates locked onto high modes);
-- the exciter grips three times as hard while driven, falling back to
-  exactly normal as the drive fades, so the note stops when released (a
-  permanent ×8 kept ringing after release);
-- each mode rings for at least 0.3 s × √(f₀/f) while driven, so leather,
-  cling film and cardboard still give the exciter something to push against.
-
-Lips get no split twin modes (see Irregularity), because they cannot choose
-between two near-equal resonances.
+Lowering only the lips stops the oscillation (< 0.9 × resonance); lowering
+only the bands made the membrane *sharper* (+101 c): the pitch is set by the
+lips there. The membrane pull is bimodal in stiffness and the boundary cases
+(bamboo, bone: s ≈ 0.0054–0.006) flip between regimes, hence the residuals.
 
 ---
 
 ## 5. Vibrating elements
 
-The element sets the pitch. It is always tuned so that its lowest resonance
-is the note you play; the material decides everything else.
+### 5.1 String (two-segment waveguide)
 
-### String
+Geometry: `L = clip(0.65·2^(−(note − 52)/18), 0.04, 2.2)` m (a piano-like
+scale), `d = 0.8 mm × thickness`. Inharmonicity from `B = π³Ed⁴/(64TL²)` with
+the tension that gives f₀ (`T = μ(2Lf₀)²`, `μ = ρπd²/4`):
 
-**In real instruments**: violin, guitar, piano, harp. Tension sets the pitch;
-the string's own stiffness makes its overtones slightly sharp.
+```
+B = π²·E·d² / (64·ρ·L⁴·f₀²),   capped at 0.05
+```
 
-**Physics**: for an ideal string, overtones are exact multiples of the note.
-A real string of diameter d, length L, stiffness E and density ρ, tuned to
-f₀, has inharmonicity
+Junction (`V_TWO` = 1, STK layout): delays A (bridge side, holds the loss
+filter, the four allpasses and sign −1) and B (nut side, sign −1),
+`D_B = ⌊(1 − β)D⌋` (hysteresis of 2 samples so glides don't click),
+`D_A = D − D_B ≥ 2.5`:
 
-> B = π² · E · d² / (64 · ρ · L⁴ · f₀²)
+```
+r₁ = −AP⁴(LP(A_out)),   r₂ = −B[n − D_B],   c = r₁ + r₂
+A_in = r₂ + e,   B_in = r₁ + e,   out = A_out
+```
 
-(from the textbook `B = π³Ed⁴/(64TL²)` with the tension that gives f₀).
+Round-trip sign +1, K = 2. Loss targets: `T60_lo = held_t60(m, f₀)`,
+`T60_hi = held_t60(m, f_n)` at the partial nearest 5 kHz (§6.2), with pass
+times τ(1) and τ(n) from §2.3. Lips and jets drive a string from its end
+(`V_TWO` = 0) with the air-column configurations.
 
-**Model**: a two-segment waveguide either side of the Excite position. The
-string's length follows the note like a piano's scale, `L = 0.65 m ×
-2^(−(note − 52)/18)` (4 cm to 2.2 m). Its diameter is 0.8 mm × the material's
-*thickness factor*: 1 for metals and nylon, 3–6 for glass, stone, ice, wood
-and jelly, because you cannot draw marble into a wire; it would have to be a
-rod. Stiffness is four allpass filters in the loop, solved so the overtone
-near 5 kHz lands where B says, but never taking more than 40 % of the
-loop's delay (short, stiff strings would otherwise have no delay left). The
-loss filter is fitted at the fundamental and at that overtone (ADR 0008).
+Derived inharmonicity for C4 (L = 0.477 m): steel 7.1·10⁻⁴ (10th partial
++59 c), aluminium 1.6·10⁻³ (+128 c), glass 7.0·10⁻³ (+458 c), marble 9.0·10⁻³
+(+557 c), nylon 1.2·10⁻⁴ (+11 c). Real piano B at C4 ≈ 10⁻⁴…10⁻³.
 
-**What you hear**: steel and nylon strings sound like strings; glass, marble
-and ice "strings" are bell-like rods (at C4, marble's 10th overtone is more
-than half a semitone sharp; see the materials table).
+### 5.2 Air column (single-ended waveguide)
 
-### Membrane
+Radius `a = clip(7 mm·(262/f₀)^0.3, 3, 30 mm)`. Kirchhoff wide-tube
+boundary-layer attenuation (Trombolese `acoustics.py`):
 
-**In real instruments**: drum skins, banjo heads, the membrane of a kazoo.
+```
+α(f) = √(πf)·BLC / (a·c),   BLC = √ν + (γ − 1)√(ν/Pr)
+c = 343.2 m/s, ρ = 1.204, ν = 1.506·10⁻⁵ m²/s, γ = 1.4017, Pr = 0.708  (air, 20 °C)
+```
 
-**Physics**: a stretched circular skin. Its modes are set by the zeros of
-Bessel functions: relative to the lowest, 1, 1.59, 2.14, 2.30, 2.65, 2.92…
-(inharmonic, which is why most drums have no clear pitch). Where you strike
-matters: at the centre only the round, symmetric modes move (a dull thud);
-near the edge all of them do (a ringing tone). The lowest mode pushes a lot
-of air, so it radiates its energy away quickly.
+Per pass of duration `T_p = K/(2f₀)` (path `ℓ = c·T_p`), with wall factor ψ
+and the open-end radiation magnitude `|R| ≈ exp(−(ka)²/2)`:
 
-**Model**: 16 modes from the Bessel table. Each one's strength is its shape
-at the strike radius (0.95 − 1.8 × position: small positions strike near the
-rim). Stiff materials stretch the overtones slightly (`√(1 + s·r²)`,
-s = 0.0003 × E in GPa, at most 0.03: a steel "skin" is less drum-like, more
-bell-like). The lowest mode decays three times faster.
+```
+g(f) = exp(−ℓ·ψ·α(f))·exp(−½(2πfa/c)²),    T60 = −6.9078·T_p / ln g(f)
+ψ = min(2.2, rough·(1 + 0.15·min(6, 1 GPa/E)))·(1 + 0.8a_age)
+```
 
-**What you hear**: a tom or timpani; with lips, a kazoo; a leather membrane
-thuds, a steel one rings.
+evaluated at f₀ and at `f_ref = min(5 kHz, 0.4 fs)`; T60_hi is further scaled
+by damping, brightness and tone holes. Example, C4, ψ = 1: g(f₀) = 0.956
+(T60 0.29 s), g(4 kHz) ≈ 0.74. The end correction is not added (the loop is
+tuned by phase to the note regardless).
 
-### Bar
+Loop configurations (sign σ, K), `wg_setup`:
 
-**In real instruments**: xylophone, marimba and glockenspiel bars, tuning
-forks' prongs.
+| Exciter | σ | K | Note |
+|---|---|---|---|
+| Reed | − | 1 | closed cylinder: odd harmonics. (+, 2) never oscillated at any pressure |
+| Lips | + | 2 | in-loop DC blocker |
+| Jet | − | 3 | in-loop DC blocker; STK overblown flute |
+| Bow | − | 1 | (+, 2) silent |
+| Strikes | + (Windway or Bore) / − | 2 / 1 | open / closed tube |
 
-**Physics**: a bar free at both ends bends in modes at 1, 2.756, 5.404,
-8.933, 13.34, 18.64, 24.81 and 31.87 times the lowest (from the beam
-equation's roots βₙL = 4.730, 7.853, 10.996…). The lowest mode has nodes at
-22.4 % from each end, which is where real bars are supported by cords.
-Striking the middle excites only the symmetric modes; striking off-centre
-adds the others.
+`out = A_out + r₁` (transmitted wave, a high-pass relative to the loop).
 
-**Model**: those 8 modes, weighted by the exact beam mode shape at the strike
-point (0.5 − 0.6 × position from the centre) and heard at 12 % from the end.
-(An early version listened at the nodal point and cancelled its own
-fundamental.)
+### 5.3 Modal elements
 
-**What you hear**: marimba, xylophone, glockenspiel; with a bow, a singing
-vibraphone-like tone.
+Weights `w` (drive/contact) and `w_r` (radiation) per mode, then `mode_put`
+(§2.4). `irr > 0.004` adds a twin per mode at `f·(1 + irr·(0.6 + 0.4 h))`
+(h a fixed hash in ±1), 0.6 × the weights, 0.8 × the T60 (not for lips).
 
-### Plate
+**Membrane** (16 modes). `f_mn = f₀·(j_mn/2.4048)·√(1 + s·(j_mn/2.4048)²)`,
+`s = min(0.03, 0.0003·E_GPa)`; j_mn the sorted Bessel zeros (2.4048, 3.8317,
+5.1356, 5.5201, 6.3802, 7.0156, 7.5883, 8.4172, 8.6537, 8.7715, 9.7610,
+9.9361, 10.1735, 11.0647, 11.0864, 11.6198…). Strike radius
+`r = max(0, 0.95 − 1.8β)`; `w = 1.7·J_m(j_mn r)·(cos 0.7m if m > 0)`,
+`w_r = 1.7·J_m(0.35 j_mn)·cos 1.9m + 0.4δ_m0`; J_m by its power series
+(`besj`, adequate for x < 15). The (0,1) mode's T60 × 0.35 (radiation
+damping of the monopole mode). Degenerate cos/sin pairs are not split.
 
-**In real instruments**: bell plates, gongs, cymbals, thunder sheets.
+**Bar** (8 modes). Free–free Euler–Bernoulli beam, βₙL = 4.7300, 7.8532,
+10.9956, 14.1372, 17.2788, 20.4204, 23.5619, 26.7035; `f_n = f₀(βₙ/4.73)²` =
+1, 2.756, 5.404, 8.933, 13.34, 18.64, 24.81, 31.87. Mode shape, u = x − ½:
 
-**Physics**: a rectangular plate supported at its edges has modes at
-`m² + (n/0.73)²` (for a plate 1 × 0.73 in shape), relative to the lowest:
-dense, overlapping and very inharmonic. The shimmer of a gong is many of
-these beating against each other.
+```
+symmetric (n = 0, 2, …):      φ = cos(βu)/cos(β/2) + cosh(βu)/cosh(β/2)
+antisymmetric (n = 1, 3, …):  φ = sin(βu)/sin(β/2) + sinh(βu)/sinh(β/2)
+```
 
-**Model**: the 20 lowest (m, n) modes, weighted by `sin(mπx)·sin(nπy)` at the
-strike point (near the middle for small positions, where the lowest mode
-dominates).
+(|φ| = 2 at the ends). Strike at `x = 0.5 − 0.6β`, `w = φ(x)/2`; pickup
+`w_r = φ(0.12)/2`. (A pickup mixing x = 0.5 and 0.05 cancelled mode 1: level
+−46 … −69 LUFS.) Timoshenko corrections are ignored (thin-bar limit).
 
-**What you hear**: bells, gongs and metallic clangs; with a bow, a glassy
-singing tone.
+**Plate** (20 modes). Simply supported rectangle, aspect 1 : 0.73:
+`f_mn ∝ m² + (n/0.73)²`, the 20 lowest sorted at init (`PLATE_TAB`), ratios
+to (1,1). `w = sin(mπx)·sin(nπy)` at `(x, y) = (0.5 − 0.8β, 0.5 − 0.7β)`;
+`w_r` at (0.77, 0.31). Isotropic, Poisson effects absent (they cancel in the
+ratios).
 
-### Reed (tine)
+**Tine / reed** (6 modes). Clamped–free cantilever, βₙL = 1.8751, 4.6941,
+7.8548, 10.9955, 14.1372, 17.2788; ratios 1, 6.267, 17.55, 34.39, 56.84, 84.91.
 
-**In real instruments**: a kalimba or music-box tine, an accordion or
-harmonica reed: a tongue clamped at one end.
+```
+φ(x) = cosh βx − cos βx − σ(sinh βx − sin βx),   σ = (cosh β + cos β)/(sinh β + sin β)
+```
 
-**Physics**: a cantilever. Its modes are at 1, 6.267, 17.55, 34.39, 56.84 and
-84.91 times the lowest (βₙL = 1.875, 4.694, 7.855…): the overtones are so far
-up that a plucked tine sounds almost pure. Blown, a free reed chops the
-airflow, and the chopped air is buzzy and full of harmonics.
+x from the clamp; strike at `x = 1 − β_pos`, `w = φ/2`, `w_r = φ(1)/2`. With
+a sustaining exciter the chopped flow is added: `out += 0.6·env·L·tanh(4c)`.
 
-**Model**: 6 cantilever modes, weighted by the mode shape at the pluck point
-(position measured from the tip). With a sustaining exciter, the chopped
-airflow is added: `0.6 × drive × tanh(4c)`.
+**Wobble**: `Δpitch = wob·(0.6·min(1, 3·level) + 0.25 sin(2.3t + note))/2`
+semitones, for materials with wobble > 0.
 
-**What you hear**: plucked, a kalimba or music box; blown, an accordion or
-harmonica.
-
-### Air column
-
-**In real instruments**: the air inside a clarinet, trumpet, flute or organ
-pipe. The air itself is what vibrates; the tube just holds it.
-
-**Physics**: a pressure wave runs up and down the tube. A tube closed at one
-end (a clarinet, closed by the reed) has odd harmonics; open at both ends
-(a flute) or conical (a saxophone) it has all of them. The air loses energy
-to a thin layer rubbing on the wall (the *boundary layer*) and at the open
-end, where some sound escapes.
-
-**Model**: a waveguide whose loss is Trombolese's air physics:
-
-- boundary-layer attenuation `α = √(πf) · BLC / (a · c)`, with
-  `BLC = √ν + (γ − 1)√(ν/Pr)` for air at 20 °C;
-- radiation loss at the open end, `exp(−(ka)²/2)`;
-- a bore radius of 7 mm at middle C, wider for low notes
-  (`a = 7 mm × (262/f₀)^0.3`, 3–30 mm);
-- a wall factor from the material: rougher walls (clay, paper, cardboard)
-  and floppier ones (rubber, jelly) lose more, capped at 2.2 × a smooth
-  wall so they still speak.
-
-Each exciter uses the tube configuration that makes it work: a reed on a
-closed cylinder, lips on an open tube, the air jet on STK's overblown flute
-layout, a bow on a closed tube, strikes on either depending on the coupler.
-
-**What you hear**: clarinets, trumpets, flutes, and wind instruments of any
-material.
+**Release** (`modal_release`): `r ← min(r, exp(−6.9078/(T_rel·fs)))`, with
+`T_rel × 0.6` for modes above 4 f₀; `a₁` rescaled accordingly.
 
 ---
 
 ## 6. Materials
 
-### What the numbers mean
+### 6.1 Parameters (`mat_def`, `MAT_TAB`, stride 16)
 
-| Number | What it is | What it does |
+| Field | Symbol | Used by |
 |---|---|---|
-| **E** (stiffness, GPa) | Young's modulus: how hard it is to stretch or bend | stiffer strings are more inharmonic; stiffer membranes stretch their overtones; stiffer-for-its-weight bodies have higher resonances |
-| **ρ** (density, kg/m³) | how heavy it is | heavier means less inharmonic and lower body resonances |
-| **η** (loss factor at 1 kHz) | how much vibration turns to heat each cycle | how long it rings: T60 = 2.2/(f·η) |
-| **slope** | how η grows with frequency | woods and soft materials lose their highs fastest (dark) |
-| **irregularity** | bubbles, cracks, grain, creases | splits every mode into a slowly beating pair |
-| **wall roughness** | the inside of a tube | air columns of rough materials lose more |
-| **hardness** | how hard a strike on it is | harder materials give shorter, brighter strikes |
-| **thickness** | how thick a string of it must be | brittle materials become thick rods |
-| **t_max** | the longest ring the mounting allows | caps the ring of very clean materials |
-| **wobble, rattle, crackle** | special behaviours | jelly wobbles in pitch; tin, chain link, car panel and film rattle; foil crackles |
+| `M_E` | Young's modulus E (GPa) | string B; membrane stretch s; body stiffness scale; air-wall floppiness |
+| `M_RHO` | density ρ (kg/m³) | string B; body stiffness scale |
+| `M_ETA`, `M_SLOPE` | η₁ₖ, q: `η(f) = η₁ₖ·(max(f, 20)/1000)^q` | every T60 |
+| `M_IRR` | irregularity | twin modes (§5.3) |
+| `M_ROUGH` | wall roughness | air column ψ; per-voice comb loss |
+| `M_HARD` | hardness | strike duration ∝ 1/√hardness |
+| `M_THICK` | string diameter factor | string d |
+| `M_TMAX` | t_max (s) | T60 cap |
+| `M_WOB`, `M_RAT`, `M_CRK` | wobble, rattle, crackle | §5.3, §6.5 |
+| `M_CR/CG/CB` | colour | GUI only |
 
-### What each material does
+### 6.2 Decay law
 
-Derived numbers, calculated from the plugin's own table: ring time of a
-mode at middle C (262 Hz) and at 2 kHz, before the Decay slider, damping,
-coupler or age; how far a C4 string's 10th overtone is pushed sharp by
-stiffness (in cents); where a soundbox made of it puts its first top-plate
-resonance (spruce: 204 Hz); and the air-column wall factor.
+Modal energy decays at `2σ` with `σ = πfη`, so `T60 = 3 ln 10/σ =
+2.199/(fη)`. Loss channels add as rates:
 
-| Material | Ring at 262 Hz | Ring at 2 kHz | C4 string, 10th overtone | Soundbox top mode | Air wall factor |
-|---|---|---|---|---|---|
-| Steel | 10.7 s | 2.8 s | +59 c | 206 Hz | 1.0 |
-| Brass | 6.0 s | 1.2 s | +30 c | 147 Hz | 1.0 |
-| Bronze | 10.9 s | 2.3 s | +30 c | 145 Hz | 1.0 |
-| Aluminium | 9.7 s | 2.8 s | +128 c | 206 Hz | 1.0 |
-| Gold | 2.3 s | 0.3 s | +10 c | 83 Hz | 1.0 |
-| Glass | 5.5 s | 1.1 s | +458 c | 216 Hz | 0.9 |
-| Crystal | 23 s | 9.4 s | +486 c | 224 Hz | 0.9 |
-| Ice | 2.7 s | 0.34 s | +313 c | 128 Hz | 0.81 |
-| Marble | 2.1 s | 0.30 s | +557 c | 184 Hz | 1.0 |
-| Clay | 1.4 s | 0.17 s | +549 c | 182 Hz | 2.2 |
-| Spruce | 1.1 s | 0.10 s | +419 c | 204 Hz | 1.5 |
-| Rosewood | 1.3 s | 0.13 s | +333 c | 177 Hz | 1.4 |
-| Bamboo | 1.0 s | 0.09 s | +348 c | 218 Hz | 1.3 |
-| Bone | 0.74 s | 0.07 s | +184 c | 126 Hz | 1.6 |
-| Gut | 1.8 s | 0.13 s | +12 c | 72 Hz | 1.35 |
-| Nylon | 2.4 s | 0.19 s | +11 c | 71 Hz | 1.05 |
-| Carbon fibre | 3.3 s | 0.45 s | +398 c | 395 Hz | 1.0 |
-| Rubber | 0.28 s | 0.02 s | 0 c | 71 Hz | 2.2 |
-| Paper | 0.31 s | 0.03 s | +88 c | 84 Hz | 2.2 |
-| Jelly | 0.20 s | 0.02 s | 0 c | 71 Hz | 2.2 |
-| Plastic | 0.77 s | 0.09 s | +21 c | 71 Hz | 1.07 |
-| PVC | 0.44 s | 0.04 s | +20 c | 71 Hz | 1.05 |
-| Wood | 1.2 s | 0.11 s | +328 c | 175 Hz | 1.4 |
-| Leather | 0.25 s | 0.02 s | +2 c | 71 Hz | 2.2 |
-| Cardboard | 0.25 s | 0.02 s | +88 c | 84 Hz | 2.2 |
-| Foil | 0.40 s | 0.05 s | +59 c | 206 Hz | 1.5 |
-| Cling film | 0.20 s | 0.02 s | +8 c | 71 Hz | 2.2 |
-| Tin | 1.3 s | 0.24 s | +61 c | 210 Hz | 1.2 |
-| Car panel | 1.4 s | 0.30 s | +61 c | 210 Hz | 1.0 |
-| Chain link | 2.5 s | 0.58 s | +59 c | 206 Hz | 1.0 |
-| Handpan steel | 2.8 s | 0.44 s | +61 c | 210 Hz | 1.0 |
+```
+mat_t60(m, f) = 1 / ( (1 + 1.5a)/t_max + f·η(f)·A(f)/2.2 ),   A(f) = 1 + a²(2 + 3f/2000)
+held_t60(m, f) = mat_t60 · Decay · drain · damp(f) · bright(f) · hole(f)      (palm: ≤ 0.35 s)
+```
 
-(71 Hz is the lower limit of the soundbox's stiffness scaling; very soft
-materials all sit there.)
+`drain` = 0.9 (Bridge), 0.75 (Soundpost), 1 otherwise;
+`bright(f) = 2^(Brightness/50 · clip(log₈(f/500), 0, 1))`; damping and hole
+factors in §10. Release T60s in §10.
 
-### Metals
+### 6.3 Constants
 
-Metals are stiff, heavy and very low-loss: they ring. Their differences are
-mostly in loss and density.
+| # | Material | E (GPa) | ρ | η₁ₖ | q | irr | rough | hard | thick | t_max | wob | rat | crk |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | Steel | 200 | 7850 | 0.0003 | 0.1 | 0.001 | 1.0 | 1.0 | 1 | 16 | | | |
+| 1 | Brass | 110 | 8500 | 0.0008 | 0.1 | 0.002 | 1.0 | 0.9 | 1 | 12 | | | |
+| 2 | Bronze | 110 | 8700 | 0.0004 | 0.1 | 0.004 | 1.0 | 0.95 | 1 | 20 | | | |
+| 3 | Aluminium | 69 | 2700 | 0.0003 | 0.1 | 0.001 | 1.0 | 0.8 | 1.5 | 14 | | | |
+| 4 | Gold | 79 | 19300 | 0.003 | 0.2 | 0.002 | 1.0 | 0.5 | 1 | 6 | | | |
+| 5 | Glass | 70 | 2500 | 0.0008 | 0.1 | 0.004 | 0.9 | 1.0 | 3 | 10 | | | |
+| 6 | Crystal | 80 | 2650 | 0.00008 | 0 | 0.002 | 0.9 | 1.0 | 3 | 30 | | | |
+| 7 | Ice | 9 | 917 | 0.0025 | 0.3 | 0.02 | 0.8 | 0.7 | 4 | 6 | | | |
+| 8 | Marble | 55 | 2700 | 0.003 | 0.2 | 0.012 | 1.0 | 1.0 | 4 | 5 | | | |
+| 9 | Clay | 40 | 2000 | 0.005 | 0.3 | 0.02 | 2.5 | 0.9 | 4 | 3 | | | |
+| 10 | Spruce | 11 | 440 | 0.008 | 0.4 | 0.02 | 1.5 | 0.45 | 3 | 3 | | | |
+| 11 | Rosewood | 16 | 850 | 0.006 | 0.4 | 0.015 | 1.4 | 0.55 | 3 | 3 | | | |
+| 12 | Bamboo | 20 | 700 | 0.009 | 0.4 | 0.02 | 1.3 | 0.5 | 2.5 | 3 | | | |
+| 13 | Bone | 18 | 1900 | 0.012 | 0.3 | 0.015 | 1.6 | 0.8 | 3 | 2.5 | | | |
+| 14 | Gut | 4 | 1300 | 0.006 | 0.5 | 0.005 | 1.3 | 0.35 | 1.3 | 5 | | | |
+| 15 | Nylon | 3 | 1140 | 0.004 | 0.5 | 0.002 | 1.0 | 0.35 | 1.3 | 6 | | | |
+| 16 | Carbon fibre | 150 | 1600 | 0.002 | 0.2 | 0.002 | 1.0 | 0.9 | 1.5 | 8 | | | |
+| 17 | Rubber | 0.05 | 1100 | 0.035 | 0.3 | 0.01 | 1.2 | 0.12 | 2 | 1.2 | 0.4 | | |
+| 18 | Paper | 3 | 700 | 0.03 | 0.3 | 0.03 | 4.0 | 0.2 | 3 | 1.2 | 0.15 | | |
+| 19 | Jelly | 0.00005 | 1050 | 0.045 | 0.2 | 0.05 | 1.2 | 0.05 | 6 | 1.0 | 1 | | |
+| 20 | Plastic (ABS) | 2.3 | 1050 | 0.01 | 0.3 | 0.005 | 1.0 | 0.4 | 2 | 2 | | | |
+| 21 | PVC | 3 | 1400 | 0.022 | 0.3 | 0.003 | 1.0 | 0.45 | 2 | 2 | | | |
+| 22 | Wood (maple) | 12 | 650 | 0.007 | 0.4 | 0.02 | 1.4 | 0.6 | 3 | 3 | | | |
+| 23 | Leather | 0.1 | 900 | 0.04 | 0.3 | 0.02 | 2.0 | 0.2 | 3 | 1.2 | 0.1 | | |
+| 24 | Cardboard | 3 | 700 | 0.04 | 0.3 | 0.03 | 4.0 | 0.25 | 3 | 1.2 | | | |
+| 25 | Foil | 69 | 2700 | 0.02 | 0.2 | 0.05 | 1.5 | 0.6 | 1 | 1.5 | | | 1 |
+| 26 | Cling film | 0.2 | 920 | 0.05 | 0.3 | 0.01 | 1.5 | 0.1 | 4 | 1.0 | 0.3 | 1 | |
+| 27 | Tin (galvanised) | 207 | 7850 | 0.004 | 0.1 | 0.03 | 1.2 | 0.9 | 1 | 3 | | 0.7 | |
+| 28 | Car panel | 207 | 7850 | 0.003 | 0.1 | 0.01 | 1.0 | 0.9 | 1 | 2.5 | | 0.3 | |
+| 29 | Chain link | 200 | 7850 | 0.0015 | 0.1 | 0.03 | 1.0 | 1.0 | 1 | 4 | | 1 | |
+| 30 | Handpan steel | 207 | 7850 | 0.0022 | 0.1 | 0.001 | 1.0 | 1.0 | 1 | 8 | | | |
 
-- **Steel** (E 200 GPa, ρ 7850, η 0.0003). The benchmark: strings, wires,
-  bells. Rings for over ten seconds at middle C, bright and pure. A C4 steel
-  string is slightly inharmonic (+59 c at the 10th overtone), like a real
-  piano string.
-- **Brass** (110 GPa, 8500, η 0.0008). Softer and a little lossier than
-  steel: a warmer, shorter ring. Its soundbox resonances sit lower (heavy for
-  its stiffness).
-- **Bronze** (110 GPa, 8700, η 0.0004). Bell metal: as long-ringing as steel
-  (a 20 s maximum ring, the longest of the metals), and slightly irregular
-  (0.004), which gives a bell's uneven shimmer.
-- **Aluminium** (69 GPa, 2700, η 0.0003). Light and stiff for its weight:
-  clear and long-ringing; as a string it must be 1.5× thicker than steel,
-  so it is noticeably more inharmonic (+128 c).
-- **Gold** (79 GPa, 19 300, η 0.003). Very heavy and soft for a metal, and
-  lossy: rich but dull, stops quickly (2.3 s at middle C, 0.3 s at 2 kHz). Its
-  soundbox resonances are very low (83 Hz). Soft, so strikes are gentle
-  (hardness 0.5).
-- **Tin** (galvanised steel sheet, as in a corrugated roof; 207 GPa, 7850,
-  η 0.004). Like steel, but the zinc coating, ribs and fixings make it lossy
-  (1.3 s) and uneven (irregularity 0.03), and **its loose fixings rattle**
-  when played hard (rattle 0.7). From Reverberator's tin roof.
-- **Car panel** (painted steel; 207 GPa, η 0.003). The paint damps it, so it
-  clanks rather than rings (1.4 s), with a little **clank** rattle (0.3).
-  From Reverberator's car body panel.
-- **Chain link** (steel wire mesh; 200 GPa, η 0.0015). A metallic twang
-  (2.5 s) with a strong **jangle** as the links rattle (1.0), and very
-  uneven (0.03). From Reverberator's chain link fence.
-- **Handpan steel** (nitrided steel, 207 GPa, η 0.0022, irregularity 0.001).
-  Hammered and hardened: sweet, pure and even, with a long maximum ring (8 s).
-  From Reverberator's steel handpan.
-- **Foil** (crumpled aluminium; 69 GPa, η 0.02). Every crease splits the
-  ring (irregularity 0.05, the most irregular solid) and damps it (0.4 s), and
-  it **crackles** at random when it vibrates hard. From Reverberator's
-  aluminium foil.
+Provenance: E and ρ are handbook values (Reverberator's where it had them:
+steel, bronze, glass, marble, ice, aluminium, PVC, paperboard, spruce). η of
+the solids is Reverberator's or the same order; `q` encodes the rise of
+damping with frequency typical of polymers and wood. **Softened for
+playability** (ADR 0015; real values in brackets): rubber 0.035 (≈ 0.1),
+paper 0.03 (0.05), jelly 0.045 (≈ 0.25), PVC 0.022 (0.03), cardboard 0.04
+(0.06), leather 0.04 (0.06), cling film 0.05 (0.12, Reverberator's effective
+value including air loading).
 
-### Glass and stone
+### 6.4 Derived behaviour
 
-Stiff, light for their stiffness, and brittle: as strings they have to be
-thick rods (3–4× the diameter), so they are strongly inharmonic and
-bell-like.
+Computed from the table (a = 0, Decay 100 %, no damping, drain or
+brightness): ring at 262 Hz and 2 kHz; C4 string (L = 0.477 m) inharmonicity
+and its 10th-partial shift `1200 log₂√(1 + 100B)`; soundbox plate-mode scale
+`s_b = clip(√((E/ρ)/(E/ρ)_spruce), 0.35, 2.5)` with (E/ρ)_spruce =
+2.5·10⁷ m²/s², shown as the 204 Hz mode; air-column ψ; membrane stretch s;
+strike duration factor 1/√hardness.
 
-- **Glass** (70 GPa, 2500, η 0.0008). Bright, glassy and long (5.5 s). A
-  "glass string" is a rod whose 10th overtone is more than four semitones
-  sharp: a glockenspiel-like ring.
-- **Crystal** (quartz; 80 GPa, 2650, η 0.00008). Almost no internal loss:
-  23 seconds at middle C and 9 s even at 2 kHz, the longest ring of all. The
-  rods are as bell-like as glass.
-- **Ice** (9 GPa, 917, η 0.0025, irregularity 0.02). Soft for a solid, and full
-  of bubbles and cracks: each resonance splits into a beating pair. Rings
-  2.7 s. As a string, a thick ice rod (+313 c).
-- **Marble** (55 GPa, 2700, η 0.003, irregularity 0.012). Stiff, heavy and a
-  little lossy: short, stony and pitched (2.1 s), with gentle beating from
-  its grain. The most inharmonic strings of all (+557 c).
-- **Clay** (fired earthenware; 40 GPa, 2000, η 0.005, irregularity 0.02,
-  rough 2.5). Earthy and quick to fade (1.4 s); porous, so a clay air column is
-  as lossy as the wall factor allows (2.2).
+| Material | T60 262 Hz | T60 2 kHz | B (C4) | 10th partial | s_b × 204 Hz | ψ | s | 1/√hard |
+|---|---|---|---|---|---|---|---|---|
+| Steel | 10.7 | 2.82 | 7.1e-4 | +59 c | 206 | 1.00 | 0.030 | 1.00 |
+| Brass | 6.00 | 1.16 | 3.6e-4 | +30 c | 147 | 1.00 | 0.030 | 1.05 |
+| Bronze | 10.9 | 2.27 | 3.5e-4 | +30 c | 145 | 1.00 | 0.030 | 1.03 |
+| Aluminium | 9.74 | 2.75 | 1.6e-3 | +128 c | 206 | 1.00 | 0.021 | 1.12 |
+| Gold | 2.27 | 0.30 | 1.1e-4 | +10 c | 83 | 1.00 | 0.024 | 1.41 |
+| Glass | 5.45 | 1.14 | 7.0e-3 | +458 c | 216 | 0.90 | 0.021 | 1.00 |
+| Crystal | 23.3 | 9.43 | 7.5e-3 | +486 c | 224 | 0.90 | 0.024 | 1.00 |
+| Ice | 2.73 | 0.34 | 4.4e-3 | +313 c | 128 | 0.81 | 0.0027 | 1.20 |
+| Marble | 2.11 | 0.30 | 9.0e-3 | +557 c | 184 | 1.00 | 0.0165 | 1.00 |
+| Clay | 1.37 | 0.17 | 8.9e-3 | +549 c | 182 | 2.20 | 0.012 | 1.05 |
+| Spruce | 1.12 | 0.10 | 6.2e-3 | +419 c | 204 | 1.52 | 0.0033 | 1.49 |
+| Rosewood | 1.33 | 0.13 | 4.7e-3 | +333 c | 177 | 1.41 | 0.0048 | 1.35 |
+| Bamboo | 1.04 | 0.09 | 5.0e-3 | +348 c | 218 | 1.31 | 0.0060 | 1.41 |
+| Bone | 0.74 | 0.07 | 2.4e-3 | +184 c | 126 | 1.61 | 0.0054 | 1.12 |
+| Gut | 1.77 | 0.13 | 1.4e-4 | +12 c | 72 | 1.35 | 0.0012 | 1.69 |
+| Nylon | 2.44 | 0.19 | 1.2e-4 | +11 c | 71 | 1.05 | 0.0009 | 1.69 |
+| Carbon fibre | 3.26 | 0.45 | 5.8e-3 | +398 c | 395 | 1.00 | 0.030 | 1.05 |
+| Rubber | 0.28 | 0.02 | 5.0e-6 | 0 | 71 | 2.20 | 0 | 2.89 |
+| Paper | 0.31 | 0.03 | 1.1e-3 | +88 c | 84 | 2.20 | 0.0009 | 2.24 |
+| Jelly | 0.20 | 0.02 | 4.8e-8 | 0 | 71 | 2.20 | 0 | 4.47 |
+| Plastic | 0.77 | 0.09 | 2.4e-4 | +21 c | 71 | 1.07 | 0.0007 | 1.58 |
+| PVC | 0.44 | 0.04 | 2.4e-4 | +20 c | 71 | 1.05 | 0.0009 | 1.49 |
+| Wood | 1.22 | 0.11 | 4.6e-3 | +328 c | 175 | 1.42 | 0.0036 | 1.29 |
+| Leather | 0.25 | 0.02 | 2.8e-5 | +2 c | 71 | 2.20 | 0 | 2.24 |
+| Cardboard | 0.25 | 0.02 | 1.1e-3 | +88 c | 84 | 2.20 | 0.0009 | 2.00 |
+| Foil | 0.40 | 0.05 | 7.1e-4 | +59 c | 206 | 1.50 | 0.021 | 1.29 |
+| Cling film | 0.20 | 0.02 | 9.6e-5 | +8 c | 71 | 2.20 | 0.0001 | 3.16 |
+| Tin | 1.33 | 0.24 | 7.3e-4 | +61 c | 210 | 1.20 | 0.030 | 1.05 |
+| Car panel | 1.40 | 0.30 | 7.3e-4 | +61 c | 210 | 1.00 | 0.030 | 1.05 |
+| Chain link | 2.46 | 0.58 | 7.1e-4 | +59 c | 206 | 1.00 | 0.030 | 1.00 |
+| Handpan steel | 2.82 | 0.44 | 7.3e-4 | +61 c | 210 | 1.00 | 0.030 | 1.00 |
 
-### Woods
+Observations: specific stiffness E/ρ ≈ 2.5·10⁷ for steel, spruce and
+aluminium, so their soundboxes coincide; the thickness factor (brittle
+materials as 3–4× rods) is what separates glass/stone strings (B ~ 10⁻²)
+from metal ones (10⁻³); the T60 cap `t_max` dominates at low frequency for
+crystal, steel and bronze, η dominates everywhere for the soft materials.
 
-Woods are light, stiff along the grain and lose their high frequencies fast
-(slope 0.4): warm, woody, short-ringing highs, strongly uneven grain
-(irregularity 0.015–0.02). As strings they are thick rods.
+### 6.5 Rattle and crackle (feed-forward, per voice, after the trim)
 
-- **Spruce** (11 GPa, 440, η 0.008). The classic soundboard wood: very light
-  for its stiffness, so a spruce soundbox sits exactly at the guitar's
-  measured resonances (204 Hz). Its highs die in 0.1 s.
-- **Rosewood** (16 GPa, 850, η 0.006). Dense hardwood, the marimba-bar wood:
-  warm and woody (1.3 s).
-- **Bamboo** (20 GPa, 700, η 0.009). Light and springy: soft and breathy
-  (1.0 s). The default instrument is a bamboo saxophone.
-- **Wood** (plain hardwood, like maple; 12 GPa, 650, η 0.007). Warm, woody,
-  medium decay (1.2 s), a little harder than spruce.
+```
+rattle:  x = out − clip(out, ±0.2);  y = 0.9(y₁ + x − x₁);  out += 2.5·ρ_r·y
+crackle: with probability ρ_c·min(1, 8|out|)·900/fs per sample, x = ±(0.05 + |out|);
+         y = 0.6(y₁ + x − x₁);  out += y
+```
 
-### Plastics
-
-- **Plastic** (ABS, as in toys and recorders; 2.3 GPa, 1050, η 0.01). Soft
-  and fairly lossy: a dull, toy-like knock (0.8 s). Tubes of it are smooth
-  (wall 1.07), so a plastic recorder speaks well.
-- **PVC** (plumbing pipe; 3 GPa, 1400, η 0.022). Dull when struck (0.44 s),
-  but smooth inside, so a PVC air column still plays cleanly. From
-  Reverberator's PVC pipe (which used η 0.03).
-- **Nylon** (3 GPa, 1140, η 0.004). The classical-guitar string: soft,
-  smooth and round (2.4 s), almost harmonic (+11 c).
-- **Carbon fibre** (150 GPa, 1600, η 0.002). Very stiff and light: bright and
-  precise, and its soundbox resonances sit high (395 Hz, the highest).
-- **Cling film** (polyethylene film; 0.2 GPa, 920, η 0.05). Floppy and lossy
-  (0.2 s), and **it slaps and buzzes** like a kazoo when played hard (rattle
-  1.0). From Reverberator's cling film (which used η 0.12, mostly air
-  loading).
-
-### Soft and natural
-
-These are very soft and lossy. They thud rather than ring, which is right;
-they were made somewhat less lossy than the real things so that bows, reeds
-and lips can still play them
-([ADR 0015](adr/0015-playable-beats-physically-exact-for-extreme-mate.md)).
-
-- **Bone** (18 GPa, 1900, η 0.012). Hard but lossy: dry and clicky (0.7 s).
-- **Gut** (4 GPa, 1300, η 0.006). Traditional violin and harp string: warm
-  and mellow (1.8 s), almost harmonic.
-- **Leather** (0.1 GPa, 900, η 0.04). A hide: a dead, thumpy thud (0.25 s),
-  sagging slightly in pitch (wobble 0.1). From Reverberator's leather (which
-  used η 0.06).
-- **Rubber** (0.05 GPa, 1100, η 0.035, wobble 0.4). Absurdly soft: thuds,
-  and wobbles in pitch when played hard.
-- **Paper** (3 GPa, 700, η 0.03, rough 4.0). Light, rough and floppy: a
-  papery buzz that dies at once.
-- **Cardboard** (paperboard; 3 GPa, 700, η 0.04, rough 4.0). A honky, papery
-  thud; the toilet-roll tube of Reverberator.
-- **Jelly** (0.00005 GPa, i.e. 50 kPa; 1050, η 0.045, wobble 1.0). Hardly a
-  solid at all: a 0.2 s thud and a pitch that wobbles up to 0.3 semitone with
-  level, plus a slow drift.
-
-### Irregularity, wobble, rattle and crackle, in more detail
-
-- **Irregularity**: above 0.004, every mode gets a twin, detuned by
-  `irregularity × (0.6 + 0.4 × a fixed random number)` (0.2–5 %), at 60 %
-  strength. Two nearly equal frequencies beat, slowly for small detunes,
-  giving the shimmer of ice, bells and gongs.
-- **Wobble**: jelly (1.0), rubber (0.4), cling film (0.3), paper (0.15) and
-  leather (0.1) wobble in pitch by up to 0.3 semitone × wobble with loudness,
-  plus a slow drift: soft materials stretch as they move.
-- **Rattle**: after level matching, whatever exceeds a gap of ±0.2 is
-  high-passed and added back × 2.5 × the material's rattle. Soft notes stay
-  below the gap; loud ones slap against their fixings. Measured on a tin bar:
-  high-frequency energy −69 dB at velocity 40 (the same as without rattle),
-  −41 dB at 80, −39 dB at 127.
-- **Crackle**: foil pops at random, about 900 times a second at full
-  loudness, each pop ±(0.05 + level), high-passed.
-
-### Every Reverberator option
-
-Reverberator's options are objects. Their materials here: chain link fence →
-Chain link; ice sheet → Ice; tension wire, piano and guitar strings, metal
-barrel → Steel; gong → Bronze; PVC pipe → PVC; glass pane and wine bottle →
-Glass; marble slab → Marble; car body panel → Car panel; leather → Leather;
-violin string → Gut or Steel; steel handpan → Handpan steel; toilet roll tube
-→ Cardboard; aluminium foil → Foil; cling film → Cling film; corrugated tin
-roof → Tin.
+`ρ_r = max(M_RAT, 0.6a^1.5)`, `ρ_c = max(M_CRK, 0.25a²)`. The gap is in
+trimmed units, so it gates on playing level: tin bar, energy above 3 kHz
+relative to total, −69 dB at velocity 40 (identical to rattle off), −41 dB at
+80, −39 dB at 127. Gap 0.06 (first version) rattled at every velocity.
 
 ---
 
 ## 7. Resonators
 
-A resonator is what the vibration fills: the body of a guitar, the tube under
-a marimba bar, the bore of a saxophone. The **Resonator amount** slider sets
-how much of it you hear against the bare element; the **resonator material**
-decides how its walls behave; **Size** scales it.
+### 7.1 Bore and Pipe (per voice, tuned to the note)
 
-### Bore
+`y = x + σ_r·LP(y[n − D_r])`, `D_r` from phase tuning with K_r = 2 (Bore,
+σ_r = +: peaks at all harmonics) or 1 (Pipe, σ_r = −: odd harmonics, a
+stopped quarter-wave pipe). Loss (DC-anchored `op_fit`): T60 at f₀
+`= min(mat_t60(m_r, f₀), 0.5)·Decay·0.6/rough`, at 4 kHz 0.4 × that ×
+bright(4 kHz); output normalised by `1.25·(1 − min(0.97, g_DC))`. Mixed with
+the dry element by Resonator amount; the coupler follows.
 
-**In real instruments**: a saxophone's or oboe's conical tube, which
-reinforces every harmonic of the note.
+### 7.2 Shared body modes
 
-**Model**: a comb resonator on each note, tuned to the note's period, so it
-reinforces harmonics 1, 2, 3, 4…: `y = x + g·lowpass(y delayed one period)`,
-its ring from the resonator material (at most 0.5 s, × 0.6, ÷ wall
-roughness), losing its highs faster. With a reed, the reed always plays a
-clarinet-like cylinder, and the Bore adds the even harmonics a cone would
-have.
+Each `body_mode(f, Q, amp, w_L, w_R)`: `r = exp(−πf/(Q fs))`, bandpass
+`(1 − r)·amp·(x − x₂)` into the same two-pole form (unit peak), driven by the
+mono coupler output; wet `= 3·(Σ w_L y, Σ w_R y)`, mixed by Resonator amount.
 
-**What you hear**: a fuller, rounder wind tone; on strings and bars, a hollow
-tubular reinforcement.
-
-### Soundbox
-
-**In real instruments**: a guitar or violin body: a hollow box whose air and
-wooden plates resonate.
-
-**Model**: twelve resonances measured on a guitar body (98, 204, 226, 381,
-437, 552, 650, 780, 920, 1100, 1450 and 2000 Hz; the same list Reverberator
-uses). The first is the air inside (the Helmholtz mode), so it stays at
-98 Hz whatever the material. The others are the wooden plates, so they move
-with the material's stiffness-to-weight ratio, `√((E/ρ)/(E/ρ)_spruce)`
-(between 0.35 and 2.5; see the materials table), and all move with 1/Size.
-Each plate mode's sharpness comes from the material's loss plus a little
-radiation (Q = 1/(η(f) + 0.018)).
-
-**What you hear**: a guitar-like body. A metal soundbox rings, a rubber one
-is dead and low, a carbon one is bright and high.
-
-### Pipe
-
-**In real instruments**: the tubes hanging under marimba and vibraphone bars:
-closed at the bottom, a quarter wavelength long.
-
-**Model**: a comb on each note tuned to half its period with a sign flip, so
-it reinforces the odd harmonics (1, 3, 5…), as a stopped pipe does.
-
-**What you hear**: the warm "bloom" of a marimba. With a bar it reinforces the
-fundamental strongly (the Marble Marimba preset).
-
-### Cavity
-
-**In real instruments**: a gourd (a mbira's or a balafon's), a bottle, a
-drum's shell: a pocket of air with a small opening.
-
-**Model**: a Helmholtz resonance (the "blowing over a bottle" note) at
-140 Hz / Size, three higher cavity modes (640, 1060, 1480 Hz / Size), and six
-ring modes of the wall in the resonator material (the bending modes of a
-cylinder, `n(n² − 1)/√(n² + 1)` for n = 2…7), whose sharpness comes from the
-material.
-
-**What you hear**: a hollow boom, with the walls ringing: glassy in glass,
-dull in clay.
-
-### Body
-
-**In real instruments**: the solid body of an electric guitar, the block of a
-wood block, the metal of a bell.
-
-**Model**: 16 plate modes of the resonator material, starting at 280 Hz ×
-the stiffness scale / Size, with the material's own sharpness.
-
-**What you hear**: the material's own voice added to every note: stone
-clinks, glass shimmers, metal rings.
+- **Soundbox**: 98 (air, Q 20/(1 + a)), 204, 226, 381, 437, 552, 650, 780, 920,
+  1100, 1450, 2000 Hz (a guitar, from Reverberator); plate modes × s_b; all
+  ÷ Size; `Q = 1/(η(f)·A(f) + 0.018)`; amp `1/√(1 + k/2)`.
+- **Cavity**: Helmholtz 140/Size Hz (Q 14, amp 1.4); cavity modes 640, 1060,
+  1480 Hz/Size (Q 22–25); wall ring modes of a cylinder,
+  `f_n = 520·s_b·n(n² − 1)/(3√(n² + 1)·Size)`, n = 2…7,
+  `Q = 1/(η(f)A(f) + 0.004)`.
+- **Body**: 16 plate modes (§5.3 ratios) from 280·s_b/Size Hz,
+  `Q = 1/(η(f)A(f) + 0.003)`, amp `0.9/√(1 + 0.3k)`.
 
 ---
 
 ## 8. Couplers
 
-A coupler carries the vibration from the element into the resonator. It
-colours the sound on the way, and a strong coupler also drains energy from
-the element, which then rings for less time.
+RBJ biquads (`bq_pk`, `bq_lp`, `bq_hp`), two per channel, before the body:
 
-- **Bridge** (violin, guitar). Real bridges have a resonance around
-  2–3 kHz, the "bridge hill", which gives a violin its brilliance. Model: a
-  +6 dB peak at 2.5 kHz (Q 1.2), a high-pass at 90 Hz; the element's ring ×
-  0.9.
-- **Soundpost** (the post inside a violin that joins top and back). It
-  couples the element strongly into the body. Model: a +6 dB peak at 450 Hz,
-  a low-pass at 7 kHz; the element's ring × 0.75. Warm, woody, shorter.
-- **Mouthpiece** (brass, clarinet). The small cup and narrow throat of a
-  mouthpiece form their own resonance, which gives brass its vocal, brassy
-  formant. Model: a +8 dB peak at 800 Hz / √Size (Q 2), a low-pass at 9 kHz.
-- **Windway** (recorder, organ flue pipe). A narrow duct that shapes breath
-  into a thin jet, which then oscillates across a sharp edge. Model: a +3 dB
-  peak at 1.8 kHz, a high-pass at 200 Hz, breath hiss, and it turns lips or a
-  bow into STK's flute air jet (the jet is delayed by 0.32 of the tube's loop
-  and bent by a cubic; the tube is tuned to 2/3 of the note because a jet
-  overblows). A reed stays a reed (a windcap, like a crumhorn's).
+| Coupler | Filters | Element T60 × | Other |
+|---|---|---|---|
+| Bridge | peak 2.5 kHz, Q 1.2, +6 dB; HP 90 Hz Q 0.7 | 0.9 | |
+| Soundpost | peak 450 Hz, Q 1, +6 dB; LP 7 kHz | 0.75 | |
+| Mouthpiece | peak 800/√Size Hz, Q 2, +8 dB; LP 9 kHz | 1 | |
+| Windway | peak 1.8 kHz, Q 0.9, +3 dB; HP 200 Hz | 1 | drive noise +0.02; hiss `0.02·n_hp·env·L`; lips/bow → jet (§4.3); strikes use an open tube |
 
 ---
 
 ## 9. Radiators
 
-A radiator is how the sound gets into the air. Air is hard to push with a
-small vibrating object; radiators are large, shaped surfaces or openings that
-couple it to the room.
+Up to three biquads per channel after the body, then:
 
-- **Bell** (brass). A flared bell lets high frequencies out easily and
-  reflects low ones back into the tube; at loud levels the wave steepens and
-  the sound goes brassy. Model: a high-pass at 180 Hz, a +4 dB peak at 1.5 kHz,
-  and soft saturation.
-- **Soundboard** (piano, harp). A big board radiates efficiently and spreads
-  the sound out in time and space. Model: a +3 dB warmth at 250 Hz, a low-pass
-  at 7.5 kHz, and four allpass diffusers on each side (3–12 ms × Size, at
-  0.6), mixed with the direct sound.
-- **Drumhead** (banjo). A skin under the bridge rings along with the strings,
-  twangy, with a low boom. Model: a high-pass at 120 Hz, a +6 dB peak at
-  2.2 kHz (Q 1.5), a low-pass at 9 kHz, and eight membrane modes of its own
-  (170 Hz / Size × Bessel ratios, ringing 0.25 s) driven by the sound.
-- **Cone** (loudspeaker). An electric instrument's amplifier and speaker:
-  band-limited, with a cone break-up peak and some amplifier grit. Model: a
-  high-pass at 90 Hz, a low-pass at 5 kHz, a +4 dB peak at 2.8 kHz (Q 3), and
-  saturation.
-
----
-
-## 10. Frequency controls
-
-How the pitch changes from note to note. Most of the difference shows in
-**Mono** play mode, where one note follows another the way it does on the
-real instrument.
-
-- **Fret** (guitar). Fixed semitone stops. In Mono, a new note while one is
-  held is a hammer-on: the pitch jumps and the string is re-struck lightly
-  (35 %) rather than plucked afresh.
-- **Tone hole** (woodwinds). A row of holes: harmonics above the holes'
-  *cut-off frequency* leak out of them rather than reflecting, which is part
-  of a woodwind's sound. Model: the ring time of the 5 kHz partial is reduced
-  by `1/(1 + (f/f_c)²)` (never below 0.3 ×), with f_c the larger of 1.5 kHz
-  and 2.2 × the note. In Mono, notes change with a quick 12 ms blip as the
-  keys move.
-- **Valve** (trumpet). Valves add lengths of tube. The combinations are a
-  compromise, and some notes are famously sharp: the plugin plays the notes a
-  trumpet fingers with valves 1+3 (+12 c), 1+2+3 (+22 c) and 2 (+6 c) sharp.
-  In Mono, a deeper 28 ms blip between notes.
-- **Slide** (trombone). A continuous length: every note glides from the last
-  one (Glide time), in Poly mode too. Pitch bend covers 7 semitones.
-- **Key** (piano). One element per key: every note fresh and independent; in
-  Mono, every note re-strikes.
-
----
-
-## 11. Tuning mechanisms
-
-How well the instrument holds its tuning.
-
-- **Peg** (violin). Friction pegs never hold perfectly: each note is off by
-  its own fixed amount (up to ±8 cents) and drifts slowly (±3 cents).
-- **Tuning pin** (piano). Piano tuners stretch the octaves, because stiff
-  strings' overtones are sharp and the ear expects the octaves to match them.
-  Model: `2.2 · d·|d|` cents, where d is octaves from A4: the bass a little
-  flat, the treble a little sharp (about −35 c at the lowest A, +23 c at the
-  top C).
-- **Machine head** (guitar). Geared tuners: exact equal temperament.
-- **Slide** (a brass tuning slide). Each note starts 30 cents flat and
-  settles into tune (90 ms), the way a player lips a note into place.
-
----
-
-## 12. Damping
-
-What touches the element to quieten it, while it plays and when you let go.
-The sustain pedal (CC64) holds every note, whatever the damping.
-
-| Damping | While the note is held | When you let go |
+| Radiator | Filters | Nonlinear / extra |
 |---|---|---|
-| **Damper** (piano felt) | nothing | stops in 0.12 s |
-| **Mute** (brass mute) | highs shortened by `1/(1 + f/2.5 kHz)` | fades in 0.4 s |
-| **Palm** (palm muting) | highs shortened by `1/(1 + f/1.5 kHz)`, and nothing rings longer than 0.35 s | stops in 0.08 s |
-| **Felt** (felt against the element) | highs strongly shortened, `1/√(1 + (f/600)²)`; strikes twice as soft | fades in 0.3 s |
-| **Hand** (a hand in a horn's bell) | highs shortened by `1/(1 + f/1.2 kHz)`, 15 cents flat | fades in 0.2 s |
-
-"Stops in 0.12 s" is the ring time after release, applied to every mode or to
-the loop (never lengthening what was already shorter).
+| Bell | HP 180 Hz Q 0.6; peak 1.5 kHz Q 0.8 +4 dB | `tanh(1.3y)/1.3` |
+| Soundboard | peak 250 Hz Q 0.9 +3 dB; LP 7.5 kHz | 4 Schroeder allpasses per side, g 0.6, delays (3.1, 5.3, 7.9, 11.3 ms) L and (3.7, 5.9, 8.3, 12.1 ms) R × Size; out `0.6·dry + 0.55·diffused` |
+| Drumhead | HP 120 Hz; peak 2.2 kHz Q 1.5 +6 dB; LP 9 kHz | 8 head modes at `170/Size·j_mn/2.4048` Hz, T60 0.25 s, amp `0.8/√(1 + k)`, added × 2 |
+| Cone | HP 90 Hz Q 0.8; LP 5 kHz Q 0.9; peak 2.8 kHz Q 3 +4 dB | `tanh(2y)/2` |
 
 ---
 
-## 13. Modulation and control
+## 10. Controls
 
-What the mod wheel (CC1) does, and which pedals work. In every mode:
-velocity, pitch bend (2 semitones, 7 with a Slide), aftertouch (+40 %
-pressure), breath controller (CC2), expression (CC11), sustain (CC64) and
-soft (CC67) pedals.
+**Frequency control.** Fret: in Mono, legato re-strikes at 0.35 L (hammer-on)
+for striking exciters. Tone hole: `hole(f) = max(0.3, 1/(1 + (f/f_c)²))`,
+`f_c = max(1500, 2.2 f₀)` applied to T60_hi (a shelf filter in the loop was
+tried first: −3.4 % per pass at 523 Hz, strings died in 0.3 s); Mono legato
+dip `env × (1 − 0.6 sin(π t/12 ms))`. Valve: `+12, +22, +6 c` for
+`(note + 2) mod 12 ∈ {5, 6, 11}`; dip over 28 ms. Slide: glide
+`p ← p + (p_t − p)·(1 − exp(−48/(t_glide fs)))` per control tick (time
+constant t_glide/3), new notes start from the last pitch in Poly too; bend
+range 7 semitones (else 2). Key: Mono always re-triggers.
 
-- **Keywork**: plain keys; the mod wheel blows or bows up to 30 % harder.
-- **Pedals**: the mod wheel lifts the dampers, so released notes ring on (up
-  to 20 × longer); the soft pedal makes new notes quieter and gentler (× 0.6).
-- **Valves**: the mod wheel half-presses a valve: the pitch sags by up to 40
-  cents and the level drops 30 %, the stuffy sound of a half-valved trumpet.
-- **Levers**: the mod wheel bends notes up by up to a whole tone, like a
-  pedal-steel lever or a B-bender.
-- **Electronics**: the mod wheel adds vibrato (±30 cents) and tremolo (30 %)
-  at 5.5 Hz, like a vibraphone's motor.
+**Tuning.** Peg: `8·h(note)` c fixed plus `0.03 sin(0.8t + note)` semitones.
+Tuning pin: `2.2·d|d|` c, d = (note − 69)/12 (−35 c at A0, +23 c at C8).
+Machine head: 0. Slide: starts −30 c, `×exp(−16/(0.09 fs))` per tick.
 
----
+**Damping.**
 
-## 14. Age and rust
+| | held: T60 factor | held: other | release T60 (s) |
+|---|---|---|---|
+| Damper | 1 | | 0.12 |
+| Mute | `1/(1 + f/2500)` | | 0.40 |
+| Palm | `1/(1 + f/1500)` | T60 ≤ 0.35 s | 0.08 |
+| Felt | `1/√(1 + (f/600)²)` | strike τ × 2 | 0.30 |
+| Hand | `1/(1 + f/1200)` | −15 c | 0.20 |
 
-One slider, from new (0 %) to found in a skip (100 %), that wears the whole
-instrument out. It does not add a new effect; it turns up physics already in
-the model ([ADR 0018](adr/0018-age-is-one-macro-over-the-existing-physics.md)):
+Release applies `min(current, T_rel)` at f₀ and `min(current, 0.6 T_rel)` at
+the reference partial (waveguides) or per mode (§5.3); × (1 + 19·mw) with
+Pedals. Sustain (CC64) defers release.
 
-- **Loss**: rust, cracks and tired joints turn more vibration into heat,
-  especially at high frequencies. The loss factor is multiplied by
-  `1 + a² × (2 + 3 × f/2 kHz)` in the element and in the soundbox, cavity and
-  body, and the longest possible ring is divided by `1 + 1.5a`. At 100 %, a
-  Marble Marimba note falls by 20 dB in 0.35 s instead of 0.85 s; the Golden
-  Piano in 0.1 s instead of 0.75 s.
-- **Unevenness**: 0.015 × a is added to the irregularity, so from about 27 %
-  every material has split, beating modes.
-- **Tuning**: each note is off by its own fixed amount (up to ±25 cents × a)
-  and wanders slowly (up to 0.12 semitone × a²).
-- **Loose parts**: rattle of at least 0.6 × a^1.5 and rusty grit (crackle)
-  of at least 0.25 × a², through the same gap as tin's rattle, so soft notes
-  stay clean.
-- **Leaks**: a leaky instrument hisses: drive noise + 6 % × a, and a hiss of
-  4 % × a² × drive from every sustaining element. Air-column walls are
-  rougher (× (1 + 0.8a)).
-- **Level**: struck, plucked and bowed instruments get up to 6 dB back at
-  100 % (their ring shortens); reeds and lips keep themselves going and get
-  none. Measured loudness, new / half / fully aged: saxophone −18.4 / −19.2 /
-  −19.3 LUFS, trumpet −19.4 / −19.2 / −18.6, violin −10.9 / −11.1 / −12.0,
-  marimba −9.8 / −10.8 / −13.8.
-
-The window's pictures rust (metals) or get grimy (everything else), material
-swatches get rust spots, and the ring times shown for a material include the
-age.
+**Modulation (mod wheel mw).** Keywork: L × (1 + 0.3 mw). Pedals: release
+× (1 + 19 mw); CC67 soft pedal L × 0.6. Valves: −0.4 mw semitone, gain
+1 − 0.3 mw. Levers: +2 mw semitones. Electronics: ±0.3 mw semitone vibrato
+and gain `1 − 0.3 mw·(½ + ½ sin(2π·5.5t + 1.2))`. Always: pitch bend,
+aftertouch (+0.4 L), CC2, CC11, CC64, CC67, CC120/123 (all off).
 
 ---
 
-## 15. After the parts: level, limiter, stereo
+## 11. Age
 
-- **Level matching**: every exciter × element, for a steady source and for a
-  single push, and every resonator, coupler and radiator, has a measured
-  loudness trim, so swapping parts doesn't jump in volume (within 0.2 dB,
-  except three combinations at the ±20 dB cap). Materials are not trimmed: a
-  lossy material really is quieter when struck
-  ([ADR 0011](adr/0011-level-match-by-measurement-then-limit.md)).
-- **Limiter**: an instant peak limiter at −3 dBFS, then a soft ceiling, keep
-  chords and rattles from clipping.
-- **Stereo**: notes are spread by pitch (low left, high right, gently), and
-  the body modes, soundboard and drumhead have their own left/right patterns.
+`a = slider23/100`, applied at note-on (loss, irregularity, detune, wall) and
+live (wander, rattle, crackle, leak):
+
+| Effect | Expression |
+|---|---|
+| Loss | η × `1 + a²(2 + 3f/2000)`; t_max ÷ `(1 + 1.5a)`; soundbox air-mode Q ÷ (1 + a); all body Qs via η |
+| Irregularity | `+ 0.015a` (twins on every material for a > 0.27) |
+| Detune | `25a·h(7.31·note + 3)` c, fixed per note |
+| Wander | `0.12a²·(sin(0.43t + 1.7 note) + 0.5 sin(1.9t + note))` semitones |
+| Rattle, crackle | `ρ_r ≥ 0.6a^1.5`, `ρ_c ≥ 0.25a²` (§6.5) |
+| Leak | drive noise + 0.06a; hiss `0.04a²·n_hp·env·L` from sustaining elements |
+| Bore | ψ × (1 + 0.8a) |
+| Make-up | `+6a` dB unless the exciter is reed or lips |
+
+Measured (C4, velocity 100), a = 0 / 0.5 / 1: −20 dB times Marble Marimba
+0.85 / 0.60 / 0.35 s, Golden Piano 0.75 / 0.50 / 0.10 s; loudness saxophone
+−18.4 / −19.2 / −19.3 LUFS, trumpet −19.4 / −19.2 / −18.6, violin −10.9 /
+−11.1 / −12.0, marimba −9.8 / −10.8 / −13.8. Without the make-up gain the
+violin lost 7 dB and the piano 8 dB; blown instruments gain level with age
+(self-oscillation restores the amplitude, and the hiss adds).
 
 ---
 
-## 16. Sources
+## 12. Output stage and level matching
 
-- Julius O. Smith, *Physical Audio Signal Processing*: digital waveguides,
-  scattering junctions, loss filters.
-- Perry Cook and Gary Scavone, *The Synthesis ToolKit (STK)*: the clarinet
-  reed table, bowed-string bow table and layout, flute jet, banded waveguides.
-- Georg Essl and Perry Cook, "Banded Waveguides" (ICMC 1999).
-- Neville Fletcher and Thomas Rossing, *The Physics of Musical Instruments*:
-  mode frequencies of bars, plates, membranes and cantilevers, inharmonicity,
-  the bridge hill, tone-hole cut-off, stretched piano tuning.
-- John Schelleng, "The bowed string and the player" (JASA 1973): bow force
-  against bow position.
-- Trombolese (this user's project): the lip valve, air constants at 20 °C,
-  boundary-layer attenuation, measuring and removing the exciter's pull.
-- Reverberator (this user's project): the material table, loss factor → ring
-  time, stiff-string inharmonicity, phase-exact tuning and the dispersion
-  budget, the guitar-body resonances, contact rattle and foil crinkle, the
-  ysfx test rig.
+- Per voice: `out × 10^(T/20)`, T from `TRIM_TAB[(steady ? 0 : 36) + 6·exciter
+  + element]`. Master: `10^((T_res + T_coupler + T_rad)/20)` (`PART_TRIM`).
+- `tools/trims.py`: the maximum 400 ms K-weighted loudness of one note at
+  C3, C4, C5 (power average), target −18 LUFS, for every exciter × element
+  with breath (steady) and finger (single push), bamboo, defaults; parts
+  measured relative to defaults on four reference instruments. Converged in
+  three passes to < 0.2 dB, except capped cells (±20 dB): steady reed on tine
+  −20 (wants −21), single-push mallet on bar and plate +20, single-push bow on
+  air column +14.8 (the last is weak by physics).
+- Limiter: `env = max(|y|, env·exp(−1/(0.15 fs)))`, gain `min(1, 0.7/env)`
+  (instant attack); then soft ceiling above 0.9: `0.9 + 0.1·tanh(10(|y| −
+  0.9))`, so |y| < 1.
+
+---
+
+## 13. Validation summary
+
+| Check | Result |
+|---|---|
+| Stability (`check.py`): every energy × exciter × element at age 0 and 100 (48 kHz), at 44.1 and 96 kHz, 19 slider extremes and every option of every part (31 materials) on six instruments; chord at three velocities; fails on non-finite output, a tail growing after release, or a tail > −45 dB | 0 failures |
+| Pitch, reed on air column, C2–G6 | −2 … +1 c |
+| Pitch, plucked steel / nylon string, C2–G4 | 0 … +7 c |
+| Pitch, lips / jet / bowed string | §4.6 |
+| Loudness spread across parts | < 0.2 dB (except capped) |
+| CPU, 8-note chords at 48 kHz | reed 3 %, struck plate 7 %, bowed string 8 %, bowed plate 14 % of one core; worst sweep case 27.5 % (3 notes, 96 kHz) |
+| Playing behaviour | Mono slide C4→E4 ≈ 150 ms; bend and Levers reach D4 (293.2 Hz); sustain pedal holds; Electronics vibrato at 5.5 Hz |
+| GUI | screenshots of every option and material, and of Age (`tools/shot.py`) |
+
+---
+
+## 14. Deviations, limitations, vestigial code
+
+Physics deliberately not modelled: nonlinear (brassy) propagation (only the
+Bell's saturation); the air column's end correction and tone-hole lattice as
+geometry; string–body two-way coupling (a T60 drain instead); degenerate
+mode pairs of membranes; Timoshenko and orthotropic plate/bar corrections;
+tension modulation (except material wobble).
+
+Known limitations: reed on a cone (ADR 0017); double-slip on lossless steels
+at β = 1/5, 1/3; lips on membranes of bone (−57 c) and jelly (+26 c); a
+single push into lips sags in pitch (the pull depends on pressure); softened
+lossy materials (§6.3).
+
+Vestigial code (harmless, candidates for removal): the in-loop tone-hole
+shelf (`V_THC`, `V_THS`, `phshelf`, `TH_K`; `V_THC` is always 0); debug
+switches `DEBUG_BANDED` (forces banded waveguides for strikes) and
+`DBG_NODISP` (disables dispersion), both 0; `LIP_LOOPK` is a constant 2;
+`V_EG` is also set to 1 before `bands_setup` overwrites it.
+
+---
+
+## 15. References
+
+- J. O. Smith, *Physical Audio Signal Processing* (online, CCRMA): digital
+  waveguides, scattering junctions, loss filters, allpass dispersion.
+- P. R. Cook and G. P. Scavone, *The Synthesis ToolKit in C++* (STK):
+  `Clarinet` reed table, `Bowed` two-segment string and bow table, `Flute`
+  jet (overblown tuning, jet ratio 0.32), `BandedWG`.
+- G. Essl and P. R. Cook, "Banded waveguides: towards physical modeling of
+  bowed bar percussion instruments", ICMC 1999.
+- N. H. Fletcher and T. D. Rossing, *The Physics of Musical Instruments*,
+  2nd ed., Springer 1998: bar, plate, membrane and cantilever modes; string
+  inharmonicity; bridge hill; tone-hole cut-off; stretched tuning.
+- J. C. Schelleng, "The bowed string and the player", JASA 53 (1973):
+  bow-force limits against bow position.
+- M. E. McIntyre, R. T. Schumacher, J. Woodhouse, "On the oscillations of
+  musical instruments", JASA 74 (1983): reflection-function self-oscillators.
+- Trombolese (`src/trombolese/reed.py`, `acoustics.py`, `constants.py`): the
+  lip valve and its exact coupled solve, air constants, boundary-layer
+  attenuation; measured pitch compensation.
+- Reverberator (`Reverberator.jsfx`, `docs/MATERIALS.md`, ADRs 0002, 0005,
+  0006, 0007, 0008, 0009, 0010): material constants, T60 from η,
+  `disp_solve`, `op_fit`, guitar-body modes, contact rattle, headless ysfx.

@@ -16,10 +16,12 @@ Where things are documented:
 
 - `README.md`: for the user. Install, the window, every part, materials,
   Age, presets, MIDI.
-- `docs/PARTS-AND-MATERIALS.md`: the in-depth guide: every part and material,
-  the physics behind it, and what it does. Keep it in step with the code.
-- `docs/PARTS.md`: the compact reference: formulas, constants, measured pitch
-  corrections.
+- `docs/PARTS-AND-MATERIALS.md`: the technical reference, written for
+  agents: every model's equations as implemented (with function and constant
+  names), the material table and derived values, pitch corrections, the
+  validation summary, known deviations and vestigial code. Keep it in step
+  with the code; it is the single source for numbers (the README only
+  describes).
 - `docs/adr/`: one record per design decision (index in its README). Read the
   relevant one before changing a rule below; add a new record for a new rule.
 - `docs/SESSION-LOG.md`: how it was built, with measurements and dead ends,
