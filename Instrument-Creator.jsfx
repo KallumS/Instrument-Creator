@@ -1,0 +1,1238 @@
+desc:Instrument Creator - build impossible instruments from parts
+//tags: instrument synthesizer physical-modelling
+//author: KallumS
+//
+// A playable MIDI instrument assembled from ten kinds of part, the way a real
+// instrument is: an energy source drives an exciter, which sets a vibrating
+// element going; a coupler passes the vibration to a resonator, and a
+// radiator sends it into the air. Four control parts (frequency control,
+// tuning, damping, modulation) decide how it is played. The vibrating element
+// and the resonator can be made of any of twenty materials, real or silly.
+//
+// Every part is a small physical model. The element's pitch, decay and
+// inharmonicity come from the material's real constants (stiffness, density,
+// loss factor), the air column from Trombolese's boundary-layer physics, and
+// the loop tuning from Reverberator's phase-exact method. See README.md.
+
+slider1:0<0,5,1{Breath,Bow,Finger,Plectrum,Hammer,Electricity}>-Energy source
+slider2:0<0,5,1{Reed,Lips,Hammer,Bow,Plectrum,Mallet}>-Exciter
+slider3:5<0,5,1{String,Membrane,Bar,Plate,Reed,Air column}>-Vibrating element
+slider4:12<0,19,1{Steel,Brass,Bronze,Aluminium,Gold,Glass,Crystal,Ice,Marble,Clay,Spruce,Rosewood,Bamboo,Bone,Gut,Nylon,Carbon fibre,Rubber,Paper,Jelly}>-Element material
+slider5:0<0,4,1{Bore,Soundbox,Pipe,Cavity,Body}>-Resonator
+slider6:12<0,19,1{Steel,Brass,Bronze,Aluminium,Gold,Glass,Crystal,Ice,Marble,Clay,Spruce,Rosewood,Bamboo,Bone,Gut,Nylon,Carbon fibre,Rubber,Paper,Jelly}>-Resonator material
+slider7:2<0,3,1{Bridge,Soundpost,Mouthpiece,Windway}>-Coupler
+slider8:0<0,3,1{Bell,Soundboard,Drumhead,Cone}>-Radiator
+slider9:1<0,4,1{Fret,Tone hole,Valve,Slide,Key}>-Frequency control
+slider10:2<0,3,1{Peg,Tuning pin,Machine head,Slide}>-Tuning mechanism
+slider11:0<0,4,1{Damper,Mute,Palm,Felt,Hand}>-Damping
+slider12:0<0,4,1{Keywork,Pedals,Valves,Levers,Electronics}>-Modulation/control
+slider13:70<0,100,1>Force / pressure (%)
+slider14:100<25,400,1:log=100>Size (%)
+slider15:0<-100,100,1>Brightness
+slider16:100<10,400,1:log=100>Decay (%)
+slider17:20<2,50,1>Excite position (%)
+slider18:50<0,100,1>Resonator amount (%)
+slider19:0<0,1,1{Poly,Mono (legato)}>Play mode
+slider20:120<5,1000,1:log=150>Glide time (ms)
+slider21:0<-100,100,1>Fine tune (cents)
+slider22:0<-36,12,0.1>Output (dB)
+
+in_pin:none
+out_pin:Left output
+out_pin:Right output
+
+@init
+
+ext_noinit = 1;
+
+// ---------------------------------------------------------------------------
+// Memory map (units: EEL memory slots). Names are long on purpose: EEL2
+// identifiers are case-insensitive (see Reverberator ADR 0010).
+// ---------------------------------------------------------------------------
+VOICE_BASE = 0; VOICE_STRIDE = 512; VOICES_MAX = 8;
+MODE_OFF = 160; MODE_STRIDE = 8; MODES_MAX = 24;
+MAT_TAB = 4200; MAT_STRIDE = 16;
+BESSEL_TAB = 4600; BAR_TAB = 4700; CANT_TAB = 4720; PLATE_TAB = 4750;
+BODY_BASE = 5000; BODY_STRIDE = 8; BODY_MAX = 24;
+HEAD_BASE = 5300; HEAD_MAX = 8;
+NOTE_STACK = 5500;
+BIQ_COEF = 5600; BIQ_STATE = 5700;
+MIDIQ = 6000; MIDIQ_MAX = 1000;
+SCOPE_BUF = 11000; SCOPE_LEN = 2048;
+DIFF_BASE = 16384; DIFF_LEN = 8192;
+LINE_BASE = 131072; LINE_LEN = 16384; LINE_MASK = 16383;
+
+// Voice fields
+V_ON = 0; V_NOTE = 1; V_VEL = 2; V_GATE = 3; V_HELD = 4; V_AGE = 5;
+V_PITCH = 6; V_PTGT = 7; V_T = 8; V_ENV = 9; V_LVLF = 10; V_REL = 11;
+V_STRK = 12; V_PT = 13; V_PA = 14; V_PDUR = 15; V_E1 = 16; V_E2 = 17;
+V_C = 18; V_WP = 19; V_DA = 20; V_DB = 21; V_DJ = 22; V_DR = 23;
+V_LB = 24; V_LP = 25; V_LS = 26; V_SGN = 27; V_APA = 28; V_APM = 29;
+V_AP = 30;            // 8 slots: dispersion allpass states
+V_LIPA1 = 38; V_LIPA2 = 39; V_LIPY1 = 40; V_LIPY2 = 41;
+V_DCX = 42; V_DCY = 43; V_LDCX = 44; V_LDCY = 45;
+V_RLS = 46; V_RG = 47; V_RSGN = 48; V_RLB = 49; V_RLP = 50;
+V_PANL = 51; V_PANR = 52; V_NM = 53; V_XLP = 54; V_TRT = 55;
+V_DETC = 56; V_SETL = 57; V_THS = 58; V_THC = 59; V_OG = 60;
+V_FCUR = 61; V_FMOD = 62; V_FBASE = 63; V_WG = 64; V_TWO = 65;
+V_LOOPK = 66; V_XT = 67; V_CONT = 68; V_LEVEL = 69; V_NRES = 70;
+V_BETA = 71; V_TLO = 72; V_THI = 73; V_FB = 74; V_TPA = 75; V_TPB = 76;
+V_DRV = 77; V_LBASE = 78; V_INDC = 79; V_NS = 80; V_NS2 = 81;
+V_PLKN = 82; V_RES_K = 83; V_WOB = 84; V_DIP = 85; V_OUTP = 86;
+V_SUSDRV = 87; V_EG = 88; V_CHOP = 89; V_LIPY = 90; V_LIPV = 91; V_LIPIM = 92; V_FK = 93; V_BANDED = 94; V_NB = 95; V_DRVN = 96; V_LIPR = 97;
+BAND_STRIDE = 20;
+
+// ---------------------------------------------------------------------------
+// Air at 20 C (Trombolese constants.py)
+// ---------------------------------------------------------------------------
+C_AIR = 343.2; RHO_AIR = 1.204; NU_AIR = 0.00001506; GAM_AIR = 1.4017; PR_AIR = 0.708;
+BLC = sqrt(NU_AIR) + (GAM_AIR - 1)*sqrt(NU_AIR/PR_AIR);
+
+// ---------------------------------------------------------------------------
+// Materials: stiffness E (GPa), density (kg/m^3), loss factor eta at 1 kHz,
+// how eta grows with frequency, irregularity (grain, cracks, bubbles: splits
+// modes), wall roughness for air columns, hardness (how sharp a strike is),
+// how thick a string of it must be (you cannot draw marble into wire),
+// colour, longest ring the mounting allows (s), and wobble (jelly).
+// ---------------------------------------------------------------------------
+M_E = 0; M_RHO = 1; M_ETA = 2; M_SLOPE = 3; M_IRR = 4; M_ROUGH = 5; M_HARD = 6;
+M_THICK = 7; M_CR = 8; M_CG = 9; M_CB = 10; M_TMAX = 11; M_WOB = 12;
+function mat_def(idx, ee, rho, eta, slp, irr, rough, hard, thick, cr, cg, cb, tmax, wob) local(p)
+(
+  p = MAT_TAB + idx*MAT_STRIDE;
+  p[0] = ee; p[1] = rho; p[2] = eta; p[3] = slp; p[4] = irr; p[5] = rough; p[6] = hard;
+  p[7] = thick; p[8] = cr; p[9] = cg; p[10] = cb; p[11] = tmax; p[12] = wob;
+);
+mat_def( 0, 200,   7850,  0.0003,  0.1, 0.001, 1.0, 1.0,  1.0, 0.70, 0.74, 0.80, 16, 0);   // Steel
+mat_def( 1, 110,   8500,  0.0008,  0.1, 0.002, 1.0, 0.9,  1.0, 0.88, 0.72, 0.30, 12, 0);   // Brass
+mat_def( 2, 110,   8700,  0.0004,  0.1, 0.004, 1.0, 0.95, 1.0, 0.74, 0.50, 0.26, 20, 0);   // Bronze
+mat_def( 3, 69,    2700,  0.0003,  0.1, 0.001, 1.0, 0.8,  1.5, 0.84, 0.86, 0.88, 14, 0);   // Aluminium
+mat_def( 4, 79,    19300, 0.003,   0.2, 0.002, 1.0, 0.5,  1.0, 1.00, 0.82, 0.25, 6, 0);    // Gold
+mat_def( 5, 70,    2500,  0.0008,  0.1, 0.004, 0.9, 1.0,  3.0, 0.62, 0.86, 0.94, 10, 0);   // Glass
+mat_def( 6, 80,    2650,  0.00008, 0.0, 0.002, 0.9, 1.0,  3.0, 0.86, 0.78, 1.00, 30, 0);   // Crystal
+mat_def( 7, 9,     917,   0.0025,  0.3, 0.02,  0.8, 0.7,  4.0, 0.80, 0.93, 1.00, 6, 0);    // Ice
+mat_def( 8, 55,    2700,  0.003,   0.2, 0.012, 1.0, 1.0,  4.0, 0.92, 0.90, 0.88, 5, 0);    // Marble
+mat_def( 9, 40,    2000,  0.005,   0.3, 0.02,  2.5, 0.9,  4.0, 0.80, 0.45, 0.30, 3, 0);    // Clay
+mat_def(10, 11,    440,   0.008,   0.4, 0.02,  1.5, 0.45, 3.0, 0.90, 0.76, 0.50, 3, 0);    // Spruce
+mat_def(11, 16,    850,   0.006,   0.4, 0.015, 1.4, 0.55, 3.0, 0.55, 0.28, 0.16, 3, 0);    // Rosewood
+mat_def(12, 20,    700,   0.009,   0.4, 0.02,  1.3, 0.5,  2.5, 0.80, 0.78, 0.42, 3, 0);    // Bamboo
+mat_def(13, 18,    1900,  0.012,   0.3, 0.015, 1.6, 0.8,  3.0, 0.95, 0.92, 0.82, 2.5, 0);  // Bone
+mat_def(14, 4,     1300,  0.006,   0.5, 0.005, 1.3, 0.35, 1.3, 0.90, 0.84, 0.66, 5, 0);    // Gut
+mat_def(15, 3,     1140,  0.004,   0.5, 0.002, 1.0, 0.35, 1.3, 0.96, 0.96, 0.92, 6, 0);    // Nylon
+mat_def(16, 150,   1600,  0.002,   0.2, 0.002, 1.0, 0.9,  1.5, 0.30, 0.31, 0.36, 8, 0);    // Carbon fibre
+mat_def(17, 0.05,  1100,  0.12,    0.3, 0.01,  1.2, 0.12, 2.0, 0.80, 0.25, 0.22, 1.2, 0.4); // Rubber
+mat_def(18, 3,     700,   0.05,    0.3, 0.03,  4.0, 0.2,  3.0, 0.86, 0.82, 0.72, 1.2, 0.15);// Paper
+mat_def(19, 0.00005, 1050, 0.25,   0.2, 0.05,  1.2, 0.05, 6.0, 0.95, 0.25, 0.45, 0.8, 1);  // Jelly
+
+function mat(m, k) ( MAT_TAB[m*MAT_STRIDE + k]; );
+
+// ---------------------------------------------------------------------------
+// Mode tables
+// ---------------------------------------------------------------------------
+// Circular membrane: Bessel zeros j_mn and their angular order m, sorted
+i = 0;
+function jz(j, m) ( BESSEL_TAB[i*2] = j; BESSEL_TAB[i*2+1] = m; i += 1; );
+jz(2.4048,0); jz(3.8317,1); jz(5.1356,2); jz(5.5201,0); jz(6.3802,3); jz(7.0156,1);
+jz(7.5883,4); jz(8.4172,2); jz(8.6537,0); jz(8.7715,5); jz(9.7610,3); jz(9.9361,6);
+jz(10.1735,1); jz(11.0647,4); jz(11.0864,7); jz(11.6198,2); jz(11.7915,0); jz(12.2251,8);
+jz(12.3386,5); jz(13.0152,3); jz(13.3237,1); jz(13.3543,9); jz(13.5893,6); jz(14.4755,10);
+// Free-free bar: beta_n L
+BAR_TAB[0] = 4.7300; BAR_TAB[1] = 7.8532; BAR_TAB[2] = 10.9956; BAR_TAB[3] = 14.1372;
+BAR_TAB[4] = 17.2788; BAR_TAB[5] = 20.4204; BAR_TAB[6] = 23.5619; BAR_TAB[7] = 26.7035;
+// Clamped-free cantilever (a reed or a tine): beta_n L
+CANT_TAB[0] = 1.8751; CANT_TAB[1] = 4.6941; CANT_TAB[2] = 7.8548; CANT_TAB[3] = 10.9955;
+CANT_TAB[4] = 14.1372; CANT_TAB[5] = 17.2788;
+// Simply supported rectangular plate, aspect 1 : 0.73: the 20 lowest (m, n)
+i = 0;
+loop(196, PLATE_TAB[i*3] = 0; i += 1;);
+begin_i = 0; mm_i = 1;
+loop(8, nn_i = 1;
+  loop(8,
+    q = mm_i*mm_i + (nn_i/0.73)^2;
+    // insertion sort into the first 20 slots
+    k = min(begin_i, 20); j = k;
+    while (j > 0 && PLATE_TAB[(j-1)*3] > q) ( j <= 19 ? ( PLATE_TAB[j*3] = PLATE_TAB[(j-1)*3]; PLATE_TAB[j*3+1] = PLATE_TAB[(j-1)*3+1]; PLATE_TAB[j*3+2] = PLATE_TAB[(j-1)*3+2]; ); j -= 1; );
+    j < 20 ? ( PLATE_TAB[j*3] = q; PLATE_TAB[j*3+1] = mm_i; PLATE_TAB[j*3+2] = nn_i; );
+    begin_i += 1; nn_i += 1;
+  );
+  mm_i += 1;
+);
+
+// ---------------------------------------------------------------------------
+// Physics helpers (Reverberator)
+// ---------------------------------------------------------------------------
+// T60 of a mode of material m at frequency f: sigma = pi f eta, T60 = 2.2/(f eta),
+// capped by the losses eta does not describe (mounting, air).
+function mat_t60(m, f) local(p, eta)
+(
+  p = MAT_TAB + m*MAT_STRIDE;
+  eta = p[2]*(max(f, 20)/1000)^p[3];
+  1/(1/p[11] + f*eta/2.2);
+);
+
+function gd1(w, a) ( (1 - a*a)/(1 + 2*a*cos(w) + a*a); );
+function ph1(w, a) ( w - 2*atan(a*sin(w)/(1 + a*cos(w))); );
+function phlp(w, p) ( atan2(p*sin(w), 1 - p*cos(w)); );
+// phase lag of y = (1-k) x + k lowpass(x), the tone-hole shelf
+function phshelf(w, c, k) local(p, dd, re, im)
+(
+  p = 1 - c; dd = 1 - 2*p*cos(w) + p*p;
+  re = (1 - k) + k*c*(1 - p*cos(w))/dd; im = k*c*p*sin(w)/dd;
+  atan2(im, re);
+);
+// phase lag of the DC blocker (1 - z^-1)/(1 - R z^-1); negative = a lead
+function phdc(w, rr) ( atan2(rr*sin(w), 1 - rr*cos(w)) - 0.5*($pi - w); );
+
+// Fit a one-pole lowpass to per-pass gains ga (DC) and gb (at wb).
+function op_fit(ga, gb, wb) local(r2, cb, aa, bb, disc)
+(
+  ga = min(ga, 0.9999995); gb = min(gb, ga);
+  r2 = (gb/ga)^2;
+  r2 > 0.999999 ? ( op_p = 0; op_b = ga; ) : (
+    cb = cos(wb); aa = 1 - r2; bb = 1 - r2*cb;
+    disc = max(0, bb*bb - aa*aa);
+    op_p = max(0, min(0.9995, (bb - sqrt(disc))/aa));
+    op_b = ga*(1 - op_p);
+  );
+);
+
+// The same one-pole fitted at the fundamental (wa) instead of DC, so a strong
+// high-frequency loss cannot eat into the note itself. The DC gain it
+// implies is capped below one, which is what keeps the loop stable.
+function op_fit2(ga, wa, gb, wb) local(r2, ca, cb, aa, bb, disc)
+(
+  ga = min(ga, 0.9999995); gb = min(gb, ga);
+  r2 = (gb/ga)^2;
+  r2 > 0.999999 ? ( op_p = 0; op_b = ga; ) : (
+    ca = cos(wa); cb = cos(wb); aa = 1 - r2; bb = ca - r2*cb;
+    disc = max(0, bb*bb - aa*aa);
+    op_p = max(0, min(0.95, (bb - sqrt(disc))/aa));
+    op_b = ga*sqrt(1 - 2*op_p*ca + op_p*op_p);
+    op_b = min(op_b, 0.9999995*(1 - op_p));
+  );
+);
+
+function disp_diff(a) ( dd_m*(gd1(dd_wa, a) - gd1(dd_wb, a)); );
+disp_lim = -0.9;
+function disp_solve(dlt) local(lo, hi, mid)
+(
+  (dd_m <= 0 || dlt <= 0) ? 0 : (
+    lo = disp_lim; hi = 0;
+    disp_diff(lo) <= dlt ? lo : (
+      loop(40, mid = 0.5*(lo + hi); disp_diff(mid) > dlt ? lo = mid : hi = mid;);
+      0.5*(lo + hi);
+    );
+  );
+);
+
+// Kirchhoff boundary-layer attenuation in a tube of radius a (Trombolese)
+function tube_alpha(f, a) ( sqrt($pi*f)*BLC/(a*C_AIR); );
+
+function besj(m, x) local(s, t, k, hx)
+(
+  hx = 0.5*x; t = 1; k = 1;
+  loop(m, t *= hx/k; k += 1;);
+  s = t; k = 1;
+  loop(40, t *= -hx*hx/(k*(k + m)); s += t; k += 1;);
+  s;
+);
+
+function cosh_(x) ( 0.5*(exp(x) + exp(-x)); );
+function sinh_(x) ( 0.5*(exp(x) - exp(-x)); );
+// Free-free beam mode shape at x (0..1), magnitude 2 at the ends.
+function bar_shape(n, x) local(b, u)
+(
+  b = BAR_TAB[n]; u = x - 0.5;
+  (n & 1) == 0 ? cos(b*u)/cos(0.5*b) + cosh_(b*u)/cosh_(0.5*b)
+               : sin(b*u)/sin(0.5*b) + sinh_(b*u)/sinh_(0.5*b);
+);
+// Clamped-free cantilever mode shape at x (0 = clamp, 1 = free tip), ~2 at the tip.
+function cant_shape(n, x) local(b, sg)
+(
+  b = CANT_TAB[n];
+  sg = (cosh_(b) + cos(b))/(sinh_(b) + sin(b));
+  cosh_(b*x) - cos(b*x) - sg*(sinh_(b*x) - sin(b*x));
+);
+
+function tanh_(x) local(e2) ( x = max(-9, min(9, x)); e2 = exp(2*x); (e2 - 1)/(e2 + 1); );
+// deterministic "random" in -1..1 for a seed
+function hash1(s) local(x) ( x = sin(s*12.9898 + 78.233)*43758.5453; 2*(x - floor(x)) - 1; );
+
+// RBJ biquads into a 5-slot block: b0 b1 b2 a1 a2
+function bq_lp(o, fc, q) local(w, al, cw, a0)
+( w = 2*$pi*min(fc, 0.45*srate)/srate; al = sin(w)/(2*q); cw = cos(w); a0 = 1 + al;
+  o[0] = (1 - cw)/2/a0; o[1] = (1 - cw)/a0; o[2] = (1 - cw)/2/a0; o[3] = -2*cw/a0; o[4] = (1 - al)/a0; );
+function bq_hp(o, fc, q) local(w, al, cw, a0)
+( w = 2*$pi*min(fc, 0.45*srate)/srate; al = sin(w)/(2*q); cw = cos(w); a0 = 1 + al;
+  o[0] = (1 + cw)/2/a0; o[1] = -(1 + cw)/a0; o[2] = (1 + cw)/2/a0; o[3] = -2*cw/a0; o[4] = (1 - al)/a0; );
+function bq_pk(o, fc, q, db) local(w, al, cw, a0, ag)
+( w = 2*$pi*min(fc, 0.45*srate)/srate; ag = 10^(db/40); al = sin(w)/(2*q); cw = cos(w); a0 = 1 + al/ag;
+  o[0] = (1 + al*ag)/a0; o[1] = -2*cw/a0; o[2] = (1 - al*ag)/a0; o[3] = -2*cw/a0; o[4] = (1 - al/ag)/a0; );
+function bq_off(o) ( o[0] = 1; o[1] = o[2] = o[3] = o[4] = 0; );
+function bq(o, s, x) local(y)
+( y = o[0]*x + o[1]*s[0] + o[2]*s[1] - o[3]*s[2] - o[4]*s[3];
+  s[1] = s[0]; s[0] = x; s[3] = s[2]; s[2] = y; y; );
+
+// 4-point Lagrange fractional read, delay d >= 2 samples (the sample written
+// last is delay 1).
+function lag_read(buf, wp, d) local(n0, fr, i0, x0, x1, x2, x3, d1, d2, d3)
+(
+  n0 = floor(d) - 1; fr = d - n0;
+  i0 = (wp - n0 + LINE_LEN) & LINE_MASK;
+  x0 = buf[i0]; x1 = buf[(i0 - 1 + LINE_LEN) & LINE_MASK];
+  x2 = buf[(i0 - 2 + LINE_LEN) & LINE_MASK]; x3 = buf[(i0 - 3 + LINE_LEN) & LINE_MASK];
+  d1 = fr - 1; d2 = fr - 2; d3 = fr - 3;
+  -d1*d2*d3*(1/6)*x0 + fr*d2*d3*0.5*x1 - fr*d1*d3*0.5*x2 + fr*d1*d2*(1/6)*x3;
+);
+function lin_read(buf, wp, d) local(n0, fr)
+(
+  n0 = floor(d); fr = d - n0;
+  (1 - fr)*buf[(wp - n0 + LINE_LEN) & LINE_MASK] + fr*buf[(wp - n0 - 1 + LINE_LEN) & LINE_MASK];
+);
+
+// ---------------------------------------------------------------------------
+// Part parameters, derived from the sliders
+// ---------------------------------------------------------------------------
+function energy_params(en)
+(
+  // ep_sus: steady supply; ep_att/ep_rel: how fast it arrives and stops;
+  // ep_noise: turbulence/rosin grain; ep_rate: strikes per second when a
+  // steady supply drives a striking exciter; ep_width: contact softness;
+  // ep_vexp: velocity response; ep_dec: how long a single burst lasts when
+  // it drives a sustaining exciter.
+  en == 0 ? ( ep_sus = 1; ep_att = 0.035; ep_rel = 0.06;  ep_noise = 0.10; ep_rate = 11; ep_jit = 0.25; ep_width = 1.3;  ep_vexp = 1.0; ep_dec = 0.4; ) :
+  en == 1 ? ( ep_sus = 1; ep_att = 0.08;  ep_rel = 0.10;  ep_noise = 0.05; ep_rate = 15; ep_jit = 0.45; ep_width = 1.0;  ep_vexp = 1.0; ep_dec = 0.4; ) :
+  en == 2 ? ( ep_sus = 0; ep_att = 0.004; ep_rel = 0.05;  ep_noise = 0.01; ep_rate = 0;  ep_jit = 0;    ep_width = 2.2;  ep_vexp = 1.3; ep_dec = 0.5; ep_hold = 0.15; ) :
+  en == 3 ? ( ep_sus = 0; ep_att = 0.0015; ep_rel = 0.05; ep_noise = 0.02; ep_rate = 0;  ep_jit = 0;    ep_width = 0.55; ep_vexp = 1.2; ep_dec = 0.35; ep_hold = 0.1; ) :
+  en == 4 ? ( ep_sus = 0; ep_att = 0.0008; ep_rel = 0.05; ep_noise = 0.01; ep_rate = 0;  ep_jit = 0;    ep_width = 0.8;  ep_vexp = 1.8; ep_dec = 0.25; ep_hold = 0.06; ) :
+            ( ep_sus = 1; ep_att = 0.003; ep_rel = 0.012; ep_noise = 0;    ep_rate = 25; ep_jit = 0;    ep_width = 0.6;  ep_vexp = 0.7; ep_dec = 0.4; );
+);
+
+
+// Held-note T60 multiplier from the damping part (what touches the element
+// while it plays), per frequency.
+function damp_mul(f)
+(
+  dm_type == 1 ? 1/(1 + f/2500) :                 // mute
+  dm_type == 2 ? 1/(1 + f/1500) :                 // palm (and capped below)
+  dm_type == 3 ? 1/sqrt(1 + (f/600)^2) :          // felt
+  dm_type == 4 ? 1/(1 + f/1200) : 1;              // hand
+);
+// Brightness: lets highs ring longer (+) or die faster (-), full effect by 4 kHz
+function bright_mul(f) local(x) ( x = log(max(f, 1)/500)/log(8); bm^max(0, min(1, x)); );
+// Tone holes: harmonics above the lattice's cutoff leak out of the holes.
+function hole_mul(f) local(x) ( fc_type == 1 ? ( x = f/max(1500, 2.2*cur_f0); max(0.3, 1/(1 + x*x)); ) : 1; );
+function held_t60(m, f) local(t)
+(
+  t = mat_t60(m, f)*decay_*drain*damp_mul(f)*bright_mul(f)*hole_mul(f);
+  dm_type == 2 ? t = min(t, 0.35);
+  t;
+);
+function release_t60()
+(
+  (dm_type == 0 ? 0.12 : dm_type == 1 ? 0.4 : dm_type == 2 ? 0.08 : dm_type == 3 ? 0.3 : 0.2)
+    *(md_type == 1 ? 1 + 19*mw : 1);
+);
+
+// Tuning mechanism: a fixed per-note offset in cents.
+function tuning_cents(note) local(d)
+(
+  tm_type == 0 ? 8*hash1(note) :                              // peg: never quite in tune
+  tm_type == 1 ? ( d = (note - 69)/12; 2.2*d*abs(d); ) :      // tuning pin: stretched octaves
+  0;                                                          // machine head, slide
+);
+
+// Valve instruments play some notes on valve combinations that are
+// famously sharp (1+3, 1+2+3).
+function valve_cents(note) local(k) ( k = (note + 2) % 12; k == 5 ? 12 : k == 6 ? 22 : k == 11 ? 6 : 0; );
+
+// ---------------------------------------------------------------------------
+// Waveguide elements: string and air column
+// ---------------------------------------------------------------------------
+function wg_loss(v, tlo, thi) local(ga, gb)
+(
+  ga = 10^(-3*v[V_TPA]/max(0.002, tlo));
+  gb = 10^(-3*v[V_TPB]/max(0.002, thi));
+  op_fit2(ga, 2*$pi*v[V_FBASE]/srate, gb, 2*$pi*v[V_FB]/srate);
+  v[V_LB] = op_b; v[V_LP] = op_p;
+);
+
+function wg_setup(v, f0) local(sl, d, bb, fb, n, ft, ta, tb, tl, rough, a, ga, gb, lo, hi, rad)
+(
+  v[V_WG] = 1;
+  fb = min(5000, 0.4*srate); v[V_FB] = fb;
+  el == 0 ? (
+    // STRING. Tension sets the pitch; the material's stiffness adds
+    // inharmonicity B = pi^2 E d^2 / (64 rho L^4 f0^2). Brittle materials
+    // must be thick rods, so they come out stiff and bell-like.
+    v[V_TWO] = 1; v[V_SGN] = -1; v[V_LOOPK] = 2; v[V_BETA] = beta_;
+    (ex_cont && ex_eff == 1) ? ( v[V_TWO] = 0; v[V_SGN] = 1; v[V_LOOPK] = LIP_LOOPK; v[V_INDC] = 1; );
+    (ex_cont && ex_eff == 6) ? ( v[V_TWO] = 0; v[V_SGN] = -1; v[V_LOOPK] = 3; v[V_INDC] = 1; );
+    sl = max(0.04, min(2.2, 0.65*2^(-(v[V_NOTE] - 52)/18)));
+    d = 0.0008*mat(elm, M_THICK);
+    bb = min(0.05, $pi*$pi*mat(elm, M_E)*10^9*d*d/(64*mat(elm, M_RHO)*sl^4*f0*f0));
+    ft = min(fb, 0.3*srate);
+    n = ft/f0; loop(30, n = 0.5*(n + ft/(f0*sqrt(1 + bb*n*n))););
+    n = max(n, 2);
+    fb = n*f0*sqrt(1 + bb*n*n); v[V_FB] = fb;
+    ta = sqrt(1 + bb)/(f0*(1 + 2*bb)); tb = sqrt(1 + bb*n*n)/(f0*(1 + 2*bb*n*n));
+    v[V_TPA] = ta; v[V_TPB] = tb;
+    dd_m = 4; dd_wa = 2*$pi*f0*sqrt(1 + bb)/srate; dd_wb = 2*$pi*fb/srate;
+    // dispersion budget: the allpasses may take at most 40% of the loop's
+    // phase at the fundamental, or a short stiff string has no delay left
+    disp_lim = -0.9;
+    while (disp_lim < -0.02 && dd_m*ph1(dd_wa, disp_lim) > 0.4*2*$pi) ( disp_lim += 0.02; );
+    v[V_APA] = disp_solve((ta - tb)*srate);
+    disp_lim = -0.9;
+    // a bow's stick-slip corner travels at the group delay of the highs, so
+    // dispersion would drag a bowed note sharp: bowed strings stay harmonic
+    v[V_APM] = (v[V_APA] < 0 && !(ex_cont && ex_eff == 3) && !DBG_NODISP) ? 4 : 0;
+    v[V_TLO] = held_t60(elm, f0); v[V_THI] = held_t60(elm, fb);
+  ) : (
+    // AIR COLUMN. Boundary-layer loss alpha = sqrt(pi f) BLC / (a c) along
+    // the bore, radiation |R| = exp(-(ka)^2/2) at the open end. Rough or
+    // floppy walls (paper, rubber, jelly) lose more.
+    v[V_TWO] = 0;
+    ex_cont ? (
+      ex_eff == 0 ? ( v[V_SGN] = -1; v[V_LOOPK] = 1; ) :                                                    // reed: cylinder (clarinet)
+      ex_eff == 1 ? ( v[V_SGN] = 1; v[V_LOOPK] = LIP_LOOPK; v[V_INDC] = 1; ) :                              // lips: brass
+      ex_eff == 6 ? ( v[V_SGN] = -1; v[V_LOOPK] = 3; v[V_INDC] = 1; ) :                                     // jet: flute, overblown (STK)
+                    ( v[V_SGN] = BOWAIR_SGN; v[V_LOOPK] = BOWAIR_K; );                                        // bow
+    ) : (
+      (cp == 3 || rs == 0) ? ( v[V_SGN] = 1; v[V_LOOPK] = 2; ) : ( v[V_SGN] = -1; v[V_LOOPK] = 1; );
+    );
+    rough = mat(elm, M_ROUGH)*(1 + 0.3*min(10, 1/max(mat(elm, M_E), 0.0001)));
+    a = max(0.003, min(0.03, 0.007*(262/f0)^0.3));
+    tl = v[V_LOOPK]/(2*f0);
+    v[V_TPA] = tl; v[V_TPB] = tl;
+    rad = 2*$pi*a/C_AIR;
+    ga = exp(-C_AIR*tl*rough*tube_alpha(f0, a))*exp(-0.5*(rad*f0)^2);
+    gb = exp(-C_AIR*tl*rough*tube_alpha(fb, a))*exp(-0.5*(rad*fb)^2);
+    lo = -6.9078*tl/log(min(ga, 0.999999));
+    hi = -6.9078*tl/log(max(0.000001, min(gb, 0.999999)));
+    v[V_TLO] = lo*decay_*drain*damp_mul(f0);
+    v[V_THI] = min(v[V_TLO], hi*decay_*drain*damp_mul(fb)*bright_mul(fb)*hole_mul(fb));
+    dm_type == 2 ? ( v[V_TLO] = min(v[V_TLO], 0.35); v[V_THI] = min(v[V_THI], 0.35); );
+  );
+  wg_loss(v, v[V_TLO], v[V_THI]);
+  v[V_THC] = 0;
+);
+
+// ---------------------------------------------------------------------------
+// Modal elements: membrane, bar, plate, reed (tine)
+// ---------------------------------------------------------------------------
+mode_n = 0;
+function mode_put(v, f, wc, wr, t60, nn) local(m, r, th)
+(
+  (f < min(0.45*srate, 18000) && mode_n < MODES_MAX) ? (
+    m = v + MODE_OFF + mode_n*MODE_STRIDE;
+    r = exp(-6.907755/(max(0.003, t60)*srate)); r = min(r, 0.9999995);
+    th = 2*$pi*f/srate;
+    m[0] = 2*r*cos(th); m[1] = r*r; m[2] = 0; m[3] = 0;
+    m[4] = wc/nn; m[5] = wc; m[6] = wr; m[7] = f;
+    mode_n += 1;
+  );
+);
+
+function modal_mode(v, f, wc, wr, nn, extra) local(irr, t)
+(
+  t = held_t60(elm, f)*extra;
+  mode_put(v, f, wc, wr, t, nn);
+  irr = mat(elm, M_IRR);
+  // grain, cracks and bubbles split each mode into a beating pair
+  irr > 0.004 ? mode_put(v, f*(1 + irr*(0.6 + 0.4*hash1(f))), 0.6*wc, 0.6*wr, t*0.8, nn);
+);
+
+function modal_setup(v, f0) local(nn, k, x, y, r, j, m, st, f, wc, wr, extra, x2)
+(
+  v[V_WG] = 0; mode_n = 0;
+  nn = srate/f0;
+  x = beta_;
+  el == 1 ? (
+    // MEMBRANE. Ideal circular membrane: f_mn = f01 j_mn / j01, with a
+    // stiffness stretch for stiff materials. Struck at radius r: near the
+    // edge rings, the centre thuds. The (0,1) mode radiates hard and dies fast.
+    r = max(0, 0.95 - 1.8*x);
+    st = min(0.03, mat(elm, M_E)*0.0003);
+    k = 0;
+    loop(16,
+      j = BESSEL_TAB[k*2]; m = BESSEL_TAB[k*2+1];
+      f = f0*(j/2.4048)*sqrt(1 + st*(j/2.4048)^2);
+      wc = besj(m, j*r)*(m > 0 ? cos(m*0.7) : 1)*1.7;
+      wr = besj(m, j*0.35)*cos(m*1.9)*1.7 + (m == 0 ? 0.4 : 0);
+      extra = k == 0 ? 0.35 : 1;
+      modal_mode(v, f, wc, wr, nn, extra);
+      k += 1;
+    );
+  ) : el == 2 ? (
+    // BAR. Free-free beam (xylophone, glockenspiel): 1 : 2.76 : 5.40 : 8.93 ...
+    // Struck at x from the end; at the middle the odd (antisymmetric) modes vanish.
+    k = 0;
+    loop(8,
+      f = f0*(BAR_TAB[k]/4.73)^2;
+      wc = 0.5*bar_shape(k, 0.5 - 0.6*x);
+      wr = 0.5*bar_shape(k, 0.12);
+      modal_mode(v, f, wc, wr, nn, 1);
+      k += 1;
+    );
+  ) : el == 3 ? (
+    // PLATE. Simply supported rectangle: f_mn ~ m^2 + (n/0.73)^2 (a gong-ish
+    // or bell-plate spectrum, dense and inharmonic).
+    x = 0.5 - 0.8*beta_; y = 0.5 - 0.7*beta_;
+    k = 0;
+    loop(20,
+      f = f0*PLATE_TAB[k*3]/PLATE_TAB[0];
+      m = PLATE_TAB[k*3+1]; j = PLATE_TAB[k*3+2];
+      wc = sin(m*$pi*x)*sin(j*$pi*y);
+      wr = sin(m*$pi*0.77)*sin(j*$pi*0.31);
+      modal_mode(v, f, wc, wr, nn, 1);
+      k += 1;
+    );
+  ) : (
+    // REED / TINE. Clamped-free cantilever (kalimba, music box, free reed):
+    // 1 : 6.27 : 17.5 : 34.4 ... plucked near the tip by default.
+    x2 = 1 - x;
+    k = 0;
+    loop(6,
+      f = f0*(CANT_TAB[k]/1.8751)^2;
+      wc = 0.5*cant_shape(k, x2);
+      wr = 0.5*cant_shape(k, 1);
+      modal_mode(v, f, wc, wr, nn, 1);
+      k += 1;
+    );
+    v[V_CHOP] = ex_cont;
+  );
+  v[V_NM] = mode_n;
+);
+
+function modal_release(v, trel) local(m, r, rn, t)
+(
+  m = v + MODE_OFF;
+  loop(v[V_NM],
+    r = sqrt(m[1]);
+    t = m[7] > 4*v[V_FBASE] ? 0.6*trel : trel;
+    rn = exp(-6.907755/(max(0.003, t)*srate));
+    rn < r ? ( m[0] *= rn/r; m[1] = rn*rn; );
+    m += MODE_STRIDE;
+  );
+);
+
+// Banded waveguides (Essl & Cook, STK BandedWG): when a sustaining exciter
+// (bow, reed, lips, jet) drives a bar, membrane, plate or tine, each mode
+// becomes its own delay loop one period long with a bandpass inside. That
+// gives the exciter travelling waves to scatter, which is what the
+// reflection-function exciters need; a plain resonator bank has none.
+// Descriptors live in line B, the loops' delays in line A.
+function band_tune(bd, f) local(th, rr)
+(
+  f = min(f, 0.45*srate);
+  bd[3] = max(2, min(bd[1] - 3, srate/f));
+  th = 2*$pi*f/srate;
+  rr = bd[15];
+  bd[6] = -2*rr*cos(th); bd[7] = rr*rr;
+);
+function bands_setup(v) local(m, bd, k, buf, len, f, r, t60, ww)
+(
+  m = v + MODE_OFF; bd = v[V_LBASE] + LINE_LEN; buf = v[V_LBASE];
+  k = 0; ww = 0;
+  loop(v[V_NM],
+    f = m[7]; r = sqrt(m[1]);
+    t60 = -6.907755/(srate*log(r));
+    len = ceil(2*srate/f) + 6;
+    (buf + len < v[V_LBASE] + LINE_LEN) ? (
+      bd[0] = buf; bd[1] = len; bd[2] = 0; buf += len;
+      bd[4] = 10^(-3/(f*t60));
+      bd[15] = exp(-$pi*max(8, 0.25*f)/srate);
+      bd[5] = 0.5*(1 - bd[15]*bd[15]);
+      bd[8] = bd[9] = bd[10] = bd[11] = bd[16] = 0;
+      // a bow, a lip or a jet touches a patch, not a point: high modes average out
+      bd[12] = m[5]*(v[V_FBASE]/f)^BAND_GAMMA; bd[13] = m[6]; bd[14] = f;
+      band_tune(bd, f);
+      ww += bd[12]*bd[12];
+      bd += BAND_STRIDE; k += 1;
+    );
+    m += MODE_STRIDE;
+  );
+  v[V_NB] = k; v[V_BANDED] = 1;
+  v[V_EG] = 1/max(0.05, ww);
+);
+function bands_release(v, trel) local(bd, g)
+(
+  bd = v[V_LBASE] + LINE_LEN;
+  loop(v[V_NB],
+    g = 10^(-3/(bd[14]*(bd[14] > 4*v[V_FBASE] ? 0.6*trel : trel)));
+    bd[4] = min(bd[4], g);
+    bd += BAND_STRIDE;
+  );
+);
+
+// ---------------------------------------------------------------------------
+// Per-voice pitch and control-rate update (every 16 samples)
+// ---------------------------------------------------------------------------
+function voice_pitch(v) local(p)
+(
+  p = v[V_PITCH] + v[V_DETC]/100 + v[V_SETL]/100 + fine_st + bend*bend_range + mod_st + v[V_WOB];
+  tm_type == 0 ? p += 0.03*sin(0.8*t_now + v[V_NOTE]);
+  440*2^((p - 69)/12);
+);
+
+function voice_control(v) local(f, w, ph, dd, db, ratio, m, th, r, wob)
+(
+  v[V_PITCH] += (v[V_PTGT] - v[V_PITCH])*glide_c;
+  v[V_SETL] *= settle_c;
+  wob = mat(elm, M_WOB);
+  wob > 0 ? v[V_WOB] = wob*(0.6*min(1, 3*v[V_LVLF]) + 0.25*sin(2.3*t_now + v[V_NOTE]))*0.5;
+  f = voice_pitch(v);
+  v[V_FCUR] = f;
+  w = 2*$pi*f*v[V_FK]/srate;
+  v[V_WG] ? (
+    ph = phlp(w, v[V_LP]) + v[V_APM]*ph1(w, v[V_APA]);
+    v[V_THC] > 0 ? ph += phshelf(w, v[V_THC], TH_K);
+    v[V_INDC] ? ph += phdc(w, dc_r);
+    dd = (v[V_LOOPK]*$pi - ph)/w;
+    dd = max(4, min(LINE_LEN - 8, dd));
+    v[V_TWO] ? (
+      db = floor((1 - v[V_BETA])*dd);
+      (v[V_DB] < 1 || abs(db - v[V_DB]) > 2 || dd - v[V_DB] < 2.5) ? v[V_DB] = floor(max(1, min(db, dd - 2.5)));
+      v[V_DA] = dd - v[V_DB];
+    ) : v[V_DA] = dd;
+    v[V_DJ] = max(2.5, 0.32*dd);
+  ) : v[V_BANDED] ? (
+    abs(f/v[V_FMOD] - 1) > 0.00001 ? (
+      ratio = f/v[V_FBASE];
+      m = v[V_LBASE] + LINE_LEN;
+      ratio *= v[V_FK];
+      loop(v[V_NB], band_tune(m, m[14]*ratio); m += BAND_STRIDE;);
+      v[V_FMOD] = f;
+    );
+    v[V_DJ] = max(2.5, 0.32*srate/f);
+  ) : (
+    abs(f/v[V_FMOD] - 1) > 0.00001 ? (
+      ratio = f/v[V_FBASE];
+      m = v + MODE_OFF;
+      loop(v[V_NM],
+        th = 2*$pi*min(m[7]*ratio, 0.49*srate)/srate;
+        m[0] = 2*sqrt(m[1])*cos(th);
+        m += MODE_STRIDE;
+      );
+      v[V_FMOD] = f;
+    );
+    v[V_DJ] = max(2.5, 0.32*srate/f);
+  );
+  v[V_XT] == 1 ? (
+    // lip resonance follows the note (the embouchure); A1 = w/Q, A2 = w^2
+    th = 2*$pi*min(f*v[V_LIPR]*(v[V_BANDED] ? v[V_FK] : 1), 0.3*srate);
+    v[V_LIPA1] = th/LIP_Q; v[V_LIPA2] = th*th; v[V_LIPIM] = th*th*LIP_REST/LIP_CLOSE;
+  );
+  v[V_NRES] ? (
+    // per-voice resonator: a bore (all harmonics) or a stopped pipe (odd ones)
+    ph = phlp(w, v[V_RLP]);
+    v[V_DR] = max(2, min(LINE_LEN - 4, (v[V_RES_K]*$pi - ph)/w));
+  );
+);
+
+// ---------------------------------------------------------------------------
+// Voices
+// ---------------------------------------------------------------------------
+function start_pulse(v, amp) local(dur, hard)
+(
+  hard = max(0.05, mat(elm, M_HARD));
+  dur = (ex == 2 ? 0.0009 : ex == 4 ? 0.0014 : 0.004)*ep_width*(1.3 - 0.6*v[V_VEL])/sqrt(hard);
+  dm_type == 3 ? dur *= 2;
+  v[V_PDUR] = max(3, min(0.02, dur)*srate);
+  v[V_PT] = 0; v[V_PA] = amp;
+  ex == 4 ? v[V_PLKN] = floor(0.002*srate);
+);
+
+function voice_start(v, note, vel) local(vi, vn, f0, rlo, rhi, tl, gr, rm, lg2, pc)
+(
+  vi = (v - VOICE_BASE)/VOICE_STRIDE;
+  memset(v, 0, VOICE_STRIDE);
+  memset(LINE_BASE + vi*4*LINE_LEN, 0, 4*LINE_LEN);
+  v[V_LBASE] = LINE_BASE + vi*4*LINE_LEN;
+  v[V_EG] = 1;
+  v[V_ON] = 1; v[V_NOTE] = note; v[V_GATE] = 1; v[V_AGE] = age_ctr; age_ctr += 1;
+  v[V_REL] = -1; v[V_PT] = -1;
+  vn = max(0.05, vel/127);
+  v[V_VEL] = vn;
+  v[V_LEVEL] = max(0.02, force*vn^ep_vexp)*(soft_ped ? 0.6 : 1);
+  v[V_DETC] = tuning_cents(note) + (fc_type == 2 ? valve_cents(note) : 0) + (dm_type == 4 ? -15 : 0);
+  v[V_PTGT] = note;
+  v[V_PITCH] = (fc_type == 3 && last_pitch > 0) ? last_pitch : note;
+  tm_type == 3 ? v[V_SETL] = -30;
+  last_pitch = note;
+  f0 = 440*2^((note + v[V_DETC]/100 + fine_st - 69)/12);
+  cur_f0 = f0;
+  v[V_FBASE] = f0; v[V_FCUR] = f0; v[V_FMOD] = f0;
+  (el == 0 || el == 5) ? wg_setup(v, f0) : ( modal_setup(v, f0); (ex_cont || DEBUG_BANDED) ? bands_setup(v); );
+  v[V_XT] = ex_eff; v[V_CONT] = ex_cont;
+  v[V_SUSDRV] = ep_sus;
+  !ex_cont ? (
+    ep_sus ? v[V_STRK] = 0 : start_pulse(v, v[V_LEVEL]);
+  );
+  // per-voice resonator: bore or pipe, tuned to the note
+  v[V_NRES] = (rs == 0 || rs == 2);
+  v[V_NRES] ? (
+    rm = rsm;
+    v[V_RES_K] = rs == 0 ? 2 : 1;
+    v[V_RSGN] = rs == 0 ? 1 : -1;
+    tl = v[V_RES_K]/(2*f0);
+    rlo = min(mat_t60(rm, f0), 0.5)*decay_*0.6/mat(rm, M_ROUGH);
+    rhi = rlo*0.4*bright_mul(4000);
+    op_fit(10^(-3*tl/rlo), 10^(-3*tl/rhi), 2*$pi*min(4000, 0.4*srate)/srate);
+    v[V_RLB] = op_b; v[V_RLP] = op_p;
+    gr = op_b/(1 - op_p);
+    v[V_RG] = gr;
+  );
+  v[V_OG] = 10^(TRIM_TAB[(ep_sus ? 0 : 36) + ex*6 + el]/20);
+  v[V_LIPY] = LIP_REST;
+  v[V_FK] = (ex_eff == 1 && v[V_WG]) ? LIP_BORE : 1;
+  // lips pull the pitch up by a measured amount on each element: lower the
+  // lips and the element together by that much
+  v[V_LIPR] = LIP_RATIO;
+  (ex_eff == 1 && v[V_BANDED]) ? v[V_FK] = 2^(-(el == 1 ? LIPC_MEM : el == 2 ? LIPC_BAR : el == 3 ? LIPC_PLATE : LIPC_TINE)/1200);
+  // measured pull of the sustaining exciters on the loop's pitch (cents),
+  // taken out by tuning the loop flat by the same amount
+  v[V_WG] ? (
+    lg2 = log(f0/261.6)/log(2);
+    pc = ex_eff == 6 ? max(0, min(26, JET_C0 + JET_C1*lg2)) :
+         (ex_eff == 3 && el == 0) ? max(0, min(15, BOW_C0 + BOW_C1*lg2)) : 0;
+    v[V_FK] *= 2^(-pc/1200);
+  );
+  v[V_BANDED] ? v[V_FMOD] = 0;
+  pn = 0.5 + 0.3*max(-1, min(1, (note - 60)/30));
+  v[V_PANL] = cos(pn*0.5*$pi)*1.4142; v[V_PANR] = sin(pn*0.5*$pi)*1.4142;
+  voice_control(v);
+);
+
+function voice_release(v) local(tr)
+(
+  v[V_REL] = 0;
+  tr = release_t60();
+  v[V_WG] ? (
+    wg_loss(v, min(v[V_TLO], tr), min(v[V_THI], 0.6*tr));
+  ) : v[V_BANDED] ? bands_release(v, tr) : modal_release(v, tr);
+);
+
+function find_voice() local(i, v, best, bv, sc)
+(
+  best = -1; bv = 10^30; i = 0;
+  loop(VOICES_MAX,
+    v = VOICE_BASE + i*VOICE_STRIDE;
+    // free first, then the quietest released voice, then the oldest
+    sc = !v[V_ON] ? -10^20 : (v[V_REL] >= 0 ? -10^10 + v[V_LVLF]*10^9 : v[V_AGE]);
+    sc < bv ? ( bv = sc; best = v; );
+    i += 1;
+  );
+  best;
+);
+
+function note_on(note, vel) local(v, lg)
+(
+  mono ? (
+    v = VOICE_BASE;
+    lg = v[V_ON] && v[V_GATE] && fc_type != 4;
+    NOTE_STACK[stack_n] = note; stack_n = min(stack_n + 1, 60);
+    lg ? (
+      // legato: the frequency control decides how the pitch changes
+      v[V_PTGT] = note; last_pitch = note;
+      v[V_NOTE] = note;
+      fc_type != 3 ? v[V_PITCH] = note;
+      v[V_DETC] = tuning_cents(note) + (fc_type == 2 ? valve_cents(note) : 0) + (dm_type == 4 ? -15 : 0);
+      fc_type == 1 ? v[V_DIP] = 0.012*srate;          // tone holes: a quick blip
+      fc_type == 2 ? v[V_DIP] = 0.028*srate;          // valves: a deeper, longer one
+      (fc_type == 0 && !ex_cont) ? start_pulse(v, 0.35*v[V_LEVEL]);   // fret: hammer-on
+    ) : voice_start(v, note, vel);
+  ) : (
+    v = find_voice();
+    voice_start(v, note, vel);
+  );
+);
+
+function note_off(note) local(i, v, k, j)
+(
+  mono ? (
+    // remove from the held-note stack; fall back to the previous note
+    j = 0; k = 0;
+    loop(stack_n, NOTE_STACK[k] != note ? ( NOTE_STACK[j] = NOTE_STACK[k]; j += 1; ); k += 1;);
+    stack_n = j;
+    v = VOICE_BASE;
+    (v[V_ON] && v[V_NOTE] == note) ? (
+      (stack_n > 0 && fc_type != 4) ? (
+        k = NOTE_STACK[stack_n - 1];
+        v[V_PTGT] = k; v[V_NOTE] = k; fc_type != 3 ? v[V_PITCH] = k;
+        v[V_DETC] = tuning_cents(k) + (fc_type == 2 ? valve_cents(k) : 0) + (dm_type == 4 ? -15 : 0);
+        fc_type == 1 ? v[V_DIP] = 0.012*srate; fc_type == 2 ? v[V_DIP] = 0.028*srate;
+      ) : (
+        v[V_GATE] = 0;
+        sustain ? v[V_HELD] = 1 : voice_release(v);
+      );
+    );
+  ) : (
+    i = 0;
+    loop(VOICES_MAX,
+      v = VOICE_BASE + i*VOICE_STRIDE;
+      (v[V_ON] && v[V_GATE] && v[V_NOTE] == note) ? (
+        v[V_GATE] = 0;
+        sustain ? v[V_HELD] = 1 : voice_release(v);
+      );
+      i += 1;
+    );
+  );
+);
+
+function all_off() local(i, v)
+( i = 0; loop(VOICES_MAX, v = VOICE_BASE + i*VOICE_STRIDE; v[V_ON] = 0; i += 1;); stack_n = 0; );
+
+function pedal_up() local(i, v)
+(
+  i = 0;
+  loop(VOICES_MAX,
+    v = VOICE_BASE + i*VOICE_STRIDE;
+    (v[V_ON] && v[V_HELD]) ? ( v[V_HELD] = 0; voice_release(v); );
+    i += 1;
+  );
+);
+
+// ---------------------------------------------------------------------------
+// The exciter: what touches the element. c is the element's motion at the
+// contact point; the return value is what the exciter pushes back in.
+// Sustaining exciters follow STK's reflection-function forms (clarinet reed,
+// brass lips, bowed string, flute jet), which stay passive at any pressure.
+// ---------------------------------------------------------------------------
+function excite(v, c) local(xt, pp, e, pd, rr, inc, area, kq, flow, dp, acc, dv, bs, jin, jo, bj, x)
+(
+  xt = v[V_XT]; e = 0;
+  v[V_CONT] ? (
+    pp = v[V_DRV];
+    xt == 0 ? (
+      pd = c - pp;
+      rr = max(-1, min(1, 0.7 - 0.3*pd));
+      e = (pp - c)*(1 - rr);
+    ) : xt == 1 ? (
+      // Trombolese's lip valve: a mass-spring that blows open, Bernoulli
+      // flow through it, solved exactly against the bore impedance.
+      inc = pp - 2*c*PSCALE;
+      area = LIP_WIDTH*max(v[V_LIPY], 0);
+      kq = 2*area*area/RHO_AIR;
+      flow = area > 0 ? 0.5*(-kq*LIP_Z + sqrt((kq*LIP_Z)^2 + 4*kq*abs(inc)))*sign(inc) : 0;
+      dp = inc - LIP_Z*flow;
+      acc = dp*v[V_LIPIM] - v[V_LIPA1]*v[V_LIPV] - v[V_LIPA2]*(v[V_LIPY] - LIP_REST);
+      v[V_LIPV] += acc*dt; v[V_LIPY] += v[V_LIPV]*dt;
+      v[V_LIPY] < 0 ? ( v[V_LIPY] = 0; v[V_LIPV] = max(0, v[V_LIPV]); );
+      v[V_LIPY] > 3*LIP_REST ? ( v[V_LIPY] = 3*LIP_REST; v[V_LIPV] = min(0, v[V_LIPV]); );
+      e = LIP_Z*flow/PSCALE;
+    ) : xt == 3 ? (
+      dv = pp - c;
+      bs = abs((dv + 0.001)*(v[V_BANDED] ? BOW_SLOPE_B : BOW_SLOPE)) + 0.75;
+      bs = bs*bs; bs = 1/(bs*bs);
+      e = dv*max(0.01, min(0.98, bs));
+    ) : (
+      bj = v[V_LBASE] + 2*LINE_LEN;
+      jin = pp - 0.5*c;
+      jo = lin_read(bj, v[V_WP], v[V_DJ]);
+      bj[v[V_WP]] = jin;
+      e = max(-1, min(1, jo*(jo*jo - 1))) - 0.5*c;
+    );
+  ) : (
+    v[V_PT] >= 0 ? (
+      x = v[V_PT]/v[V_PDUR];
+      x < 1 ? (
+        e = xt == 4 ? v[V_PA]*x : v[V_PA]*sin($pi*x);
+        v[V_PT] += 1;
+      ) : v[V_PT] = -1;
+    );
+    xt == 5 ? ( v[V_XLP] += mallet_c*(e - v[V_XLP]); e = v[V_XLP]*1.5; );
+    (xt == 4 && v[V_PLKN] > 0) ? ( e += (rand(2) - 1)*0.15*v[V_PA]; v[V_PLKN] -= 1; );
+  );
+  e;
+);
+
+// One sample of one voice. Leaves its direct and resonated output in
+// vo_dir and vo_res.
+function voice_tick(v) local(tgt, env, lvl, pp, nz, ba, bb, wp, aout, y, mm, aa, s, r1, r2, c, e, outa, out, m, cc, oo, ex2, br, rdl, res, t, ns, n0, fr, ri, rj, x, bk)
+(
+  t = v[V_T]; v[V_T] = t + dt;
+  // --- energy: the drive envelope
+  v[V_SUSDRV] ? (
+    tgt = (v[V_GATE] || v[V_HELD]) ? 1 : 0;
+    v[V_ENV] += (tgt - v[V_ENV])*(tgt > v[V_ENV] ? att_c : rel_c);
+  ) : (
+    // a single push: rises, holds briefly, then fades
+    v[V_ENV] = t < ep_att ? t/ep_att : t < ep_att + ep_hold ? 1 : exp(-(t - ep_att - ep_hold)/ep_dec);
+  );
+  env = v[V_ENV];
+  lvl = v[V_LEVEL]*expr*(1 + 0.4*at_press + (md_type == 0 ? 0.3*mw : 0));
+  v[V_DIP] > 0 ? ( env *= 1 - 0.6*sin($pi*v[V_DIP]/(fc_type == 2 ? 0.028*srate : 0.012*srate)); v[V_DIP] -= 1; );
+  nz = rand(2) - 1;
+  v[V_CONT] ? (
+    pp = v[V_XT] == 0 ? 0.6 + 0.3*lvl :
+         v[V_XT] == 1 ? 1500 + 4500*lvl :
+         v[V_XT] == 3 ? 0.03 + 0.2*lvl :
+                        1.0 + 0.25*lvl;
+    pp *= env;
+    pp += pp*nz*(ep_noise + (cp == 3 ? 0.06 : 0));
+    v[V_DRV] = pp; v[V_DRVN] = env*lvl;
+  ) : (
+    // a steady supply keeps striking: a roll, a tremolo, a buzzer
+    (v[V_SUSDRV] && env > 0.02) ? (
+      v[V_STRK] -= dt;
+      v[V_STRK] <= 0 ? (
+        start_pulse(v, lvl*env*(0.85 + 0.3*rand(1)));
+        v[V_STRK] = (1 + ep_jit*(rand(2) - 1))/(ep_rate*(0.6 + 0.8*env*lvl));
+      );
+    );
+  );
+  wp = v[V_WP];
+  // --- the vibrating element
+  v[V_WG] ? (
+    ba = v[V_LBASE]; bb = ba + LINE_LEN;
+    aout = lag_read(ba, wp, v[V_DA]);
+    y = v[V_LB]*aout + v[V_LP]*v[V_LS]; v[V_LS] = y;
+    mm = v[V_APM];
+    mm > 0 ? (
+      aa = v[V_APA]; s = v + V_AP;
+      loop(mm, e = aa*(y - s[1]) + s[0]; s[0] = y; s[1] = e; y = e; s += 2;);
+    );
+    v[V_THC] > 0 ? ( v[V_THS] += v[V_THC]*(y - v[V_THS]); y += TH_K*(v[V_THS] - y); );
+    r1 = v[V_SGN]*y;
+    v[V_TWO] ? ( r2 = -bb[(wp - v[V_DB] + LINE_LEN) & LINE_MASK]; c = r1 + r2; ) : c = r1;
+    e = excite(v, c);
+    outa = (v[V_TWO] ? r2 : c) + e;
+    v[V_INDC] ? ( y = outa - v[V_LDCX] + dc_r*v[V_LDCY]; v[V_LDCX] = outa; v[V_LDCY] = y; outa = y; );
+    ba[wp] = outa;
+    v[V_TWO] ? bb[wp] = r1 + e;
+    out = el == 5 ? aout + r1 : aout;
+  ) : v[V_BANDED] ? (
+    m = v[V_LBASE] + LINE_LEN; c = 0;
+    loop(v[V_NB],
+      n0 = floor(m[3]); fr = m[3] - n0; ri = m[2] - n0; ri < 0 ? ri += m[1];
+      rj = ri - 1; rj < 0 ? rj += m[1];
+      bk = m[0]; y = (1 - fr)*bk[ri] + fr*bk[rj];
+      m[16] = y; c += m[12]*y;
+      m += BAND_STRIDE;
+    );
+    // extra grip only while driven, so the junction is passive once released
+    e = excite(v, c)*v[V_EG]*(1 + (BAND_G - 1)*min(1, 2*env));
+    m = v[V_LBASE] + LINE_LEN; oo = 0;
+    loop(v[V_NB],
+      x = m[12]*e + m[4]*m[16];
+      y = m[5]*(x - m[9]) - m[6]*m[10] - m[7]*m[11];
+      m[9] = m[8]; m[8] = x; m[11] = m[10]; m[10] = y;
+      bk = m[0]; bk[m[2]] = y; m[2] += 1; m[2] >= m[1] ? m[2] = 0;
+      oo += m[13]*y;
+      m += BAND_STRIDE;
+    );
+    out = oo;
+    v[V_CHOP] ? out += 0.6*v[V_DRVN]*tanh_(4*c);
+  ) : (
+    c = v[V_C];
+    e = excite(v, v[V_CONT] ? tanh_(c) : c);
+    ex2 = e - v[V_E2]; v[V_E2] = v[V_E1]; v[V_E1] = e;
+    m = v + MODE_OFF; cc = 0; oo = 0;
+    loop(v[V_NM],
+      y = m[0]*m[2] - m[1]*m[3] + m[4]*ex2;
+      m[3] = m[2]; m[2] = y;
+      cc += m[5]*y; oo += m[6]*y;
+      m += MODE_STRIDE;
+    );
+    v[V_C] = cc;
+    out = oo;
+    // a free reed chops the airflow: the buzz of a harmonica or accordion
+    v[V_CHOP] ? out += 0.6*v[V_DRVN]*tanh_(4*cc);
+  );
+  // DC blocker on what leaves the element
+  y = out - v[V_DCX] + dc_r*v[V_DCY]; v[V_DCX] = out; v[V_DCY] = y; out = y;
+  // a windway hisses
+  (cp == 3 && v[V_CONT]) ? (
+    v[V_NS] += 0.3*(nz - v[V_NS]); ns = nz - v[V_NS];
+    out += 0.05*ns*v[V_DRV];
+  );
+  out *= v[V_OG];
+  // --- per-voice resonator
+  res = out;
+  v[V_NRES] ? (
+    br = v[V_LBASE] + 3*LINE_LEN;
+    rdl = lin_read(br, wp, v[V_DR]);
+    y = v[V_RLB]*rdl + v[V_RLP]*v[V_RLS]; v[V_RLS] = y;
+    res = out + v[V_RSGN]*y;
+    br[wp] = res;
+    res *= 0.5*(1 - min(0.97, v[V_RG]));
+    res *= 2.5;
+  );
+  v[V_WP] = (wp + 1) & LINE_MASK;
+  // --- level follower and voice freeing
+  aa = abs(out);
+  v[V_LVLF] = max(aa, v[V_LVLF]*lvl_decay);
+  (v[V_T] > 0.05 && v[V_LVLF] < 0.00002 && env < 0.002 && v[V_PT] < 0 &&
+   (v[V_REL] >= 0 || !v[V_SUSDRV])) ? v[V_ON] = 0;
+  vo_dir = out; vo_res = res;
+);
+
+// ---------------------------------------------------------------------------
+// Coupler, shared resonators and radiator (all voices summed: they are linear)
+// ---------------------------------------------------------------------------
+function setup_coupler() local(o)
+(
+  o = BIQ_COEF;
+  cp == 0 ? ( bq_pk(o, 2500, 1.2, 6); bq_hp(o + 5, 90, 0.7); ) :             // bridge: the "bridge hill"
+  cp == 1 ? ( bq_pk(o, 450, 1.0, 6); bq_lp(o + 5, 7000, 0.7); ) :            // soundpost: body-heavy
+  cp == 2 ? ( bq_pk(o, 800/sqrt(size_), 2.0, 8); bq_lp(o + 5, 9000, 0.7); ) :// mouthpiece: cup formant
+            ( bq_pk(o, 1800, 0.9, 3); bq_hp(o + 5, 200, 0.7); );             // windway
+);
+
+body_n = 0;
+function body_mode(f, q, amp, wl, wr) local(p, r, th)
+(
+  (f > 20 && f < 0.45*srate && body_n < BODY_MAX) ? (
+    p = BODY_BASE + body_n*BODY_STRIDE;
+    r = exp(-$pi*f/(q*srate));
+    th = 2*$pi*f/srate;
+    p[0] = 2*r*cos(th); p[1] = r*r; p[4] = (1 - r)*amp; p[5] = wl; p[6] = wr;
+    body_n += 1;
+  );
+);
+
+function setup_body() local(k, f, q, sc, qm, eta, ee, rho, h, dd, fr)
+(
+  body_n = 0;
+  memset(BODY_BASE, 0, BODY_MAX*BODY_STRIDE);
+  // stiffer-for-its-weight materials push the wooden modes up
+  sc = max(0.35, min(2.5, sqrt((mat(rsm, M_E)*10^9/mat(rsm, M_RHO))/(11*10^9/440))));
+  eta = mat(rsm, M_ETA);
+  rs == 1 ? (
+    // SOUNDBOX: a guitar-like body (air mode ~98 Hz, top/back modes above),
+    // measured frequencies scaled by the material and the Size control
+    k = 0;
+    loop(12,
+      f = k==0?98:k==1?204:k==2?226:k==3?381:k==4?437:k==5?552:k==6?650:k==7?780:k==8?920:k==9?1100:k==10?1450:2000;
+      f = (k == 0 ? f : f*sc)/size_;
+      q = k == 0 ? 20 : 1/(mat(rsm, M_ETA)*(f/1000)^mat(rsm, M_SLOPE) + 0.018);
+      body_mode(f, q, 1/sqrt(1 + 0.5*k), sin(k*2.1 + 0.4), cos(k*1.3 + 0.9));
+      k += 1;
+    );
+  ) : rs == 3 ? (
+    // CAVITY: a Helmholtz resonator (a gourd, a bottle) and a few cavity
+    // modes, with the walls ringing in the chosen material
+    body_mode(140/size_, 14, 1.4, 1, 1);
+    body_mode(640/size_, 22, 0.6, 0.8, -0.5);
+    body_mode(1060/size_, 25, 0.45, -0.4, 0.8);
+    body_mode(1480/size_, 25, 0.35, 0.6, 0.6);
+    k = 2;
+    loop(6,
+      f = 520*sc*k*(k*k - 1)/sqrt(k*k + 1)/(3*size_);
+      q = 1/(eta*(f/1000)^mat(rsm, M_SLOPE) + 0.004);
+      body_mode(f, q, 0.35/sqrt(k), cos(k*0.5), sin(k*2.2));
+      k += 1;
+    );
+  ) : rs == 4 ? (
+    // BODY: a solid block of the material; plate-like modes that give the
+    // instrument the material's own ring (stone clink, glass shimmer)
+    k = 0;
+    loop(16,
+      f = 280*sc*PLATE_TAB[k*3]/PLATE_TAB[0]/size_;
+      q = 1/(eta*(f/1000)^mat(rsm, M_SLOPE) + 0.003);
+      body_mode(f, q, 0.9/sqrt(1 + 0.3*k), sin(PLATE_TAB[k*3+1]*2.2), cos(PLATE_TAB[k*3+2]*1.7));
+      k += 1;
+    );
+  );
+);
+
+function setup_radiator() local(o, k, j, f, r, th, p)
+(
+  o = BIQ_COEF + 10;
+  rd == 0 ? ( bq_hp(o, 180, 0.6); bq_pk(o + 5, 1500, 0.8, 4); bq_off(o + 10); ) :                 // bell
+  rd == 1 ? ( bq_pk(o, 250, 0.9, 3); bq_lp(o + 5, 7500, 0.7); bq_off(o + 10); ) :                 // soundboard
+  rd == 2 ? ( bq_hp(o, 120, 0.7); bq_pk(o + 5, 2200, 1.5, 6); bq_lp(o + 10, 9000, 0.7); ) :      // drumhead
+            ( bq_hp(o, 90, 0.8); bq_lp(o + 5, 5000, 0.9); bq_pk(o + 10, 2800, 3, 4); );           // cone
+  // drumhead: its own few membrane modes ring along (like a banjo's head)
+  memset(HEAD_BASE, 0, HEAD_MAX*8);
+  k = 0;
+  loop(HEAD_MAX,
+    p = HEAD_BASE + k*8;
+    f = 170/size_*BESSEL_TAB[k*2]/2.4048;
+    r = exp(-6.9078/(0.25*srate));
+    th = 2*$pi*min(f, 0.45*srate)/srate;
+    p[0] = 2*r*cos(th); p[1] = r*r; p[4] = (1 - r)*0.8/sqrt(1 + k); p[5] = cos(k*1.1); p[6] = sin(k*1.1 + 0.6);
+    k += 1;
+  );
+  // soundboard: allpass diffusion lengths (ms)
+  k = 0;
+  loop(8,
+    DIFF_TMP[k] = floor(min(DIFF_LEN - 2, (k==0?3.1:k==1?5.3:k==2?7.9:k==3?11.3:k==4?3.7:k==5?5.9:k==6?8.3:12.1)*0.001*srate*size_));
+    k += 1;
+  );
+);
+DIFF_TMP = 5900; DIFF_W = 5950;
+
+function update_globals()
+(
+  en = slider1|0; ex = slider2|0; el = slider3|0; elm = slider4|0;
+  rs = slider5|0; rsm = slider6|0; cp = slider7|0; rd = slider8|0;
+  fc_type = slider9|0; tm_type = slider10|0; dm_type = slider11|0; md_type = slider12|0;
+  force = slider13/100; size_ = slider14/100; bright = slider15; decay_ = slider16/100;
+  beta_ = slider17/100; res_amt = slider18/100; mono = slider19|0;
+  glide_ms = slider20; fine_st = slider21/100; out_g = 10^(slider22/20);
+  energy_params(en);
+  ex_cont = (ex == 0 || ex == 1 || ex == 3);
+  // a windway turns lips or a bow into an air jet (a flute); a reed stays a reed (a windcap)
+  ex_eff = (cp == 3 && (ex == 1 || ex == 3)) ? 6 : ex;
+  bend_range = fc_type == 3 ? 7 : 2;
+  bm = 2^(bright/50);
+  // couplers drain energy from the element into the body
+  drain = cp == 0 ? 0.9 : cp == 1 ? 0.75 : 1;
+  att_c = 1 - exp(-1/(max(0.0005, ep_att)*srate));
+  rel_c = 1 - exp(-1/(max(0.002, ep_rel)*srate));
+  glide_c = fc_type == 3 ? 1 - exp(-16*3/(max(5, glide_ms)*0.001*srate)) : 1;
+  settle_c = exp(-16/(0.09*srate));
+  mallet_c = 1 - exp(-2*$pi*900/srate);
+  setup_coupler(); setup_body(); setup_radiator();
+  master_trim = 10^((PART_TRIM[rs] + PART_TRIM[5 + cp] + PART_TRIM[9 + rd])/20);
+  globals_ok = 1;
+);
+
+dc_r = 1 - 2*$pi*10/srate;
+master_trim = 1;
+// Loudness trims (dB), measured with tools/trims.py: exciter x element, for a
+// steady energy source (row 0) and a single push (row 1); then per part.
+TRIM_TAB = 6400; PART_TRIM = 6480;
+function trim_row(c, ex, t0, t1, t2, t3, t4, t5) local(p)
+( p = TRIM_TAB + c*36 + ex*6; p[0] = t0; p[1] = t1; p[2] = t2; p[3] = t3; p[4] = t4; p[5] = t5; );
+memset(TRIM_TAB, 0, 100);
+//TRIMS_BEGIN
+//TRIMS_END
+// lip valve (Trombolese reed.py: brass end of the morph)
+LIP_WIDTH = 0.012; LIP_REST = 0.0003; LIP_CLOSE = 12000; LIP_Q = 15; LIP_Z = 2700000;
+LIP_RATIO = 0.92; LIP_LOOPK = 2; LIP_BORE = 0.88; PSCALE = 4000;
+TH_K = 0.6; DEBUG_BANDED = 0; DBG_NODISP = 0; BOW_SLOPE_B = 3; BAND_G = 3; BAND_GAMMA = 0.7; BOWAIR_SGN = 1; BOWAIR_K = 2;
+LIPC_MEM = 41; LIPC_BAR = 124; LIPC_PLATE = 113; LIPC_TINE = 148; BOW_SLOPE = 2;
+JET_C0 = 16; JET_C1 = 7; BOW_C0 = 6; BOW_C1 = 5;
+dt = 1/srate;
+lvl_decay = exp(-1/(0.05*srate));
+expr = 1; cc11 = 1; cc2 = 1; breath_seen = 0; at_press = 0; mw = 0; bend = 0; mod_st = 0;
+sustain = 0; soft_ped = 0; last_pitch = 0; stack_n = 0; age_ctr = 0; t_now = 0; ctl_ctr = 0;
+lfo_ph = 0; trem = 1;
+memset(BIQ_STATE, 0, 100);
+memset(DIFF_BASE, 0, 8*DIFF_LEN);
+memset(DIFF_W, 0, 8);
+scope_w = 0;
+all_off();
+update_globals();
+
+@slider
+update_globals();
+
+@block
+// MIDI into a queue, handled at the right sample in @sample
+nq = 0;
+while (midirecv(mofs, m1, m2, m3)) (
+  nq < MIDIQ_MAX ? ( MIDIQ[nq*4] = mofs; MIDIQ[nq*4+1] = m1; MIDIQ[nq*4+2] = m2; MIDIQ[nq*4+3] = m3; nq += 1; );
+);
+// audition request from the GUI
+aud_req ? (
+  nq < MIDIQ_MAX ? ( MIDIQ[nq*4] = 0; MIDIQ[nq*4+1] = 0x90; MIDIQ[nq*4+2] = aud_note; MIDIQ[nq*4+3] = 100; nq += 1; );
+  aud_req = 0; aud_left = 1.2*srate; aud_on = 1;
+);
+aud_on ? (
+  aud_left -= samplesblock;
+  aud_left <= 0 ? ( nq < MIDIQ_MAX ? ( MIDIQ[nq*4] = 0; MIDIQ[nq*4+1] = 0x80; MIDIQ[nq*4+2] = aud_note; MIDIQ[nq*4+3] = 0; nq += 1; ); aud_on = 0; );
+);
+gui_dirty ? ( update_globals(); gui_dirty = 0; );
+qi = 0; spos = 0;
+expr = cc11*(breath_seen ? cc2 : 1);
+
+@sample
+while (qi < nq && MIDIQ[qi*4] <= spos) (
+  st = MIDIQ[qi*4+1] & 0xF0; d1 = MIDIQ[qi*4+2]; d2 = MIDIQ[qi*4+3];
+  st == 0x90 && d2 > 0 ? note_on(d1, d2) :
+  (st == 0x80 || (st == 0x90 && d2 == 0)) ? note_off(d1) :
+  st == 0xE0 ? bend = ((d2*128 + d1) - 8192)/8192 :
+  st == 0xD0 ? at_press = d1/127 :
+  st == 0xB0 ? (
+    d1 == 1 ? mw = d2/127 :
+    d1 == 2 ? ( cc2 = d2/127; breath_seen = 1; expr = cc11*cc2; ) :
+    d1 == 11 ? ( cc11 = d2/127; expr = cc11*(breath_seen ? cc2 : 1); ) :
+    d1 == 64 ? ( sustain = d2 >= 64; !sustain ? pedal_up(); ) :
+    d1 == 67 ? soft_ped = d2 >= 64 :
+    (d1 == 120 || d1 == 123) ? all_off();
+  );
+  qi += 1;
+);
+spos += 1;
+
+// control rate: every 16 samples
+ctl_ctr -= 1;
+ctl_ctr <= 0 ? (
+  ctl_ctr = 16;
+  t_now += 16*dt;
+  lfo_ph += 16*dt*5.5; lfo_ph >= 1 ? lfo_ph -= 1;
+  mod_st = md_type == 2 ? -0.4*mw : md_type == 3 ? 2*mw : md_type == 4 ? 0.3*mw*sin(2*$pi*lfo_ph) : 0;
+  trem = md_type == 4 ? 1 - 0.3*mw*(0.5 + 0.5*sin(2*$pi*lfo_ph + 1.2)) : md_type == 2 ? 1 - 0.3*mw : 1;
+  vi = 0;
+  loop(VOICES_MAX, vv = VOICE_BASE + vi*VOICE_STRIDE; vv[V_ON] ? voice_control(vv); vi += 1;);
+);
+
+sel = 0; ser = 0; srl = 0; srr = 0; nact = 0;
+vi = 0;
+loop(VOICES_MAX,
+  vv = VOICE_BASE + vi*VOICE_STRIDE;
+  vv[V_ON] ? (
+    voice_tick(vv);
+    sel += vo_dir*vv[V_PANL]; ser += vo_dir*vv[V_PANR];
+    srl += vo_res*vv[V_PANL]; srr += vo_res*vv[V_PANR];
+    nact += 1;
+  );
+  vi += 1;
+);
+
+// coupler and resonator
+(rs == 0 || rs == 2) ? (
+  xl = sel + res_amt*(srl - sel); xr = ser + res_amt*(srr - ser);
+  xl = bq(BIQ_COEF + 5, BIQ_STATE + 4, bq(BIQ_COEF, BIQ_STATE, xl));
+  xr = bq(BIQ_COEF + 5, BIQ_STATE + 12, bq(BIQ_COEF, BIQ_STATE + 8, xr));
+) : (
+  xl = bq(BIQ_COEF + 5, BIQ_STATE + 4, bq(BIQ_COEF, BIQ_STATE, sel));
+  xr = bq(BIQ_COEF + 5, BIQ_STATE + 12, bq(BIQ_COEF, BIQ_STATE + 8, ser));
+  xm = 0.5*(xl + xr); xm2 = xm - bx2; bx2 = bx1; bx1 = xm;
+  bl = 0; br_ = 0; p = BODY_BASE;
+  loop(body_n, y = p[0]*p[2] - p[1]*p[3] + p[4]*xm2; p[3] = p[2]; p[2] = y; bl += y*p[5]; br_ += y*p[6]; p += BODY_STRIDE;);
+  xl += res_amt*(3*bl - xl); xr += res_amt*(3*br_ - xr);
+);
+
+// radiator
+o = BIQ_COEF + 10;
+yl = bq(o + 10, BIQ_STATE + 36, bq(o + 5, BIQ_STATE + 32, bq(o, BIQ_STATE + 28, xl)));
+yr = bq(o + 10, BIQ_STATE + 48, bq(o + 5, BIQ_STATE + 44, bq(o, BIQ_STATE + 40, xr)));
+rd == 0 ? (
+  yl = tanh_(1.3*yl)/1.3; yr = tanh_(1.3*yr)/1.3;
+) : rd == 1 ? (
+  // soundboard: four allpass diffusers per side spread the sound out
+  dl = yl; dr = yr; k = 0;
+  loop(4,
+    bufd = DIFF_BASE + k*DIFF_LEN; w = DIFF_W[k];
+    z = bufd[(w - DIFF_TMP[k] + DIFF_LEN) % DIFF_LEN];
+    u = dl + 0.6*z; bufd[w] = u; dl = z - 0.6*u;
+    DIFF_W[k] = (w + 1) % DIFF_LEN;
+    bufd = DIFF_BASE + (k + 4)*DIFF_LEN; w = DIFF_W[k + 4];
+    z = bufd[(w - DIFF_TMP[k + 4] + DIFF_LEN) % DIFF_LEN];
+    u = dr + 0.6*z; bufd[w] = u; dr = z - 0.6*u;
+    DIFF_W[k + 4] = (w + 1) % DIFF_LEN;
+    k += 1;
+  );
+  yl = 0.6*yl + 0.55*dl; yr = 0.6*yr + 0.55*dr;
+) : rd == 2 ? (
+  hm = 0.5*(yl + yr); hm2 = hm - hx2; hx2 = hx1; hx1 = hm;
+  hl = 0; hr = 0; p = HEAD_BASE;
+  loop(HEAD_MAX, y = p[0]*p[2] - p[1]*p[3] + p[4]*hm2; p[3] = p[2]; p[2] = y; hl += y*p[5]; hr += y*p[6]; p += 8;);
+  yl += 2*hl; yr += 2*hr;
+) : (
+  yl = tanh_(2*yl)*0.5; yr = tanh_(2*yr)*0.5;
+);
+
+gl = out_g*trem*master_trim;
+yl *= gl; yr *= gl;
+// soft ceiling
+ay = abs(yl); ay > 0.9 ? yl = sign(yl)*(0.9 + 0.1*tanh_((ay - 0.9)*10));
+ay = abs(yr); ay > 0.9 ? yr = sign(yr)*(0.9 + 0.1*tanh_((ay - 0.9)*10));
+spl0 = yl; spl1 = yr;
+SCOPE_BUF[scope_w] = 0.5*(yl + yr); scope_w = (scope_w + 1) & (SCOPE_LEN - 1);
