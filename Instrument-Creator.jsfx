@@ -17,9 +17,9 @@ desc:Instrument Creator - build impossible instruments from parts
 slider1:0<0,5,1{Breath,Bow,Finger,Plectrum,Hammer,Electricity}>-Energy source
 slider2:0<0,5,1{Reed,Lips,Hammer,Bow,Plectrum,Mallet}>-Exciter
 slider3:5<0,5,1{String,Membrane,Bar,Plate,Reed,Air column}>-Vibrating element
-slider4:12<0,19,1{Steel,Brass,Bronze,Aluminium,Gold,Glass,Crystal,Ice,Marble,Clay,Spruce,Rosewood,Bamboo,Bone,Gut,Nylon,Carbon fibre,Rubber,Paper,Jelly}>-Element material
+slider4:12<0,30,1{Steel,Brass,Bronze,Aluminium,Gold,Glass,Crystal,Ice,Marble,Clay,Spruce,Rosewood,Bamboo,Bone,Gut,Nylon,Carbon fibre,Rubber,Paper,Jelly,Plastic,PVC,Wood,Leather,Cardboard,Foil,Cling film,Tin,Car panel,Chain link,Handpan steel}>-Element material
 slider5:0<0,4,1{Bore,Soundbox,Pipe,Cavity,Body}>-Resonator
-slider6:12<0,19,1{Steel,Brass,Bronze,Aluminium,Gold,Glass,Crystal,Ice,Marble,Clay,Spruce,Rosewood,Bamboo,Bone,Gut,Nylon,Carbon fibre,Rubber,Paper,Jelly}>-Resonator material
+slider6:12<0,30,1{Steel,Brass,Bronze,Aluminium,Gold,Glass,Crystal,Ice,Marble,Clay,Spruce,Rosewood,Bamboo,Bone,Gut,Nylon,Carbon fibre,Rubber,Paper,Jelly,Plastic,PVC,Wood,Leather,Cardboard,Foil,Cling film,Tin,Car panel,Chain link,Handpan steel}>-Resonator material
 slider7:2<0,3,1{Bridge,Soundpost,Mouthpiece,Windway}>-Coupler
 slider8:0<0,3,1{Bell,Soundboard,Drumhead,Cone}>-Radiator
 slider9:1<0,4,1{Fret,Tone hole,Valve,Slide,Key}>-Frequency control
@@ -51,13 +51,13 @@ ext_noinit = 1;
 // ---------------------------------------------------------------------------
 VOICE_BASE = 0; VOICE_STRIDE = 512; VOICES_MAX = 8;
 MODE_OFF = 160; MODE_STRIDE = 8; MODES_MAX = 24;
-MAT_TAB = 4200; MAT_STRIDE = 16;
+MAT_TAB = 13600; MAT_STRIDE = 16; MAT_N = 31;
 BESSEL_TAB = 4600; BAR_TAB = 4700; CANT_TAB = 4720; PLATE_TAB = 4750;
 BODY_BASE = 5000; BODY_STRIDE = 8; BODY_MAX = 24;
 HEAD_BASE = 5300; HEAD_MAX = 8;
 NOTE_STACK = 5500;
 BIQ_COEF = 5600; BIQ_STATE = 5700;
-MIDIQ = 6000; MIDIQ_MAX = 1000;
+MIDIQ = 82000; MIDIQ_MAX = 1000;
 SCOPE_BUF = 11000; SCOPE_LEN = 2048;
 DIFF_BASE = 16384; DIFF_LEN = 8192;
 LINE_BASE = 131072; LINE_LEN = 16384; LINE_MASK = 16383;
@@ -79,7 +79,7 @@ V_LOOPK = 66; V_XT = 67; V_CONT = 68; V_LEVEL = 69; V_NRES = 70;
 V_BETA = 71; V_TLO = 72; V_THI = 73; V_FB = 74; V_TPA = 75; V_TPB = 76;
 V_DRV = 77; V_LBASE = 78; V_INDC = 79; V_NS = 80; V_NS2 = 81;
 V_PLKN = 82; V_RES_K = 83; V_WOB = 84; V_DIP = 85; V_OUTP = 86;
-V_SUSDRV = 87; V_EG = 88; V_CHOP = 89; V_LIPY = 90; V_LIPV = 91; V_LIPIM = 92; V_FK = 93; V_BANDED = 94; V_NB = 95; V_DRVN = 96; V_LIPR = 97;
+V_SUSDRV = 87; V_EG = 88; V_CHOP = 89; V_LIPY = 90; V_LIPV = 91; V_LIPIM = 92; V_FK = 93; V_BANDED = 94; V_NB = 95; V_DRVN = 96; V_LIPR = 97; V_RATS = 98; V_RATX = 99; V_CRKS = 100; V_CRKX = 101;
 BAND_STRIDE = 20;
 
 // ---------------------------------------------------------------------------
@@ -93,13 +93,16 @@ BLC = sqrt(NU_AIR) + (GAM_AIR - 1)*sqrt(NU_AIR/PR_AIR);
 // how eta grows with frequency, irregularity (grain, cracks, bubbles: splits
 // modes), wall roughness for air columns, hardness (how sharp a strike is),
 // how thick a string of it must be (you cannot draw marble into wire),
-// colour, longest ring the mounting allows (s), and wobble (jelly).
+// colour, longest ring the mounting allows (s), wobble (jelly), crackle
+// (crumpled foil) and rattle (loose fixings, film slapping: Reverberator's
+// contact rattle).
 // ---------------------------------------------------------------------------
 M_E = 0; M_RHO = 1; M_ETA = 2; M_SLOPE = 3; M_IRR = 4; M_ROUGH = 5; M_HARD = 6;
-M_THICK = 7; M_CR = 8; M_CG = 9; M_CB = 10; M_TMAX = 11; M_WOB = 12;
+M_THICK = 7; M_CR = 8; M_CG = 9; M_CB = 10; M_TMAX = 11; M_WOB = 12; M_CRK = 13; M_RAT = 14;
 function mat_def(idx, ee, rho, eta, slp, irr, rough, hard, thick, cr, cg, cb, tmax, wob) local(p)
 (
   p = MAT_TAB + idx*MAT_STRIDE;
+  p[13] = p[14] = 0;
   p[0] = ee; p[1] = rho; p[2] = eta; p[3] = slp; p[4] = irr; p[5] = rough; p[6] = hard;
   p[7] = thick; p[8] = cr; p[9] = cg; p[10] = cb; p[11] = tmax; p[12] = wob;
 );
@@ -124,6 +127,28 @@ mat_def(17, 0.05,  1100,  0.035,   0.3, 0.01,  1.2, 0.12, 2.0, 0.80, 0.25, 0.22,
 mat_def(18, 3,     700,   0.03,    0.3, 0.03,  4.0, 0.2,  3.0, 0.86, 0.82, 0.72, 1.2, 0.15);// Paper
 mat_def(19, 0.00005, 1050, 0.045,  0.2, 0.05,  1.2, 0.05, 6.0, 0.95, 0.25, 0.45, 1.0, 1);  // Jelly
 
+// From Reverberator's objects: PVC pipe, toilet roll tube (cardboard), foil,
+// cling film (polyethylene), corrugated tin roof, car body panel, chain link
+// fence, handpan. The lossiest are made less lossy than the real thing (PVC
+// 0.03, cardboard 0.06, leather 0.06, film 0.12 in Reverberator) so that they
+// can still be played.
+mat_def(20, 2.3,   1050,  0.01,    0.3, 0.005, 1.0, 0.4,  2.0, 0.20, 0.55, 0.90, 2.0, 0);   // Plastic (ABS)
+mat_def(21, 3,     1400,  0.022,   0.3, 0.003, 1.0, 0.45, 2.0, 0.90, 0.90, 0.86, 2.0, 0);   // PVC
+mat_def(22, 12,    650,   0.007,   0.4, 0.02,  1.4, 0.6,  3.0, 0.78, 0.58, 0.36, 3, 0);     // Wood (maple)
+mat_def(23, 0.1,   900,   0.04,    0.3, 0.02,  2.0, 0.2,  3.0, 0.48, 0.30, 0.17, 1.2, 0.1); // Leather
+mat_def(24, 3,     700,   0.04,    0.3, 0.03,  4.0, 0.25, 3.0, 0.70, 0.54, 0.36, 1.2, 0);   // Cardboard
+mat_def(25, 69,    2700,  0.02,    0.2, 0.05,  1.5, 0.6,  1.0, 0.86, 0.88, 0.91, 1.5, 0);   // Foil (crumpled aluminium)
+mat_def(26, 0.2,   920,   0.05,    0.3, 0.01,  1.5, 0.1,  4.0, 0.82, 0.92, 0.96, 1.0, 0.3); // Cling film
+mat_def(27, 207,   7850,  0.004,   0.1, 0.03,  1.2, 0.9,  1.0, 0.64, 0.68, 0.70, 3, 0);     // Tin (galvanised roof sheet)
+mat_def(28, 207,   7850,  0.003,   0.1, 0.01,  1.0, 0.9,  1.0, 0.78, 0.12, 0.15, 2.5, 0);   // Car panel (painted steel)
+mat_def(29, 200,   7850,  0.0015,  0.1, 0.03,  1.0, 1.0,  1.0, 0.62, 0.68, 0.62, 4, 0);     // Chain link (steel wire mesh)
+mat_def(30, 207,   7850,  0.0022,  0.1, 0.001, 1.0, 1.0,  1.0, 0.36, 0.38, 0.44, 8, 0);     // Handpan steel (nitrided)
+MAT_TAB[25*MAT_STRIDE + M_CRK] = 1;                 // foil crinkles
+MAT_TAB[26*MAT_STRIDE + M_RAT] = 1;                 // film slaps and buzzes (a kazoo)
+MAT_TAB[27*MAT_STRIDE + M_RAT] = 0.7;               // loose roofing fixings
+MAT_TAB[28*MAT_STRIDE + M_RAT] = 0.3;               // panel clank
+MAT_TAB[29*MAT_STRIDE + M_RAT] = 1;                 // fence links jangle
+
 function mat(m, k) ( MAT_TAB[m*MAT_STRIDE + k]; );
 
 // ---------------------------------------------------------------------------
@@ -144,7 +169,7 @@ CANT_TAB[0] = 1.8751; CANT_TAB[1] = 4.6941; CANT_TAB[2] = 7.8548; CANT_TAB[3] = 
 CANT_TAB[4] = 14.1372; CANT_TAB[5] = 17.2788;
 // Simply supported rectangular plate, aspect 1 : 0.73: the 20 lowest (m, n)
 i = 0;
-loop(196, PLATE_TAB[i*3] = 0; i += 1;);
+i = 0; loop(60, PLATE_TAB[i] = 0; i += 1;);
 begin_i = 0; mm_i = 1;
 loop(8, nn_i = 1;
   loop(8,
@@ -440,7 +465,8 @@ function modal_mode(v, f, wc, wr, nn, extra) local(irr, t)
   mode_put(v, f, wc, wr, t, nn);
   irr = mat(elm, M_IRR);
   // grain, cracks and bubbles split each mode into a beating pair
-  irr > 0.004 ? mode_put(v, f*(1 + irr*(0.6 + 0.4*hash1(f))), 0.6*wc, 0.6*wr, t*0.8, nn);
+  // (buzzing lips cannot choose between two near-equal resonances, so they get one)
+  (irr > 0.004 && !(ex_cont && ex_eff == 1)) ? mode_put(v, f*(1 + irr*(0.6 + 0.4*hash1(f))), 0.6*wc, 0.6*wr, t*0.8, nn);
 );
 
 function modal_setup(v, f0) local(nn, k, x, y, r, j, m, st, f, wc, wr, extra, x2)
@@ -538,6 +564,9 @@ function bands_setup(v) local(m, bd, k, buf, len, f, r, t60, ww)
   loop(v[V_NM],
     f = m[7]; r = sqrt(m[1]);
     t60 = -6.907755/(srate*log(r));
+    // a sustaining exciter needs something to push against: very lossy
+    // materials (leather, film, cardboard) get a minimum ring while driven
+    t60 = max(t60, BAND_T60_MIN*(v[V_FBASE]/f)^0.5);
     len = ceil(2*srate/f) + 6;
     (buf + len < v[V_LBASE] + LINE_LEN) ? (
       bd[0] = buf; bd[1] = len; bd[2] = 0; buf += len;
@@ -690,7 +719,7 @@ function voice_start(v, note, vel) local(vi, vn, f0, rlo, rhi, tl, gr, rm, lg2, 
   // lips pull the pitch up by a measured amount on each element: lower the
   // lips and the element together by that much
   v[V_LIPR] = LIP_RATIO;
-  (ex_eff == 1 && v[V_BANDED]) ? v[V_FK] = 2^(-(el == 1 ? LIPC_MEM : el == 2 ? LIPC_BAR : el == 3 ? LIPC_PLATE : LIPC_TINE)/1200);
+  (ex_eff == 1 && v[V_BANDED]) ? v[V_FK] = 2^(-(el == 1 ? LM_SOFT - (LM_SOFT - 50)*max(0, min(1, (min(0.03, mat(elm, M_E)*0.0003) - LM_EDGE)/0.009)) : el == 2 ? LIPC_BAR : el == 3 ? LIPC_PLATE : LIPC_TINE)/1200);
   // measured pull of the sustaining exciters on the loop's pitch (cents),
   // taken out by tuning the loop flat by the same amount
   v[V_WG] ? (
@@ -824,7 +853,8 @@ function excite(v, c) local(xt, pp, e, pd, rr, inc, area, kq, flow, dp, acc, dv,
       e = LIP_Z*flow/PSCALE;
     ) : xt == 3 ? (
       dv = pp - c;
-      bs = abs((dv + 0.001)*(v[V_BANDED] ? BOW_SLOPE_B : BOW_SLOPE)) + 0.75;
+      // Schelleng: nearer the bridge the bow must press harder (a lower slope)
+      bs = abs((dv + 0.001)*(v[V_BANDED] ? BOW_SLOPE_B : BOW_SLOPE*(max(0.02, v[V_BETA])/0.2)^BOW_FEXP)) + 0.75;
       bs = bs*bs; bs = 1/(bs*bs);
       e = dv*max(0.01, min(0.98, bs));
     ) : (
@@ -949,6 +979,19 @@ function voice_tick(v) local(tgt, env, lvl, pp, nz, ba, bb, wp, aout, y, mm, aa,
     out += 0.02*ns*v[V_DRVN];
   );
   out *= v[V_OG];
+  // rattle: past a small gap the material slaps against its fixings; crackle:
+  // crumpled foil pops at random, more often the harder it vibrates. Both
+  // only read the element (never feed back into it), so they cannot destabilise it.
+  mat_rat > 0 ? (
+    x = out - max(-RAT_GAP, min(RAT_GAP, out));
+    y = 0.9*(v[V_RATS] + x - v[V_RATX]); v[V_RATX] = x; v[V_RATS] = y;
+    out += mat_rat*RAT_GAIN*y;
+  );
+  mat_crk > 0 ? (
+    x = rand(1) < mat_crk*min(1, 8*abs(out))*CRK_RATE ? (rand(2) - 1)*(0.05 + abs(out)) : 0;
+    y = 0.6*(v[V_CRKS] + x - v[V_CRKX]); v[V_CRKX] = x; v[V_CRKS] = y;
+    out += y;
+  );
   // --- per-voice resonator
   res = out;
   v[V_NRES] ? (
@@ -1074,6 +1117,7 @@ function update_globals()
   beta_ = slider17/100; res_amt = slider18/100; mono = slider19|0;
   glide_ms = slider20; fine_st = slider21/100; out_g = 10^(slider22/20);
   energy_params(en);
+  mat_rat = mat(elm, M_RAT); mat_crk = mat(elm, M_CRK);
   ex_cont = (ex == 0 || ex == 1 || ex == 3);
   // a windway turns lips or a bow into an air jet (a flute); a reed stays a reed (a windcap)
   ex_eff = (cp == 3 && (ex == 1 || ex == 3)) ? 6 : ex;
@@ -1131,11 +1175,12 @@ PART_TRIM[12] = -0.5;
 // lip valve (Trombolese reed.py: brass end of the morph)
 LIP_WIDTH = 0.012; LIP_REST = 0.0003; LIP_CLOSE = 12000; LIP_Q = 15; LIP_Z = 2700000;
 LIP_RATIO = 0.92; LIP_LOOPK = 2; LIP_BORE = 0.88; PSCALE = 4000;
-TH_K = 0.6; DEBUG_BANDED = 0; DBG_NODISP = 0; BOW_SLOPE_B = 3; BAND_G = 3; BAND_GAMMA = 0.7; BOWAIR_SGN = 1; BOWAIR_K = 2;
-LIPC_MEM = 41; LIPC_BAR = 124; LIPC_PLATE = 113; LIPC_TINE = 148; BOW_SLOPE = 2;
+TH_K = 0.6; RAT_GAP = 0.06; RAT_GAIN = 2.5; DEBUG_BANDED = 0; DBG_NODISP = 0; BOW_SLOPE_B = 3; BAND_G = 3; BAND_GAMMA = 0.7; BOWAIR_SGN = 1; BOWAIR_K = 2;
+LM_SOFT = 100; LM_EDGE = 0.0045; LIPC_BAR = 124; LIPC_PLATE = 113; LIPC_TINE = 148; BOW_SLOPE = 1.5; BOW_FEXP = 0.5; BAND_T60_MIN = 0.3;
 JET_C0 = 16; JET_C1 = 7; BOW_C0 = 6; BOW_C1 = 5;
 dt = 1/srate;
 lvl_decay = exp(-1/(0.05*srate));
+CRK_RATE = 900/srate;
 vis_dec = exp(-1/(0.3*srate)); vis_lvl = 0;
 lim_att = 1 - exp(-1/(0.0005*srate)); lim_rel = exp(-1/(0.15*srate)); lim_env = 0;
 expr = 1; cc11 = 1; cc2 = 1; breath_seen = 0; at_press = 0; mw = 0; bend = 0; mod_st = 0;
@@ -1151,7 +1196,7 @@ update_globals();
 // ===========================================================================
 // GUI: part names, descriptions, pictures and presets
 // ===========================================================================
-function cat_count(c) ( c==0?6 : c==1?6 : c==2?6 : c==3?20 : c==4?5 : c==5?20 : c==6?4 : c==7?4 : c==8?5 : c==9?4 : 5; );
+function cat_count(c) ( c==0?6 : c==1?6 : c==2?6 : c==3?MAT_N : c==4?5 : c==5?MAT_N : c==6?4 : c==7?4 : c==8?5 : c==9?4 : 5; );
 function cat_title(c)
 (
   c==0?"ENERGY SOURCE" : c==1?"EXCITER" : c==2?"VIBRATING ELEMENT" : c==3?"ELEMENT MATERIAL" :
@@ -1162,7 +1207,9 @@ function mat_name(i)
 (
   i==0?"Steel":i==1?"Brass":i==2?"Bronze":i==3?"Aluminium":i==4?"Gold":i==5?"Glass":i==6?"Crystal":
   i==7?"Ice":i==8?"Marble":i==9?"Clay":i==10?"Spruce":i==11?"Rosewood":i==12?"Bamboo":i==13?"Bone":
-  i==14?"Gut":i==15?"Nylon":i==16?"Carbon fibre":i==17?"Rubber":i==18?"Paper":"Jelly";
+  i==14?"Gut":i==15?"Nylon":i==16?"Carbon fibre":i==17?"Rubber":i==18?"Paper":i==19?"Jelly":
+  i==20?"Plastic":i==21?"PVC":i==22?"Wood":i==23?"Leather":i==24?"Cardboard":i==25?"Foil":
+  i==26?"Cling film":i==27?"Tin":i==28?"Car panel":i==29?"Chain link":"Handpan steel";
 );
 function opt_name(c, i)
 (
@@ -1199,7 +1246,18 @@ function mat_desc(i)
   i==16?"Very stiff and light: bright and precise." :
   i==17?"Absurdly soft and lossy: thuds, and wobbles in pitch." :
   i==18?"Light, rough and floppy: a papery buzz that dies at once." :
-        "Hardly a solid at all: very lossy, and it wobbles in pitch.";
+  i==19?"Hardly a solid at all: very lossy, and it wobbles in pitch." :
+  i==20?"Everyday hard plastic: light, soft and quite lossy. A dull, toy-like knock." :
+  i==21?"Plumbing pipe plastic: smooth inside, so a PVC air column still speaks well; dull when struck." :
+  i==22?"Plain hardwood: warm and woody, medium decay." :
+  i==23?"A hide: very soft and lossy, a dead, thumpy thud, sagging a little in pitch." :
+  i==24?"Paperboard, like a toilet roll tube: rough and porous, a honky, papery thud." :
+  i==25?"Crumpled aluminium foil: every crease splits the ring, and it crackles when it vibrates hard." :
+  i==26?"Stretched polyethylene film: floppy and lossy, and it slaps and buzzes like a kazoo when played hard." :
+  i==27?"Galvanised roofing sheet: metallic and uneven, and its loose fixings rattle." :
+  i==28?"Painted car-body steel: the paint damps it, so it clanks rather than rings." :
+  i==29?"Steel wire mesh: a metallic twang with a jangle as the links rattle." :
+        "Nitrided steel, as hammered into a handpan: sweet, pure and long-ringing.";
 );
 function opt_desc(c, i)
 (
@@ -1325,7 +1383,43 @@ function garc_(u, v, r) local(k, a0, a1)
 function draw_mat(m) local(k, u, v)
 (
   gmat(m, 1); grrf(0.06, 0.12, 0.88, 0.76, 0.12);
-  m <= 4 ? (                                    // metals: a sheen
+  m >= 20 ? (
+    m == 20 ? (                                 // plastic: a glossy streak and a mould seam
+      gcol(1, 1, 1); glnw(0.2, 0.3, 0.55, 0.26, 3); gmat(m, 0.75); gln(0.06, 0.62, 0.94, 0.62);
+    ) : m == 21 ? (                             // PVC: a printed pipe marking
+      gcol(0.35, 0.35, 0.38); grc(0.06, 0.44, 0.88, 0.1);
+      gcol(0.9, 0.9, 0.86); k = 0; loop(6, grc(0.12 + 0.13*k, 0.47, 0.07, 0.04); k += 1;);
+    ) : m == 22 ? (                             // wood: grain and a knot
+      gmat(m, 0.72); k = 0;
+      loop(5, v = 0.22 + 0.14*k; u = 0.08; loop(14, gln(u, v + 0.03*sin(u*11 + k), u + 0.06, v + 0.03*sin((u + 0.06)*11 + k)); u += 0.06;); k += 1;);
+      gmat(m, 0.5); gell(0.66, 0.5, 0.07, 0.05, 1);
+    ) : m == 23 ? (                             // leather: stitching and pores
+      gmat(m, 1.4); u = 0.12; loop(12, gln(u, 0.2, u + 0.04, 0.2); gln(u, 0.8, u + 0.04, 0.8); u += 0.065;);
+      gmat(m, 0.75); k = 0; loop(12, gci(0.15 + 0.7*(0.5 + 0.5*hash1(k + 3)), 0.3 + 0.4*(0.5 + 0.5*hash1(k + 33)), 0.015, 1); k += 1;);
+    ) : m == 24 ? (                             // cardboard: corrugated flutes
+      gmat(m, 0.75); u = 0.1; loop(13, glnw(u, 0.16, u, 0.84, 1.5); u += 0.065;);
+      gmat(m, 1.2); glnw(0.06, 0.5, 0.94, 0.5, 2);
+    ) : m == 25 ? (                             // foil: crinkled facets
+      k = 0; loop(9, gmat(m, 0.75 + 0.5*(0.5 + 0.5*hash1(k + 9)));
+        u = 0.1 + 0.27*(k % 3); v = 0.16 + 0.23*floor(k/3); gtri(u, v, u + 0.26, v + 0.05 + 0.1*hash1(k), u + 0.08, v + 0.22); k += 1;);
+      gcol(1, 1, 1); gln(0.3, 0.3, 0.5, 0.45); gln(0.6, 0.25, 0.75, 0.6);
+    ) : m == 26 ? (                             // cling film: wrinkles and a sheen
+      gcol(0.65, 0.78, 0.86); u = 0.1; loop(16, gln(u, 0.4 + 0.1*sin(u*14), u + 0.05, 0.4 + 0.1*sin((u + 0.05)*14)); gln(u, 0.66 + 0.06*sin(u*20 + 1), u + 0.05, 0.66 + 0.06*sin((u + 0.05)*20 + 1)); u += 0.05;);
+      gcol(1, 1, 1); glnw(0.18, 0.26, 0.4, 0.22, 2);
+    ) : m == 27 ? (                             // tin roof: corrugations and a screw
+      k = 0; loop(6, gmat(m, 1.3); glnw(0.08, 0.2 + 0.12*k, 0.92, 0.2 + 0.12*k, 2); gmat(m, 0.7); glnw(0.08, 0.26 + 0.12*k, 0.92, 0.26 + 0.12*k, 2); k += 1;);
+      gcol(0.3, 0.3, 0.32); gci(0.8, 0.5, 0.035, 1);
+    ) : m == 28 ? (                             // car panel: glossy paint with a reflection
+      gcol(1, 0.8, 0.8); u = 0.12; loop(15, gln(u, 0.3 + 0.12*sin(u*4), u + 0.05, 0.3 + 0.12*sin((u + 0.05)*4)); u += 0.05;);
+      gmat(m, 0.6); gln(0.5, 0.12, 0.5, 0.88);
+    ) : m == 29 ? (                             // chain link: diamond mesh
+      gmat(m, 0.55); grrf(0.06, 0.12, 0.88, 0.76, 0.12);
+      gmat(m, 1.4); k = 0; loop(6, gln(0.06 + 0.15*k, 0.12, 0.06 + 0.15*k + 0.3, 0.88); gln(0.36 + 0.15*k, 0.12, 0.06 + 0.15*k, 0.88); k += 1;);
+    ) : (                                       // handpan: a tone field and hammer dimples
+      gmat(m, 1.5); gell(0.5, 0.5, 0.26, 0.24, 0); gell(0.5, 0.5, 0.12, 0.11, 0);
+      gmat(m, 1.25); k = 0; loop(10, gci(0.15 + 0.7*(0.5 + 0.5*hash1(k + 5)), 0.2 + 0.6*(0.5 + 0.5*hash1(k + 50)), 0.012, 1); k += 1;);
+    );
+  ) : m <= 4 ? (                                    // metals: a sheen
     gmat(m, 1.35); k = 0; loop(3, glnw(0.2 + 0.18*k, 0.82, 0.42 + 0.18*k, 0.18, 2); k += 1;);
   ) : m <= 6 ? (                                // glass, crystal: facets and a glint
     gmat(m, 1.25); gtri(0.12, 0.2, 0.5, 0.2, 0.3, 0.55); gtri(0.55, 0.8, 0.9, 0.8, 0.9, 0.45);
@@ -1622,13 +1716,14 @@ function draw_wrapped(s, x, y, w, lh) local(n, k, ch, tw, th, cy)
 
 // ---- presets: the ten parts and two materials, then force, size,
 // brightness, decay, position, resonator amount, play mode
-PRESET_TAB = 7000; PRESET_STRIDE = 20; PRESET_N = 16;
+PRESET_TAB = 13100; PRESET_STRIDE = 20; PRESET_N = 19;
 function preset_name(k)
 (
   k==0?"Bamboo Saxophone":k==1?"Ice Violin":k==2?"Marble Marimba":k==3?"Glass Trumpet":
   k==4?"Crystal Music Box":k==5?"Rubber Tuba":k==6?"Electric Bone Harp":k==7?"Clay Drum":
   k==8?"Jelly Gong":k==9?"Steel Flute":k==10?"Bowed Ice Bar":k==11?"Golden Piano":
-  k==12?"Paper Accordion":k==13?"Carbon Trombone":k==14?"Buzzing Glockenspiel":"Bronze Bell Plate";
+  k==12?"Paper Accordion":k==13?"Carbon Trombone":k==14?"Buzzing Glockenspiel":k==15?"Bronze Bell Plate":
+  k==16?"Plastic Recorder":k==17?"Cling Film Kazoo":"Tin Roof Banjo";
 );
 function pdef(k, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, f, sz, br, dc, ps, ra, mo) local(p)
 (
@@ -1654,6 +1749,9 @@ pdef(12, 0, 0, 4, 18, 3, 18, 3, 1, 4, 2, 0, 4,  70, 100,   0, 100, 20, 50, 0);
 pdef(13, 0, 1, 5, 16, 0, 16, 2, 0, 3, 3, 0, 0,  75, 100,   0, 100, 20, 50, 1);
 pdef(14, 5, 2, 2,  3, 2,  3, 0, 3, 4, 2, 0, 4,  60, 100,   0, 100, 15, 50, 0);
 pdef(15, 4, 2, 3,  2, 4,  2, 0, 1, 4, 2, 0, 1,  80, 100,   0, 200, 20, 50, 0);
+pdef(16, 0, 1, 5, 20, 2, 20, 3, 1, 1, 2, 0, 0,  65, 100,   0, 100, 20, 40, 0);
+pdef(17, 0, 1, 1, 26, 3, 24, 2, 1, 4, 2, 0, 0,  90, 100,   0, 100, 20, 50, 0);
+pdef(18, 3, 4, 0,  0, 3, 27, 0, 2, 0, 0, 0, 3,  75, 100,   0, 100, 12, 50, 0);
 
 function apply_preset(k) local(p, j)
 (

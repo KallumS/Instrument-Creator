@@ -45,7 +45,7 @@ insts = [{1: 0, 2: 0, 3: 5}, {1: 1, 2: 3, 3: 0}, {1: 0, 2: 1, 3: 2}, {1: 4, 2: 2
 for inst in insts:
     for e in extremes:
         run({**inst, **e}, 48000, f"{inst} {e}")
-    for sl, cnt in ((4, 20), (5, 5), (6, 20), (7, 4), (8, 4), (9, 5), (10, 4), (11, 5), (12, 5)):
+    for sl, cnt in ((4, 31), (5, 5), (6, 31), (7, 4), (8, 4), (9, 5), (10, 4), (11, 5), (12, 5)):
         for k in range(cnt):
             run({**inst, sl: k}, 48000, f"{inst} {{{sl}: {k}}}")
 print(f"extremes: done. worst CPU {worst:.1f}%")

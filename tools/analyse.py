@@ -16,7 +16,8 @@ EXCITER = ["Reed", "Lips", "Hammer", "Bow", "Plectrum", "Mallet"]
 ELEMENT = ["String", "Membrane", "Bar", "Plate", "Reed", "Air column"]
 MATERIAL = ["Steel", "Brass", "Bronze", "Aluminium", "Gold", "Glass", "Crystal", "Ice",
             "Marble", "Clay", "Spruce", "Rosewood", "Bamboo", "Bone", "Gut", "Nylon",
-            "Carbon fibre", "Rubber", "Paper", "Jelly"]
+            "Carbon fibre", "Rubber", "Paper", "Jelly", "Plastic", "PVC", "Wood", "Leather", "Cardboard",
+            "Foil", "Cling film", "Tin", "Car panel", "Chain link", "Handpan steel"]
 RESONATOR = ["Bore", "Soundbox", "Pipe", "Cavity", "Body"]
 COUPLER = ["Bridge", "Soundpost", "Mouthpiece", "Windway"]
 RADIATOR = ["Bell", "Soundboard", "Drumhead", "Cone"]
