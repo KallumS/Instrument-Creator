@@ -1,7 +1,7 @@
 # Session log
 
 **Session 1, 30 September 2026.** The whole of Instrument Creator so far was
-built in this one session, in six requests:
+built in this one session, in seven requests:
 
 | # | Request | Result | Commits |
 |---|---|---|---|
@@ -11,6 +11,7 @@ built in this one session, in six requests:
 | 4 | "Make sure CLAUDE.md is up to date, create a session log for this session and an ADR which highlights the big decisions, and an in-depth write-up of every part and material" | this log, `docs/adr/` (18 records), `docs/PARTS-AND-MATERIALS.md`, CLAUDE.md | `bcd99e9`, `ecc039b` |
 | 5 | "It can be scientific, as you're the only one that will read it" | the guide rewritten as a technical reference; `docs/PARTS.md` merged into it and removed | `b9c7ffd` |
 | 6 | "Make sure all of the docs are up to date, then write me a prompt to continue in a fresh session" | docs checked against the code; this table and the handover below | `c42bd31` |
+| 7 | A screenshot of the plugin running in REAPER | window fitted to any height (REAPER's slider list takes space); FX-order note | (see below) |
 
 What was built on: Trombolese and Reverberator, read from their
 repositories (read-only). What was measured, what failed and what was changed
@@ -282,4 +283,25 @@ Candidate next steps, roughly in order of value:
 4. Anything new the user asks for. Before changing a design rule, read its
    ADR; after any sound change, re-run `trims.py` / `apply_trims.py` and
    `check.py`, and update PARTS-AND-MATERIALS.md, the README and this log.
+
+## 16. First run in REAPER
+
+The user's screenshot (REAPER on macOS, Retina) showed the window drawn
+exactly as in ysfx: fonts, `gfx_ext_retina` scaling and every picture fine.
+Two findings:
+
+- **Height.** REAPER shows the visible sliders (Force … Age) above the
+  `@gfx` area, leaving about 565 logical px of the 640 requested; the preview
+  panel was pushed off the bottom (description clipped, hint and waveform
+  hidden). The layout now reserves the preview first
+  (`ph_min = max(140, 0.31·(h − header))`), sizes the six tiles and the
+  control row from what is left, gives the waveform its own column, clips
+  text at the panel edge, and shows the material line and the hint only when
+  they fit whole. Checked at 800×480, 966×565, 940×640 and 1200×800.
+- **FX order.** The title showed the instrument as FX 2 of 2 on a track
+  named after Reverberator. An instrument overwrites its input, so a reverb
+  before it does nothing; the instrument must be first. (The README already
+  says so.)
+
+Not yet confirmed in REAPER: menus, clicking, mouse wheel, automation.
 

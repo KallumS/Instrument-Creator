@@ -173,4 +173,8 @@ line A.
   depends on pressure).
 - Rubber, paper, cardboard, leather, jelly, PVC and cling film are less lossy
   than the real materials, so that they can be played.
-- ysfx is not REAPER: the GUI, menus and automation are untested in REAPER.
+- First check in REAPER (macOS, Retina): the window renders as in ysfx. REAPER
+  draws its own slider list above `@gfx`, so the window gets less height than
+  requested (about 565 logical px); the layout must fit any height (it
+  reserves the preview panel first). Menus, clicking and automation in REAPER
+  are not yet confirmed.

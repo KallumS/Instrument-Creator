@@ -759,7 +759,7 @@ violin lost 7 dB and the piano 8 dB; blown instruments gain level with age
 | Loudness spread across parts | < 0.2 dB (except capped) |
 | CPU, 8-note chords at 48 kHz | reed 3 %, struck plate 7 %, bowed string 8 %, bowed plate 14 % of one core; worst sweep case 27.5 % (3 notes, 96 kHz) |
 | Playing behaviour | Mono slide C4→E4 ≈ 150 ms; bend and Levers reach D4 (293.2 Hz); sustain pedal holds; Electronics vibrato at 5.5 Hz |
-| GUI | screenshots of every option and material, and of Age (`tools/shot.py`) |
+| GUI | screenshots of every option and material, and of Age (`tools/shot.py`); rendered in REAPER on macOS (Retina) as in ysfx; layout checked at 800×480, 966×565, 940×640, 1200×800 |
 
 ---
 

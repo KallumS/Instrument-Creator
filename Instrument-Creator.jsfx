@@ -1738,14 +1738,15 @@ function draw_wrapped(s, x, y, w, lh) local(n, k, ch, tw, th, cy)
     ch == 32 ? (
       strcpy(#wt, #wl); strlen(#wt) ? strcat(#wt, " "); strcat(#wt, #ww);
       gfx_measurestr(#wt, tw, th);
-      (tw > w && strlen(#wl)) ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); cy += lh; strcpy(#wl, #ww); ) : strcpy(#wl, #wt);
+      (tw > w && strlen(#wl)) ? ( cy + lh <= wrap_ymax ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); ); cy += lh; strcpy(#wl, #ww); ) : strcpy(#wl, #wt);
       strcpy(#ww, "");
     ) : (
       sprintf(#wc, "%c", ch); strcat(#ww, #wc);
     );
     k += 1;
   );
-  strlen(#wl) ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); cy += lh; );
+  (strlen(#wl) && cy + lh <= wrap_ymax) ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); );
+  strlen(#wl) ? cy += lh;
   cy;
 );
 
@@ -1808,7 +1809,7 @@ function randomise() local(c)
   slider_automate(2^12 - 1);
   gui_dirty = 1; cur_preset = -1;
 );
-cur_preset = 0; last_cat = 2; aud_note = 60;
+cur_preset = 0; last_cat = 2; aud_note = 60; wrap_ymax = 1000000;
 
 @slider
 update_globals();
@@ -2055,8 +2056,12 @@ loop(12,
 // ---- the assembled instrument
 ax = lx + lw + pad; aw = gw - ax - pad; ay = ly;
 gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = ax; gfx_y = ay; gfx_drawstr("YOUR INSTRUMENT: CLICK A PART TO CHANGE IT, HOVER FOR A CLOSER LOOK");
-gap = 26*gsc;
-tw_ = (aw - 2*gap)/3; th_ = min(0.78*tw_, 0.27*(gh - ay));
+// REAPER puts its slider list above the window, so the height varies: keep
+// room for the preview panel, then fit the pictures into what is left
+ph_min = max(140*gsc, 0.31*(gh - ay));
+gap = min(26*gsc, max(12*gsc, 0.04*(gh - ay)));
+tw_ = (aw - 2*gap)/3;
+th_ = max(40*gsc, min(0.78*tw_, (gh - ay - 16*gsc - 1.6*gap - 12*gsc - pad - ph_min)/2.72));
 ty1 = ay + 16*gsc; ty2 = ty1 + th_ + gap;
 tile(0, ax, ty1, tw_, th_);
 tile(1, ax + tw_ + gap, ty1, tw_, th_);
@@ -2088,13 +2093,15 @@ loop(4,
 // ---- the close-up preview of the hovered (or last changed) part
 pc = hov >= 0 ? hov : last_cat;
 py_ = cy_ + ch_ + 12*gsc; ph_ = gh - py_ - pad; pw_ = aw;
-ph_ > 60*gsc ? (
+ph_ > 40*gsc ? (
   gfx_set(0.13, 0.135, 0.155, 1); gfx_rect(ax, py_, pw_, ph_, 1);
   group_col(pc); gfx_rect(ax, py_, 3*gsc, ph_, 1);
-  psz = min(ph_ - 16*gsc, 0.3*pw_);
+  psz = min(ph_ - 16*gsc, 0.22*pw_);
   v = slider(pc + 1)|0;
-  draw_part(pc, v, ax + 12*gsc, py_ + 8*gsc, 1.25*psz, psz, 1);
-  tx = ax + 24*gsc + 1.25*psz; tw2 = pw_ - (tx - ax) - 12*gsc;
+  draw_part(pc, v, ax + 12*gsc, py_ + 8*gsc, 1.15*psz, psz, 1);
+  sw = pw_ > 560*gsc ? min(200*gsc, 0.22*pw_) : 0;
+  tx = ax + 24*gsc + 1.15*psz; tw2 = pw_ - (tx - ax) - 12*gsc - (sw > 0 ? sw + 12*gsc : 0);
+  wrap_ymax = py_ + ph_ - 6*gsc;
   gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = tx; gfx_y = py_ + 10*gsc; gfx_drawstr(cat_title(pc));
   gfx_setfont(5); gfx_set(0.97, 0.97, 0.99, 1); gfx_x = tx; gfx_y = py_ + 24*gsc; gfx_drawstr(opt_name(pc, v));
   gfx_setfont(1); gfx_set(0.8, 0.82, 0.87, 1);
@@ -2105,13 +2112,17 @@ ph_ > 60*gsc ? (
     ee >= 1 ? sprintf(#stf, "%g GPa", ee) : ee >= 0.001 ? sprintf(#stf, "%g MPa", ee*1000) : sprintf(#stf, "%g kPa", ee*1000000);
     t60 >= 1 ? sprintf(#rng, "%.1f s", t60) : sprintf(#rng, "%d ms", t60*1000);
     sprintf(#info, "Stiffness %s, density %d kg/m3. A 440 Hz ring lasts about %s.", #stf, mat(v, M_RHO), #rng);
-    gfx_set(0.6, 0.63, 0.7, 1); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc);
+    wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); wrap_ymax = wlim;
+    hy <= wrap_ymax ? ( gfx_set(0.6, 0.63, 0.7, 1); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
   );
-  gfx_set(0.55, 0.85, 0.6, 1); yy = draw_wrapped(combo_hint(), tx, yy + 6*gsc, tw2, 17*gsc);
-  // what it sounds like right now
-  sw = min(tw2, 260*gsc); sh = min(46*gsc, py_ + ph_ - yy - 12*gsc);
-  sh > 16*gsc ? (
-    sx = ax + pw_ - sw - 12*gsc; sy = py_ + ph_ - sh - 10*gsc;
+  // the hint only if it fits whole (measure it first by drawing nothing)
+  wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(combo_hint(), tx, yy + 6*gsc, tw2, 17*gsc); wrap_ymax = wlim;
+  hy <= wrap_ymax ? ( gfx_set(0.55, 0.85, 0.6, 1); yy = draw_wrapped(combo_hint(), tx, yy + 6*gsc, tw2, 17*gsc); );
+  wrap_ymax = 1000000;
+  // what it sounds like right now, in its own column
+  sh = min(90*gsc, ph_ - 20*gsc);
+  (sw > 0 && sh > 16*gsc) ? (
+    sx = ax + pw_ - sw - 12*gsc; sy = py_ + 0.5*(ph_ - sh);
     gfx_set(0.09, 0.095, 0.11, 1); gfx_rect(sx, sy, sw, sh, 1);
     st0 = (scope_w - 1024 + SCOPE_LEN) & (SCOPE_LEN - 1); k = 0;
     while (k < 400 && !(SCOPE_BUF[(st0 + k) & (SCOPE_LEN - 1)] <= 0 && SCOPE_BUF[(st0 + k + 1) & (SCOPE_LEN - 1)] > 0)) ( k += 1; );
