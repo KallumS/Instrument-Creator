@@ -13,7 +13,7 @@ built in this one session, in nine requests:
 | 6 | "Make sure all of the docs are up to date, then write me a prompt to continue in a fresh session" | docs checked against the code; this table and the handover below | `c42bd31` |
 | 7 | A screenshot of the plugin running in REAPER | window fitted to any height (REAPER's slider list takes space); FX-order note | `0e350d8` |
 | 8 | "Keep everything in one place" (move REAPER's sliders into the window), with REAPER's JSFX and API docs | all sliders hidden; a control strip in the window; `tools/click.cpp`; ADR 0019 | `dbe6539` |
-| 9 | "Please update all of the documents and write a prompt to continue in a fresh session" | docs checked against the code; "Where things stand" and the handover moved to the end and refreshed | (see below) |
+| 9 | "Please update all of the documents and write a prompt to continue in a fresh session" | docs checked against the code; "Where things stand" and the handover moved to the end and refreshed | `4837278` |
 
 What was built on: Trombolese and Reverberator, read from their
 repositories (read-only). What was measured, what failed and what was changed
