@@ -1,7 +1,7 @@
 # Session log
 
 **Session 1, 30 September 2026.** The whole of Instrument Creator so far was
-built in this one session, in eight requests:
+built in this one session, in nine requests:
 
 | # | Request | Result | Commits |
 |---|---|---|---|
@@ -13,6 +13,7 @@ built in this one session, in eight requests:
 | 6 | "Make sure all of the docs are up to date, then write me a prompt to continue in a fresh session" | docs checked against the code; this table and the handover below | `c42bd31` |
 | 7 | A screenshot of the plugin running in REAPER | window fitted to any height (REAPER's slider list takes space); FX-order note | `0e350d8` |
 | 8 | "Keep everything in one place" (move REAPER's sliders into the window), with REAPER's JSFX and API docs | all sliders hidden; a control strip in the window; `tools/click.cpp`; ADR 0019 | `dbe6539` |
+| 9 | "Please update all of the documents and write a prompt to continue in a fresh session" | docs checked against the code; "Where things stand" and the handover moved to the end and refreshed | (see below) |
 
 What was built on: Trombolese and Reverberator, read from their
 repositories (read-only). What was measured, what failed and what was changed
@@ -243,48 +244,6 @@ and 2 kHz, string inharmonicity, soundbox resonance, wall factor) were
 computed from the plugin's own table, not written by hand; checking the guide
 against the code caught one wrong claim (the stretched-tuning range).
 
-## Where things stand
-
-- Every energy × exciter × element combination plays and is stable at 44.1,
-  48 and 96 kHz and at age 0 and 100; all 19 presets play.
-- In tune: plucked, struck and reed notes within a few cents; lips, jets and
-  bows mostly within 10 c (exceptions in PARTS-AND-MATERIALS.md §4.6).
-- Level-matched within 0.2 dB across parts, except three capped combinations.
-- Worst CPU: a bowed-plate chord at 14 % of a core at 48 kHz; 27.5 % for a
-  three-note chord at 96 kHz.
-
-Open items:
-
-- **Try it in REAPER.** The window has been seen in REAPER (§16); the popup
-  menus, clicking, dragging the controls and automation have only been
-  checked in ysfx.
-- The most lossless steels bowed at exactly 1/5 or 1/3 of the string can
-  flip to the octave.
-- Lips on a membrane: bone is 57 c flat, jelly 26 c sharp.
-- A reed cannot play a true cone (ADR 0017).
-- A single push into lips sags in pitch as it fades.
-
-## Handover to the next session
-
-State at the end of session 1: everything is committed and pushed on
-`claude/reaper-custom-instrument-creator-xz08x6`; no pull request has been
-opened; the GitHub repository is still named Wind-Instrument-Creator (the
-user intends to rename it Instrument-Creator; the files already use the new
-name). A fresh container has no `tools/build/` and no Python packages: run
-`pip install numpy scipy matplotlib` and `tools/build_host.sh` first.
-
-Candidate next steps, roughly in order of value:
-
-1. Feedback from trying it in REAPER (menus, clicking, automation, window
-   size, CPU on the user's machine). Nothing has been run in REAPER itself.
-2. The open items above (bowed steel double-slip at 1/5 and 1/3; bone and
-   jelly lips on a membrane; a true conical reed).
-3. Removing the vestigial code listed in PARTS-AND-MATERIALS.md §14 (then
-   render, run `check.py`, commit).
-4. Anything new the user asks for. Before changing a design rule, read its
-   ADR; after any sound change, re-run `trims.py` / `apply_trims.py` and
-   `check.py`, and update PARTS-AND-MATERIALS.md, the README and this log.
-
 ## 16. First run in REAPER
 
 The user's screenshot (REAPER on macOS, Retina) showed the window drawn
@@ -338,3 +297,54 @@ gives the time for a double-click.
 - Layout checked at 800×480 (cramped: tile names overlap their pictures),
   800×560, 940×720 and 1200×860. No DSP change, so no re-trim or re-check.
 
+## Where things stand
+
+- Every energy × exciter × element combination plays and is stable at 44.1,
+  48 and 96 kHz and at age 0 and 100; all 19 presets play.
+- In tune: plucked, struck and reed notes within a few cents; lips, jets and
+  bows mostly within 10 c (exceptions in PARTS-AND-MATERIALS.md §4.6).
+- Level-matched within 0.2 dB across parts, except three capped combinations.
+- Worst CPU: a bowed-plate chord at 14 % of a core at 48 kHz; 27.5 % for a
+  three-note chord at 96 kHz.
+
+Open items:
+
+- **Try it in REAPER.** The window has been seen in REAPER (§16), before
+  the control strip existed; the strip, the popup menus, clicking, dragging
+  and automation have only been checked in ysfx (`tools/click.cpp`).
+- At very small window sizes (800×480) the tile names overlap their
+  pictures.
+- The most lossless steels bowed at exactly 1/5 or 1/3 of the string can
+  flip to the octave.
+- Lips on a membrane: bone is 57 c flat, jelly 26 c sharp.
+- A reed cannot play a true cone (ADR 0017).
+- A single push into lips sags in pitch as it fades.
+
+## Handover to the next session
+
+State at the end of session 1 (1 October 2026): everything is committed and
+pushed on `claude/reaper-custom-instrument-creator-xz08x6`; no pull request
+has been opened; the GitHub repository is still named Wind-Instrument-Creator
+(the user intends to rename it Instrument-Creator; the files already use the
+new name). A fresh container has no `tools/build/` and no Python packages:
+run `pip install numpy scipy matplotlib` and `tools/build_host.sh` first.
+
+The user tests in REAPER on macOS (Retina) and reports back with
+screenshots. The last thing they saw in REAPER was the window before the
+control strip (§16); the strip (§17) is new to them.
+
+Candidate next steps, roughly in order of value:
+
+1. Feedback from REAPER on the new window: the control strip (drag, Shift,
+   wheel, double-click, Poly/Mono), the part menus, automation of hidden
+   sliders, window size for an instance saved at the old 940×640, CPU on the
+   user's machine. Ask for a screenshot if something looks wrong.
+2. The open items above (bowed steel double-slip at 1/5 and 1/3; bone and
+   jelly lips on a membrane; a true conical reed; small-window tile labels).
+3. Removing the vestigial code listed in PARTS-AND-MATERIALS.md §14 (then
+   render, run `check.py`, commit).
+4. Anything new the user asks for. Before changing a design rule, read its
+   ADR; after any sound change, re-run `trims.py` / `apply_trims.py` and
+   `check.py`; after a window change, screenshot it at 940×720 and 800×560
+   and test the controls with `tools/build/click`; then update
+   PARTS-AND-MATERIALS.md, the README, CLAUDE.md and this log.

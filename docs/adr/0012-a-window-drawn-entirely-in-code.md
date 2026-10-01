@@ -25,6 +25,6 @@ they are hidden too and drawn in the window.
 
 - Nothing to install beyond the one file; pictures always match the options.
 - The window thread runs concurrently with audio in REAPER: audio code and
-  window code must not share scratch globals (only the Play button's flag is
-  shared).
+  window code must not share scratch globals (only two flags, the Play
+  button's `aud_req` and `gui_dirty`, are shared).
 - Pictures are simple; nicer artwork could be loaded from PNGs later.

@@ -7,6 +7,9 @@ not a programmer: explain results in plain language and keep `README.md`
 readable for them. The repository was created as Wind-Instrument-Creator and
 is being renamed Instrument-Creator.
 
+REAPER's JSFX reference is at https://www.reaper.fm/sdk/js/ (the user
+supplied a copy in session 1; the useful parts are in SESSION-LOG §17).
+
 Sibling projects this builds on (read-only references, clone them anonymously
 if needed): Trombolese (the lip valve, air-column physics, measurement
 discipline) and Reverberator (material tables, loop tuning, the ysfx test rig,
@@ -34,7 +37,7 @@ Where things are documented:
 ```
 Instrument-Creator.jsfx   the instrument: sliders, physics, voices, GUI (@gfx)
 docs/window.png           screenshot used by the README (tools/shot.py)
-tools/build_host.sh       builds ysfx (with graphics) and three hosts into tools/build/
+tools/build_host.sh       builds ysfx (with graphics) and four hosts into tools/build/
 tools/render.cpp          MIDI events file -> raw float32 stereo
 tools/shot.cpp            screenshot of @gfx (plays a note first); tools/shot.py -> PNG
 tools/click.cpp           drive @gfx with a mouse script; prints sliders 13-23 and automation flags
@@ -93,9 +96,10 @@ tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1
   globals are shared: declare `local()` for everything a function uses as
   scratch.
 - **`@gfx` runs in its own thread, at the same time as `@sample`.** The audio
-  code and the window code must not assign the same global (only the Play
-  button's `aud_req` is shared, deliberately). A shared loop counter would
-  corrupt the audio loop while the window is open.
+  code and the window code must not assign the same global. Only two flags
+  are shared, deliberately: `aud_req` (Play button) and `gui_dirty` (the
+  window changed a slider), each set by the window and cleared in `@block`.
+  A shared loop counter would corrupt the audio loop while the window is open.
 - **`gfx_triangle` fills convex polygons only.** Split concave shapes.
 - **`gfx_roundrect` has no fill**; `grrf` draws a filled one.
 - **Strings**: `#name` are global string slots; `strcpy`/`strcat`/`sprintf`
