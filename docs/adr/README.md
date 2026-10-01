@@ -28,6 +28,7 @@ where useful the alternatives that were rejected.
 | [0016](0016-rattle-and-crackle-as-feed-forward-effects-gated.md) | Rattle and crackle as feed-forward effects gated by level |
 | [0017](0017-the-reed-always-plays-a-cylinder.md) | The reed always plays a cylinder |
 | [0018](0018-age-is-one-macro-over-the-existing-physics.md) | Age is one macro over the existing physics |
+| [0019](0019-every-control-in-the-window-reaper-sliders-hidden.md) | Every control in the window, REAPER's slider list hidden |
 
 Related: Reverberator's ADRs 0001 (JSFX first), 0002 (physical constants),
 0005 (dispersion budget), 0007 (loudness), 0008 (feed-forward nonlinear paths),

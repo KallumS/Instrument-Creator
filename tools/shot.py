@@ -6,7 +6,7 @@ matplotlib.use("Agg")
 import matplotlib.image as mpimg
 HERE = os.path.dirname(os.path.abspath(__file__))
 out = sys.argv[1]
-w, h, mx, my = (sys.argv[2:6] + ["940", "640", "-1", "-1"][len(sys.argv[2:6]):])[:4]
+w, h, mx, my = (sys.argv[2:6] + ["940", "720", "-1", "-1"][len(sys.argv[2:6]):])[:4]
 extra = sys.argv[6:]
 with tempfile.TemporaryDirectory() as tmp:
     raw = os.path.join(tmp, "o.bgra")

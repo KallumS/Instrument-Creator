@@ -37,6 +37,7 @@ docs/window.png           screenshot used by the README (tools/shot.py)
 tools/build_host.sh       builds ysfx (with graphics) and three hosts into tools/build/
 tools/render.cpp          MIDI events file -> raw float32 stereo
 tools/shot.cpp            screenshot of @gfx (plays a note first); tools/shot.py -> PNG
+tools/click.cpp           drive @gfx with a mouse script; prints sliders 13-23 and automation flags
 tools/inspect.cpp         dump plugin memory after N blocks of a held note
 tools/analyse.py          render/measure helpers (LUFS, YIN pitch), the part and material name lists
 tools/sweep.py            every energy x exciter x element: level, pitch, flags
@@ -61,6 +62,11 @@ matplotlib`). `tools/build/` is git-ignored.
 19 play mode  20 glide time  21 fine tune  22 output  23 age / rust
 ```
 
+All 23 are hidden from REAPER's slider list (`-` before the name) and drawn
+in the window: 13-23 as the control strip (`control()`, ADR 0019), whose
+ranges, defaults and log midpoints are repeated in `ctl_min/max/def/mid`;
+change both.
+
 Option lists are append-only (ADR 0014): add new options and materials at the
 end, never reorder. Presets set sliders 1-19 and never touch Age.
 
@@ -73,7 +79,8 @@ python3 tools/sweep.py 60 > sweep.txt        # ~2 min; grep QUIET|TAIL|PITCH
 python3 tools/trims.py > t.txt && python3 tools/apply_trims.py t.txt   # repeat until ~0
 python3 tools/check.py                        # ~40 min: run in the background; must say 0 failure(s)
 python3 tools/age_test.py                     # ~10 min
-python3 tools/shot.py out.png 940 640 mx my 3=2 4=8   # then look at the PNG
+python3 tools/shot.py out.png 940 720 mx my 3=2 4=8   # then look at the PNG
+tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1 40,649,0   # drag Force
 ```
 
 ## EEL2 traps (Reverberator ADR 0010, and new ones)
@@ -173,8 +180,9 @@ line A.
   depends on pressure).
 - Rubber, paper, cardboard, leather, jelly, PVC and cling film are less lossy
   than the real materials, so that they can be played.
-- First check in REAPER (macOS, Retina): the window renders as in ysfx. REAPER
-  draws its own slider list above `@gfx`, so the window gets less height than
-  requested (about 565 logical px); the layout must fit any height (it
-  reserves the preview panel first). Menus, clicking and automation in REAPER
-  are not yet confirmed.
+- First check in REAPER (macOS, Retina): the window renders as in ysfx.
+  REAPER draws any visible slider above `@gfx` and takes that height from the
+  window, which is why every slider is now hidden (ADR 0019). The layout
+  still fits any height (it reserves the preview panel first). Menus,
+  clicking, dragging and automation in REAPER are not yet confirmed (they
+  are tested in ysfx with `tools/click.cpp`).

@@ -68,7 +68,9 @@ nonlinearity and the limiter, all feed-forward.
   only global written by both is `aud_req`.
 - Globals derived from sliders are recomputed by `update_globals` in
   `@slider`, and in `@block` when the window has changed a slider
-  (`gui_dirty`). Part changes take effect at the next note-on (per-voice
+  (`gui_dirty`). All 23 sliders are hidden in REAPER; the window's part list
+  and control strip set them with `slider(n) = v; slider_automate(2^(n-1))`
+  (ADR 0019). Part changes take effect at the next note-on (per-voice
   setup is done in `voice_start`), except shared-stage filters and the
   controls, which are global.
 
@@ -759,7 +761,7 @@ violin lost 7 dB and the piano 8 dB; blown instruments gain level with age
 | Loudness spread across parts | < 0.2 dB (except capped) |
 | CPU, 8-note chords at 48 kHz | reed 3 %, struck plate 7 %, bowed string 8 %, bowed plate 14 % of one core; worst sweep case 27.5 % (3 notes, 96 kHz) |
 | Playing behaviour | Mono slide C4→E4 ≈ 150 ms; bend and Levers reach D4 (293.2 Hz); sustain pedal holds; Electronics vibrato at 5.5 Hz |
-| GUI | screenshots of every option and material, and of Age (`tools/shot.py`); rendered in REAPER on macOS (Retina) as in ysfx; layout checked at 800×480, 966×565, 940×640, 1200×800 |
+| GUI | screenshots of every option and material, and of Age (`tools/shot.py`); rendered in REAPER on macOS (Retina) as in ysfx; layout checked at 800×480, 800×560, 966×565, 940×720, 1200×860; the control strip's drag, jump, Shift-drag, wheel, double-click reset and Poly/Mono switch checked with `tools/click.cpp` (values and automation flags) |
 
 ---
 
