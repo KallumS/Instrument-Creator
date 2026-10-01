@@ -1,7 +1,7 @@
 # Session log
 
 **Session 1, 30 September 2026.** The whole of Instrument Creator so far was
-built in this one session, in six requests:
+built in this one session, in eight requests:
 
 | # | Request | Result | Commits |
 |---|---|---|---|
@@ -11,6 +11,8 @@ built in this one session, in six requests:
 | 4 | "Make sure CLAUDE.md is up to date, create a session log for this session and an ADR which highlights the big decisions, and an in-depth write-up of every part and material" | this log, `docs/adr/` (18 records), `docs/PARTS-AND-MATERIALS.md`, CLAUDE.md | `bcd99e9`, `ecc039b` |
 | 5 | "It can be scientific, as you're the only one that will read it" | the guide rewritten as a technical reference; `docs/PARTS.md` merged into it and removed | `b9c7ffd` |
 | 6 | "Make sure all of the docs are up to date, then write me a prompt to continue in a fresh session" | docs checked against the code; this table and the handover below | `c42bd31` |
+| 7 | A screenshot of the plugin running in REAPER | window fitted to any height (REAPER's slider list takes space); FX-order note | `0e350d8` |
+| 8 | "Keep everything in one place" (move REAPER's sliders into the window), with REAPER's JSFX and API docs | all sliders hidden; a control strip in the window; `tools/click.cpp`; ADR 0019 | `dbe6539` |
 
 What was built on: Trombolese and Reverberator, read from their
 repositories (read-only). What was measured, what failed and what was changed
@@ -253,9 +255,9 @@ against the code caught one wrong claim (the stretched-tuning range).
 
 Open items:
 
-- **Try it in REAPER.** Everything was verified in ysfx (same engine), not in
-  REAPER: the popup menus, clicking, automation and the window's size need a
-  check there.
+- **Try it in REAPER.** The window has been seen in REAPER (§16); the popup
+  menus, clicking, dragging the controls and automation have only been
+  checked in ysfx.
 - The most lossless steels bowed at exactly 1/5 or 1/3 of the string can
   flip to the octave.
 - Lips on a membrane: bone is 57 c flat, jelly 26 c sharp.
@@ -282,4 +284,57 @@ Candidate next steps, roughly in order of value:
 4. Anything new the user asks for. Before changing a design rule, read its
    ADR; after any sound change, re-run `trims.py` / `apply_trims.py` and
    `check.py`, and update PARTS-AND-MATERIALS.md, the README and this log.
+
+## 16. First run in REAPER
+
+The user's screenshot (REAPER on macOS, Retina) showed the window drawn
+exactly as in ysfx: fonts, `gfx_ext_retina` scaling and every picture fine.
+Two findings:
+
+- **Height.** REAPER shows the visible sliders (Force … Age) above the
+  `@gfx` area, leaving about 565 logical px of the 640 requested; the preview
+  panel was pushed off the bottom (description clipped, hint and waveform
+  hidden). The layout now reserves the preview first
+  (`ph_min = max(140, 0.31·(h − header))`), sizes the six tiles and the
+  control row from what is left, gives the waveform its own column, clips
+  text at the panel edge, and shows the material line and the hint only when
+  they fit whole. Checked at 800×480, 966×565, 940×640 and 1200×800.
+- **FX order.** The title showed the instrument as FX 2 of 2 on a track
+  named after Reverberator. An instrument overwrites its input, so a reverb
+  before it does nothing; the instrument must be first. (The README already
+  says so.)
+
+Not yet confirmed in REAPER: menus, clicking, mouse wheel, automation.
+
+## 17. Every control in the window
+
+The user asked to keep everything in one place, and supplied REAPER's JSFX
+programming reference and API function list. From the reference: a slider
+whose name starts with `-` is hidden but still automatable; `slider(n)` is
+assignable; `slider_automate(mask)` records automation and
+`slider_automate(mask, 1)` (REAPER 6.74+) ends a touch; `time_precise()`
+gives the time for a double-click.
+
+- Sliders 13-23 now hidden like the part choices, so REAPER shows no slider
+  list and the window gets its whole height. Default size 940×720 (was 640),
+  so the area above the strip matches the old layout.
+- A strip of two rows along the bottom (`control()`, ADR 0019): Force, Size,
+  Brightness, Decay, Excite position, Resonator amount; Play mode (Poly/Mono
+  switch), Glide, Fine tune, Output, Age. Tracks fill from the left, or from
+  the middle for Brightness and Fine tune; each has its part's colour (Age
+  rust). Names shorten ("Position", "Resonator") when they would hit the
+  value. Hovering shows the control in the preview panel, with its part's
+  picture, value, description and how to use it.
+- The header's age note shortens to "(age N%)" or is left out when it would
+  run under the buttons (it did at 800 px wide).
+- `tools/click.cpp` (built by `build_host.sh`) runs a mouse script through
+  `@gfx` and prints sliders 13-23 and the changed/automated masks. Checked:
+  drag Force 70 → 19 by 63 px left (expected 0.70 − 63/124 = 0.19); a click on
+  Size's track at the far left jumps to 27; double-click resets Force 30 → 70,
+  two clicks 0.5 s apart do not; three wheel notches move Decay 100 → 118
+  (log track); a Shift-drag of 100 px moves Age by 6 (a tenth of the speed);
+  a click on the right half sets Mono. Every change is automated on the
+  right slider; REAPER's visible mask is 0.
+- Layout checked at 800×480 (cramped: tile names overlap their pictures),
+  800×560, 940×720 and 1200×860. No DSP change, so no re-trim or re-check.
 

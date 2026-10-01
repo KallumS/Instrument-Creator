@@ -26,17 +26,17 @@ slider9:1<0,4,1{Fret,Tone hole,Valve,Slide,Key}>-Frequency control
 slider10:2<0,3,1{Peg,Tuning pin,Machine head,Slide}>-Tuning mechanism
 slider11:0<0,4,1{Damper,Mute,Palm,Felt,Hand}>-Damping
 slider12:0<0,4,1{Keywork,Pedals,Valves,Levers,Electronics}>-Modulation/control
-slider13:70<0,100,1>Force / pressure (%)
-slider14:100<25,400,1:log=100>Size (%)
-slider15:0<-100,100,1>Brightness
-slider16:100<10,400,1:log=100>Decay (%)
-slider17:20<2,50,1>Excite position (%)
-slider18:50<0,100,1>Resonator amount (%)
-slider19:0<0,1,1{Poly,Mono (legato)}>Play mode
-slider20:120<5,1000,1:log=150>Glide time (ms)
-slider21:0<-100,100,1>Fine tune (cents)
-slider22:0<-36,12,0.1>Output (dB)
-slider23:0<0,100,1>Age / rust (%)
+slider13:70<0,100,1>-Force / pressure (%)
+slider14:100<25,400,1:log=100>-Size (%)
+slider15:0<-100,100,1>-Brightness
+slider16:100<10,400,1:log=100>-Decay (%)
+slider17:20<2,50,1>-Excite position (%)
+slider18:50<0,100,1>-Resonator amount (%)
+slider19:0<0,1,1{Poly,Mono (legato)}>-Play mode
+slider20:120<5,1000,1:log=150>-Glide time (ms)
+slider21:0<-100,100,1>-Fine tune (cents)
+slider22:0<-36,12,0.1>-Output (dB)
+slider23:0<0,100,1>-Age / rust (%)
 
 in_pin:none
 out_pin:Left output
@@ -1738,14 +1738,15 @@ function draw_wrapped(s, x, y, w, lh) local(n, k, ch, tw, th, cy)
     ch == 32 ? (
       strcpy(#wt, #wl); strlen(#wt) ? strcat(#wt, " "); strcat(#wt, #ww);
       gfx_measurestr(#wt, tw, th);
-      (tw > w && strlen(#wl)) ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); cy += lh; strcpy(#wl, #ww); ) : strcpy(#wl, #wt);
+      (tw > w && strlen(#wl)) ? ( cy + lh <= wrap_ymax ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); ); cy += lh; strcpy(#wl, #ww); ) : strcpy(#wl, #wt);
       strcpy(#ww, "");
     ) : (
       sprintf(#wc, "%c", ch); strcat(#ww, #wc);
     );
     k += 1;
   );
-  strlen(#wl) ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); cy += lh; );
+  (strlen(#wl) && cy + lh <= wrap_ymax) ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); );
+  strlen(#wl) ? cy += lh;
   cy;
 );
 
@@ -1808,7 +1809,7 @@ function randomise() local(c)
   slider_automate(2^12 - 1);
   gui_dirty = 1; cur_preset = -1;
 );
-cur_preset = 0; last_cat = 2; aud_note = 60;
+cur_preset = 0; last_cat = 2; aud_note = 60; wrap_ymax = 1000000; drag_k = -1;
 
 @slider
 update_globals();
@@ -1935,7 +1936,7 @@ spl0 = yl; spl1 = yr;
 vis_lvl = max(abs(yl), vis_lvl*vis_dec);
 SCOPE_BUF[scope_w] = 0.5*(yl + yr); scope_w = (scope_w + 1) & (SCOPE_LEN - 1);
 
-@gfx 940 640
+@gfx 940 720
 
 gsc = max(1, gfx_ext_retina);
 anim_ph += 0.3; anim_ph > 628.3 ? anim_ph -= 628.3;
@@ -1951,7 +1952,10 @@ gfx_setfont(5, "Arial", 19*gsc, 'b');
 clicked = (mouse_cap & 1) && !(last_cap & 1);
 last_cap = mouse_cap;
 wheel = mouse_wheel; mouse_wheel = 0;
-hov = -1;
+hov = -1; hovc = -1;
+// the control strip along the bottom; everything else fits above gtop
+cth = 40*gsc; cgp = 6*gsc;
+cty = gh - pad - 2*cth - cgp; gtop = cty - 8*gsc;
 
 function inbox(x, y, w, h) ( mouse_x >= x && mouse_x < x + w && mouse_y >= y && mouse_y < y + h; );
 function button(x, y, w, h, s, on) local(hv, tw, th)
@@ -2000,14 +2004,139 @@ function arrow(x1, y1, x2, y2) local(dx, dy, l, ux, uy)
   gfx_triangle(x2, y2, x2 - 7*gsc*ux + 4*gsc*uy, y2 - 7*gsc*uy - 4*gsc*ux, x2 - 7*gsc*ux - 4*gsc*uy, y2 - 7*gsc*uy + 4*gsc*ux);
 );
 
+// ---- the eleven controls (sliders 13-23, control k is slider 13 + k). They
+// are hidden from REAPER's slider list (which would sit above the window and
+// take its height) and drawn here; they stay automatable.
+function ctl_title(k)
+(
+  k==0?"Force":k==1?"Size":k==2?"Brightness":k==3?"Decay":k==4?"Excite position":k==5?"Resonator amount":
+  k==6?"Play mode":k==7?"Glide time":k==8?"Fine tune":k==9?"Output":"Age / rust";
+);
+function ctl_desc(k)
+(
+  k==0?"How hard it is blown, bowed or struck.":
+  k==1?"Scales the resonator, coupler and radiator: bigger is lower and boomier.":
+  k==2?"Lets the high frequencies ring longer (right) or die faster (left).":
+  k==3?"A longer or shorter ring, without changing anything else.":
+  k==4?"Where the exciter touches: near the end (thin, bright) or towards the middle (full, round).":
+  k==5?"How much of the resonator you hear against the bare vibrating element.":
+  k==6?"Poly plays chords. Mono (legato) plays one note at a time, so frets, tone holes, valves and slides change pitch the way they do on the real thing.":
+  k==7?"How long a Slide takes to reach the next note.":
+  k==8?"Moves the whole instrument up or down, by up to a semitone.":
+  k==9?"The overall level.":
+  "How old and neglected it is, from new to found in a skip: duller, shorter, out of tune, rattly and leaky. Applies from the next note.";
+);
+function ctl_short(k) ( k==4?"Position":k==5?"Resonator":k==7?"Glide":k==10?"Age":ctl_title(k); );
+function ctl_min(k) ( k==1?25:k==2?-100:k==3?10:k==4?2:k==7?5:k==8?-100:k==9?-36:0; );
+function ctl_max(k) ( k==1?400:k==3?400:k==4?50:k==6?1:k==7?1000:k==9?12:100; );
+function ctl_def(k) ( k==0?70:k==1?100:k==3?100:k==4?20:k==5?50:k==7?120:0; );
+// log controls: the value at the middle of the track (0 = linear)
+function ctl_mid(k) ( k==1?100:k==3?100:k==7?150:0; );
+function ctl_step(k) ( k==9?0.1:1; );
+// the part whose picture stands for the control
+function ctl_part(k) ( k==0?0:k==1?4:k==2?2:k==3?10:k==4?1:k==5?4:k==6?11:k==7?8:k==8?9:k==9?7:2; );
+function ctl_col(k) ( k == 10 ? gfx_set(0.85, 0.5, 0.3, 1) : group_col(ctl_part(k)); );
+function ctl_pos(k, v) local(a, b, m)
+(
+  a = ctl_min(k); b = ctl_max(k); m = ctl_mid(k);
+  m > 0 ? ( v <= m ? 0.5*log(v/a)/log(m/a) : 0.5 + 0.5*log(v/m)/log(b/m); ) : (v - a)/(b - a);
+);
+function ctl_val(k, p) local(a, b, m, s, v)
+(
+  a = ctl_min(k); b = ctl_max(k); m = ctl_mid(k); s = ctl_step(k);
+  p = max(0, min(1, p));
+  v = m > 0 ? ( p <= 0.5 ? a*(m/a)^(2*p) : m*(b/m)^(2*p - 1); ) : a + p*(b - a);
+  max(a, min(b, floor(v/s + 0.5)*s));
+);
+function ctl_text(k) local(v)
+(
+  v = slider(13 + k);
+  k == 6 ? strcpy(#cv, v >= 0.5 ? "Mono" : "Poly") :
+  k == 7 ? sprintf(#cv, "%d ms", v) :
+  k == 8 ? sprintf(#cv, v > 0 ? "+%d cents" : "%d cents", v) :
+  k == 9 ? sprintf(#cv, v > 0.04 ? "+%.1f dB" : "%.1f dB", v) :
+  k == 2 ? sprintf(#cv, v > 0 ? "+%d" : "%d", v) :
+  sprintf(#cv, "%d %%", v);
+  #cv;
+);
+function set_ctl(k, v)
+(
+  v = max(ctl_min(k), min(ctl_max(k), v));
+  slider(13 + k) = v;
+  slider_automate(2^(12 + k));
+  gui_dirty = 1; last_cat = 100 + k;
+);
+// one control: drag the track (Shift for fine steps), roll the wheel,
+// double-click to reset; Play mode is a two-way switch
+function control(k, x, y, w, h) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1, z, s, d)
+(
+  v = slider(13 + k);
+  hv = inbox(x, y, w, h) && drag_k < 0; hv ? hovc = k;
+  gfx_set(hv || drag_k == k ? 0.19 : 0.145, hv || drag_k == k ? 0.2 : 0.15, hv || drag_k == k ? 0.24 : 0.175, 1);
+  gfx_rect(x, y, w, h, 1);
+  ctl_col(k); gfx_rect(x, y, 3*gsc, h, 1);
+  gfx_setfont(1);
+  s = ctl_text(k); gfx_measurestr(s, tw, th); k == 6 ? tw = 0;
+  // the short name when the full one would run into the value
+  gfx_measurestr(ctl_title(k), tw1, th);
+  gfx_set(0.72, 0.74, 0.8, 1); gfx_x = x + 10*gsc; gfx_y = y + 5*gsc;
+  gfx_drawstr(tw1 + tw + 26*gsc > w ? ctl_short(k) : ctl_title(k));
+  k != 6 ? ( gfx_set(0.95, 0.95, 0.97, 1); gfx_x = x + w - 9*gsc - tw; gfx_y = y + 5*gsc; gfx_drawstr(s); );
+  x0 = x + 12*gsc; x1 = x + w - 12*gsc; ty = y + h - 11*gsc;
+  k == 6 ? (
+    // Poly | Mono
+    z = 0;
+    loop(2,
+      d = x0 + z*0.5*(x1 - x0);
+      (v >= 0.5) == z ? gfx_set(0.26, 0.42, 0.66, 1) : gfx_set(0.11, 0.115, 0.13, 1);
+      gfx_rect(d, ty - 8*gsc, 0.5*(x1 - x0) - 2*gsc, 15*gsc, 1);
+      gfx_setfont(4); (v >= 0.5) == z ? gfx_set(0.97, 0.97, 0.99, 1) : gfx_set(0.55, 0.58, 0.65, 1);
+      gfx_measurestr(z ? "MONO" : "POLY", tw, th);
+      gfx_x = d + 0.5*(0.5*(x1 - x0) - 2*gsc - tw); gfx_y = ty - 0.5*gsc - 0.5*th; gfx_drawstr(z ? "MONO" : "POLY");
+      z += 1;
+    );
+    hv && clicked ? set_ctl(k, mouse_x >= x + 0.5*w);
+    hv && wheel != 0 ? set_ctl(k, v < 0.5);
+  ) : (
+    p = ctl_pos(k, v); hx = x0 + p*(x1 - x0);
+    gfx_set(0.09, 0.095, 0.11, 1); gfx_rect(x0, ty - 2*gsc, x1 - x0, 4*gsc, 1);
+    ctl_col(k);
+    // bipolar controls fill from the middle
+    d = (k == 2 || k == 8) ? 0.5*(x0 + x1) : x0;
+    gfx_rect(min(d, hx), ty - 2*gsc, abs(hx - d), 4*gsc, 1);
+    gfx_set(0.93, 0.94, 0.96, 1); gfx_circle(hx, ty, (hv || drag_k == k ? 6 : 5)*gsc, 1, 1);
+    hv && clicked ? (
+      (time_precise() - ctl_t < 0.35 && ctl_last == k) ? (
+        set_ctl(k, ctl_def(k)); ctl_t = 0;
+      ) : (
+        ctl_t = time_precise(); ctl_last = k;
+        // clicking away from the handle moves it there first
+        (abs(mouse_x - hx) > 8*gsc && !(mouse_cap & 8)) ? ( p = max(0, min(1, (mouse_x - x0)/(x1 - x0))); set_ctl(k, ctl_val(k, p)); );
+        drag_k = k; drag_p = drag_p0 = p; drag_x0 = mouse_x; drag_w = x1 - x0; drag_sh = (mouse_cap & 8) > 0;
+      );
+    );
+    hv && wheel != 0 ? (
+      z = wheel > 0 ? 1 : -1;
+      ctl_mid(k) > 0 ? ( d = ctl_val(k, p + z*((mouse_cap & 8) ? 0.005 : 0.02)); d == v ? d = v + z*ctl_step(k); ) :
+                       d = v + z*((mouse_cap & 8) ? ctl_step(k) : max(ctl_step(k), floor(0.02*(ctl_max(k) - ctl_min(k)) + 0.5)));
+      set_ctl(k, d);
+    );
+  );
+);
+
 // ---- header
 gfx_setfont(3); gfx_set(0.96, 0.96, 0.98, 1); gfx_x = pad; gfx_y = 12*gsc; gfx_drawstr("Instrument Creator");
 gfx_setfont(1); gfx_set(0.55, 0.58, 0.65, 1); gfx_x = pad + 230*gsc; gfx_y = 20*gsc;
 // is this still the chosen preset, or has a part been changed (here or by automation)?
 cur_preset >= 0 ? ( k = 0; pm = PRESET_TAB + cur_preset*PRESET_STRIDE; loop(12, (slider(k + 1)|0) != pm[k] ? cur_preset = -1; k += 1;); );
 gfx_drawstr(cur_preset >= 0 ? preset_name(cur_preset) : "your own instrument");
-age_ > 0 ? ( sprintf(#agestr, age_ < 0.34 ? "  (a little worn: age %d%%)" : age_ < 0.67 ? "  (old and rusty: age %d%%)" : "  (found in a skip: age %d%%)", age_*100); gfx_set(0.8, 0.5, 0.3, 1); gfx_drawstr(#agestr); );
 bw_ = 104*gsc; bh_ = 28*gsc; bxx = gw - pad - bw_; byy = 11*gsc;
+// the age note, shortened (or left out) when it would run under the buttons
+age_ > 0 ? (
+  sprintf(#agestr, age_ < 0.34 ? "  (a little worn: age %d%%)" : age_ < 0.67 ? "  (old and rusty: age %d%%)" : "  (found in a skip: age %d%%)", age_*100);
+  gfx_measurestr(#agestr, aw_, ah_); gfx_x + aw_ > gw - pad - 3*bw_ - 24*gsc ? sprintf(#agestr, "  (age %d%%)", age_*100);
+  gfx_measurestr(#agestr, aw_, ah_); gfx_x + aw_ <= gw - pad - 3*bw_ - 24*gsc ? ( gfx_set(0.8, 0.5, 0.3, 1); gfx_drawstr(#agestr); );
+);
 button(bxx, byy, bw_, bh_, aud_on ? "Playing..." : "Play C4", aud_on) ? ( aud_note = 60; aud_req = 1; );
 bxx -= bw_ + 8*gsc;
 button(bxx, byy, bw_, bh_, "Surprise me", 0) ? randomise();
@@ -2021,7 +2150,7 @@ button(bxx, byy, bw_, bh_, "Presets", 0) ? (
 );
 
 // ---- the part list: click to choose, wheel to step, arrows to step
-lx = pad; ly = hdr; lw = min(360*gsc, 0.4*gw); rhh = (gh - ly - pad)/12;
+lx = pad; ly = hdr; lw = min(360*gsc, 0.4*gw); rhh = (gtop - ly)/12;
 c = 0;
 loop(12,
   ry = ly + c*rhh; rht = rhh - 3*gsc;
@@ -2055,8 +2184,12 @@ loop(12,
 // ---- the assembled instrument
 ax = lx + lw + pad; aw = gw - ax - pad; ay = ly;
 gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = ax; gfx_y = ay; gfx_drawstr("YOUR INSTRUMENT: CLICK A PART TO CHANGE IT, HOVER FOR A CLOSER LOOK");
-gap = 26*gsc;
-tw_ = (aw - 2*gap)/3; th_ = min(0.78*tw_, 0.27*(gh - ay));
+// the window can be any height: keep room for the preview panel, then fit
+// the pictures into what is left
+ph_min = max(140*gsc, 0.31*(gtop - ay));
+gap = min(26*gsc, max(12*gsc, 0.04*(gtop - ay)));
+tw_ = (aw - 2*gap)/3;
+th_ = max(40*gsc, min(0.78*tw_, (gtop - ay - 16*gsc - 1.6*gap - 12*gsc - ph_min)/2.72));
 ty1 = ay + 16*gsc; ty2 = ty1 + th_ + gap;
 tile(0, ax, ty1, tw_, th_);
 tile(1, ax + tw_ + gap, ty1, tw_, th_);
@@ -2085,33 +2218,67 @@ loop(4,
   k += 1;
 );
 
-// ---- the close-up preview of the hovered (or last changed) part
-pc = hov >= 0 ? hov : last_cat;
-py_ = cy_ + ch_ + 12*gsc; ph_ = gh - py_ - pad; pw_ = aw;
-ph_ > 60*gsc ? (
+// ---- the controls: six on the top row, five below
+k = 0;
+loop(11,
+  k < 6 ? ( cw2 = (gw - 2*pad - 5*cgp)/6; control(k, pad + k*(cw2 + cgp), cty, cw2, cth); ) :
+          ( cw2 = (gw - 2*pad - 4*cgp)/5; control(k, pad + (k - 6)*(cw2 + cgp), cty + cth + cgp, cw2, cth); );
+  k += 1;
+);
+// a drag carries on wherever the mouse goes, until the button is let go
+drag_k >= 0 ? (
+  (mouse_cap & 1) ? (
+    dsh = (mouse_cap & 8) > 0;
+    dsh != drag_sh ? ( drag_p0 = drag_p; drag_x0 = mouse_x; drag_sh = dsh; );
+    drag_p = max(0, min(1, drag_p0 + (mouse_x - drag_x0)/drag_w*(dsh ? 0.1 : 1)));
+    dv = ctl_val(drag_k, drag_p); dv != slider(13 + drag_k) ? set_ctl(drag_k, dv);
+  ) : (
+    slider_automate(2^(12 + drag_k), 1); drag_k = -1;
+  );
+);
+
+// ---- the close-up preview of the hovered (or last changed) part or control
+pc = hov >= 0 ? hov : drag_k >= 0 ? 100 + drag_k : hovc >= 0 ? 100 + hovc : last_cat;
+py_ = cy_ + ch_ + 12*gsc; ph_ = gtop - py_; pw_ = aw;
+ph_ > 40*gsc ? (
   gfx_set(0.13, 0.135, 0.155, 1); gfx_rect(ax, py_, pw_, ph_, 1);
-  group_col(pc); gfx_rect(ax, py_, 3*gsc, ph_, 1);
-  psz = min(ph_ - 16*gsc, 0.3*pw_);
-  v = slider(pc + 1)|0;
-  draw_part(pc, v, ax + 12*gsc, py_ + 8*gsc, 1.25*psz, psz, 1);
-  tx = ax + 24*gsc + 1.25*psz; tw2 = pw_ - (tx - ax) - 12*gsc;
-  gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = tx; gfx_y = py_ + 10*gsc; gfx_drawstr(cat_title(pc));
-  gfx_setfont(5); gfx_set(0.97, 0.97, 0.99, 1); gfx_x = tx; gfx_y = py_ + 24*gsc; gfx_drawstr(opt_name(pc, v));
+  pc >= 100 ? ctl_col(pc - 100) : group_col(pc); gfx_rect(ax, py_, 3*gsc, ph_, 1);
+  psz = min(ph_ - 16*gsc, 0.22*pw_);
+  pp = pc >= 100 ? ctl_part(pc - 100) : pc;
+  v = slider(pp + 1)|0;
+  draw_part(pp, v, ax + 12*gsc, py_ + 8*gsc, 1.15*psz, psz, 1);
+  sw = pw_ > 560*gsc ? min(200*gsc, 0.22*pw_) : 0;
+  tx = ax + 24*gsc + 1.15*psz; tw2 = pw_ - (tx - ax) - 12*gsc - (sw > 0 ? sw + 12*gsc : 0);
+  wrap_ymax = py_ + ph_ - 6*gsc;
+  gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = tx; gfx_y = py_ + 10*gsc; gfx_drawstr(pc >= 100 ? "CONTROL" : cat_title(pc));
+  gfx_setfont(5); gfx_set(0.97, 0.97, 0.99, 1); gfx_x = tx; gfx_y = py_ + 24*gsc;
+  pc >= 100 ? (
+    gfx_drawstr(ctl_title(pc - 100)); gfx_drawstr("   "); gfx_set(0.55, 0.85, 0.6, 1); gfx_drawstr(ctl_text(pc - 100));
+  ) : gfx_drawstr(opt_name(pc, v));
   gfx_setfont(1); gfx_set(0.8, 0.82, 0.87, 1);
-  yy = draw_wrapped(opt_desc(pc, v), tx, py_ + 52*gsc, tw2, 17*gsc);
+  yy = draw_wrapped(pc >= 100 ? ctl_desc(pc - 100) : opt_desc(pc, v), tx, py_ + 52*gsc, tw2, 17*gsc);
+  pc >= 100 ? (
+    strcpy(#info, pc == 106 ? "Click either side to choose." : "Drag to change it (hold Shift for small steps), roll the mouse wheel, or double-click to reset.");
+    wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); wrap_ymax = wlim;
+    hy <= wrap_ymax ? ( gfx_set(0.6, 0.63, 0.7, 1); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
+  );
   (pc == 3 || pc == 5) ? (
     t60 = mat_t60(v, 440);
     ee = mat(v, M_E);
     ee >= 1 ? sprintf(#stf, "%g GPa", ee) : ee >= 0.001 ? sprintf(#stf, "%g MPa", ee*1000) : sprintf(#stf, "%g kPa", ee*1000000);
     t60 >= 1 ? sprintf(#rng, "%.1f s", t60) : sprintf(#rng, "%d ms", t60*1000);
     sprintf(#info, "Stiffness %s, density %d kg/m3. A 440 Hz ring lasts about %s.", #stf, mat(v, M_RHO), #rng);
-    gfx_set(0.6, 0.63, 0.7, 1); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc);
+    wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); wrap_ymax = wlim;
+    hy <= wrap_ymax ? ( gfx_set(0.6, 0.63, 0.7, 1); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
   );
-  gfx_set(0.55, 0.85, 0.6, 1); yy = draw_wrapped(combo_hint(), tx, yy + 6*gsc, tw2, 17*gsc);
-  // what it sounds like right now
-  sw = min(tw2, 260*gsc); sh = min(46*gsc, py_ + ph_ - yy - 12*gsc);
-  sh > 16*gsc ? (
-    sx = ax + pw_ - sw - 12*gsc; sy = py_ + ph_ - sh - 10*gsc;
+  // the hint only if it fits whole (measure it first by drawing nothing)
+  wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(combo_hint(), tx, yy + 6*gsc, tw2, 17*gsc); wrap_ymax = wlim;
+  hy <= wrap_ymax ? ( gfx_set(0.55, 0.85, 0.6, 1); yy = draw_wrapped(combo_hint(), tx, yy + 6*gsc, tw2, 17*gsc); );
+  wrap_ymax = 1000000;
+  // what it sounds like right now, in its own column
+  sh = min(90*gsc, ph_ - 20*gsc);
+  (sw > 0 && sh > 16*gsc) ? (
+    sx = ax + pw_ - sw - 12*gsc; sy = py_ + 0.5*(ph_ - sh);
     gfx_set(0.09, 0.095, 0.11, 1); gfx_rect(sx, sy, sw, sh, 1);
     st0 = (scope_w - 1024 + SCOPE_LEN) & (SCOPE_LEN - 1); k = 0;
     while (k < 400 && !(SCOPE_BUF[(st0 + k) & (SCOPE_LEN - 1)] <= 0 && SCOPE_BUF[(st0 + k + 1) & (SCOPE_LEN - 1)] > 0)) ( k += 1; );

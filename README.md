@@ -48,6 +48,11 @@ Reverberator makes a very good partner after it.
   that part, what it does, and (for materials) how stiff and heavy it is and
   how long it rings. The green line tells you how your combination will play,
   and the little screen shows the sound's waveform as you play.
+- **The controls along the bottom** (Force, Size, Brightness, Decay and the
+  rest, described [below](#the-controls)) shape how it plays. Drag one to
+  change it (hold **Shift** for small steps), roll the mouse wheel over it,
+  or double-click it to put it back to normal. Hover over one and the panel
+  explains what it does. Play mode is a switch: click Poly or Mono.
 - **Presets** has 19 ready-made instruments to start from. **Surprise me**
   picks every part at random. **Play C4** plays a note so you can hear a change
   without touching your keyboard.
@@ -193,9 +198,9 @@ material (and PVC for the resonator too, if you like).
 | | Levers | Mod wheel bends notes up by as much as a whole tone. |
 | | Electronics | Mod wheel adds vibrato and tremolo. |
 
-## The sliders
+## The controls
 
-| Slider | What it does |
+| Control | What it does |
 |---|---|
 | **Force / pressure** | How hard it is blown, bowed or struck. |
 | **Size** | Scales the resonator, coupler and radiator: bigger is lower and boomier. |
@@ -232,8 +237,11 @@ old one is only a few dB quieter than a new one. Presets don't change the
 Age slider, so you can make any preset old. Changes to Age apply to the next
 note you play; the tuning wander and the leaks act on notes already playing.
 
-The part choices are also sliders, hidden from the slider list because the
-window shows them, but you can still automate them in REAPER.
+Everything you can change is in the window, so REAPER's own list of
+sliders is hidden (it would otherwise sit above the window and squash it).
+Every part choice and every control can still be automated: in REAPER, use
+the track's envelope button or the **Param** menu at the top of the FX
+window.
 
 ## MIDI
 
