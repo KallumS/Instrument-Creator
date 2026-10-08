@@ -204,3 +204,5 @@ line A.
   still fits any height (it reserves the preview panel first). Menus,
   clicking, dragging and automation in REAPER are not yet confirmed (they
   are tested in ysfx with `tools/click.cpp`).
+- The 3D pictures (ADR 0020) load in ysfx from the folder beside the .jsfx;
+  not yet seen in REAPER. Without the folder the window shows the drawings.

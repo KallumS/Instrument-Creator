@@ -335,6 +335,16 @@ out sprite sheets declared that way (ADR 0020).
   sounds. Missing files fall back to the drawings (checked by screenshotting
   while only two pictures existed). `tools/shot.cpp` takes `SHOT_SCALE=2` to
   draw as on a Retina screen.
+- **Full set:** 671 PNGs (50 options; 19 material shapes × 31 plus their rust
+  layers; 31 swatches and one rust swatch) in about 40 min at 64 samples,
+  2-6 s each (glass and transmissive materials slowest); 35 MB → 11 MB after
+  compression. The string was re-rendered thicker (radius 0.1) so its
+  material shows.
+- **Small windows.** At 800×560 the pictures ran into the tile names (the
+  drawings did too, an open item from §17). The tile and control-tile
+  pictures now end above the name (`pb` in `tile()`); checked at 800×560,
+  940×720 and 1880×1440 with `SHOT_SCALE=2`. The control strip still drags
+  as before (`click`: Force 70 → 19).
 
 ## Where things stand
 
@@ -351,8 +361,10 @@ Open items:
 - **Try it in REAPER.** The window has been seen in REAPER (§16), before
   the control strip existed; the strip, the popup menus, clicking, dragging
   and automation have only been checked in ysfx (`tools/click.cpp`).
-- At very small window sizes (800×480) the tile names overlap their
-  pictures.
+- **The pictures in REAPER.** Loading PNGs from `Instrument-Creator-images/`
+  beside the plugin is checked only in ysfx; confirm REAPER finds the folder
+  (it should: same search order) and that Retina looks as in the
+  `SHOT_SCALE=2` screenshots.
 - The most lossless steels bowed at exactly 1/5 or 1/3 of the string can
   flip to the octave.
 - Lips on a membrane: bone is 57 c flat, jelly 26 c sharp.
@@ -360,6 +372,10 @@ Open items:
 - A single push into lips sags in pitch as it fades.
 
 ## Handover to the next session
+
+Session 2 (8 October 2026) added the 3D pictures (§18) on the same branch,
+recreated from `main` after pull request 3 merged session 1's work; a fresh
+container also needs `pip install bpy imagequant` to re-render them.
 
 State at the end of session 1 (1 October 2026): everything is committed and
 pushed on `claude/reaper-custom-instrument-creator-xz08x6`; no pull request
@@ -374,6 +390,11 @@ control strip (§16); the strip (§17) is new to them.
 
 Candidate next steps, roughly in order of value:
 
+0. Session 2 (8 October 2026) replaced the drawn pictures with 3D renders
+   (§18, ADR 0020). Ask the user how they look in REAPER, and whether any
+   part's model should change: each is one function in
+   `tools/render_parts.py`; re-render just that shape with
+   `python3 tools/render_parts.py 4_2` (needs `pip install bpy imagequant`).
 1. Feedback from REAPER on the new window: the control strip (drag, Shift,
    wheel, double-click, Poly/Mono), the part menus, automation of hidden
    sliders, window size for an instance saved at the old 940×640, CPU on the
