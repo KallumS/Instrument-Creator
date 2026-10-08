@@ -36,10 +36,12 @@ Where things are documented:
 
 ```
 Instrument-Creator.jsfx   the instrument: sliders, physics, voices, GUI (@gfx)
+Instrument-Creator-images/  the part pictures (3D renders, ADR 0020), installed beside the .jsfx
 docs/window.png           screenshot used by the README (tools/shot.py)
 tools/build_host.sh       builds ysfx (with graphics) and four hosts into tools/build/
 tools/render.cpp          MIDI events file -> raw float32 stereo
-tools/shot.cpp            screenshot of @gfx (plays a note first); tools/shot.py -> PNG
+tools/shot.cpp            screenshot of @gfx (plays a note first); tools/shot.py -> PNG; SHOT_SCALE=2 for Retina
+tools/render_parts.py     Blender (pip install bpy): models every part, renders Instrument-Creator-images/
 tools/click.cpp           drive @gfx with a mouse script; prints sliders 13-23 and automation flags
 tools/inspect.cpp         dump plugin memory after N blocks of a held note
 tools/analyse.py          render/measure helpers (LUFS, YIN pitch), the part and material name lists
@@ -83,6 +85,8 @@ python3 tools/trims.py > t.txt && python3 tools/apply_trims.py t.txt   # repeat 
 python3 tools/check.py                        # ~40 min: run in the background; must say 0 failure(s)
 python3 tools/age_test.py                     # ~10 min
 python3 tools/shot.py out.png 940 720 mx my 3=2 4=8   # then look at the PNG
+SHOT_SCALE=2 python3 tools/shot.py out.png 1880 1440   # as on the user's Retina Mac
+python3 tools/render_parts.py --out /tmp/x --samples 16 --mats 12 2_0   # draft one shape; no args = all (~35 min)
 tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1 40,649,0   # drag Force
 ```
 
@@ -102,6 +106,10 @@ tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1
   A shared loop counter would corrupt the audio loop while the window is open.
 - **`gfx_triangle` fills convex polygons only.** Split concave shapes.
 - **`gfx_roundrect` has no fill**; `grrf` draws a filled one.
+- **`gfx_loadimg(slot, "dir/f.png")`** looks beside the .jsfx, then in
+  REAPER's Data folder; 128 slots, ≤ 2048 px. `gfx_setimgdim` leaves the
+  contents undefined: fill it with a blit in `gfx_mode = 2` (copies alpha too).
+  Never load in a loop that runs every frame without remembering failures.
 - **Strings**: `#name` are global string slots; `strcpy`/`strcat`/`sprintf`
   build menus. `gfx_showmenu` items are 1-based, `!` checks an item.
 - Compiling is not evidence. Render it and measure, or screenshot it and look.
@@ -133,6 +141,11 @@ tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1
   value next to the one used.
 - **Age scales existing physics** (ADR 0018); a new age effect should do the
   same, and its make-up gain applies to strikes, plucks and bows only.
+- **Pictures are renders, drawings are the fallback** (ADR 0020). A new
+  option or material needs a builder in `tools/render_parts.py` (rendered in
+  every material if its part has one) and a drawing in `draw_part()`. Shapes
+  are framed per shape, not per material, so a shape's versions and its rust
+  layer line up: never frame on something that changes with the material.
 
 ## Memory map (keep regions disjoint; check this when adding a table, ADR 0014)
 
@@ -141,6 +154,7 @@ tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1
 5000   body modes (24 x 8)         5300  head modes       5500 note stack   5600/5700 biquads
 5900   diffusion lengths/pointers  6400  trims (72)       6480 part trims (13)
 11000  scope (2048)                13100 presets (19 x 20)   13600 materials (31 x 16)
+14200  picture cache (12 x 8, window only; image slots 10-105)
 16384  diffusers (8 x 8192)        82000 MIDI queue (1000 x 4)
 131072 delay lines (8 voices x 4 x 16384)
 ```

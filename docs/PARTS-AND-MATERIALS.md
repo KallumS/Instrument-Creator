@@ -735,6 +735,29 @@ restores the default. Each change: `slider(13 + k) = v`,
 `slider_automate(2^(12 + k))`, `gui_dirty = 1`; mouse-up ends the touch with
 `slider_automate(mask, 1)`.
 
+**The window's pictures (ADR 0020).** `picture(c, i, x, y, w, h, big)` in
+`@gfx` draws option `i` of category `c` from `Instrument-Creator-images/`:
+`c<c>_<i>.png` (energy, exciter, controls), `c<c>_<i>_m<m>.png` (element with
+`m = elm`; resonator, coupler, radiator with `m = rsm`), `mat<i>.png`
+(categories 3 and 5). Category `c` uses image slots `IMG_SLOT + 8c` … `+3`
+(picture and halvings) and `+4` … `+7` (rust layer `c<c>_<i>_rust.png` or
+`mat_rust.png`); `IMG_TAB + 8c` holds key, status (1 loaded, −1 failed),
+width, height, then the same for the rust layer. Key = 1 + 100 i + (m + 1).
+`img_blit` fits the picture centred in the box at 1.16 × the contain scale
+(the renders carry a 6 % margin) from halving `l = clamp(floor(log2(1/s)), 0,
+3)`. Rust alpha `age·0.9` (metals, `is_metal`) or `age·0.5`; drawn when age >
+0.02. Element shake (tile and preview): copies at ±`d`, alpha 0.35, `d =
+min(0.06, 0.3·vis_lvl)·h`. Missing file → `draw_part()`.
+
+Renders (`tools/render_parts.py`): 360 × 240 RGBA, Cycles CPU, 64 samples
+with denoising, Standard view transform, transparent film (glass too), camera
+60 mm fitted to each shape's projected vertices with a 6 % margin, view
+direction per builder. Materials reuse `mat_def`'s colours; metals are
+Principled metallic (roughness 0.14-0.32), glass/crystal/ice/cling film
+transmissive (IOR 1.5/2.0/1.31/1.5), woods a distorted wave texture,
+chain link a diamond-wire alpha mask, handpan voronoi dimples. The rust layer
+is a noise-masked rust shader over the material-bearing objects only.
+
 ---
 
 ## 11. Age

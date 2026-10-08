@@ -297,6 +297,45 @@ gives the time for a double-click.
 - Layout checked at 800×480 (cramped: tile names overlap their pictures),
   800×560, 940×720 and 1200×860. No DSP change, so no re-trim or re-check.
 
+## 18. 3D-rendered pictures (session 2)
+
+The user was happy with the sound but not the pictures, and asked for 3D
+renders (preferred) or better drawings. The JSFX reference they supplied
+(gfx and js pages) confirmed `gfx_loadimg` takes a path, searched beside the
+effect then in Data/, into 128 slots of up to 2048 px; ysfx resolves it the
+same way (`ysfx_find_data_file`) and preloads `filename:` PNGs, which ruled
+out sprite sheets declared that way (ADR 0020).
+
+- **Blender headless.** `pip install bpy` (5.2.2, ~400 MB, Python 3.13)
+  renders with Cycles on the CPU: a 512×320 brass bell in 3.2 s. No GPU, so
+  no EEVEE. `tools/render_parts.py` builds every model from primitives; the
+  first draft of all 50 options took 90 s at 16 samples.
+- **What needed a second go** (judged from contact sheets on the window's
+  background colour): lips (two ellipsoids read as sausages; now swept
+  ellipses pinched at the corners with a cupid's bow, against a mouthpiece
+  rim), hands and the finger (spheres and capsules read as blobs; now a
+  rounded-box palm and lathed fingers with knuckles and nails, oriented by
+  a direction and a nail-side vector), the plectrum (hull of three circles),
+  organ pipe (one pipe drawn sideways looked like a pencil; three standing
+  pipes with mouths), the solid body (an electric guitar outline smoothed by
+  Chaikin, pickups and bridge), brass mouthpiece (was bell-sized), pedals (a
+  stray rotation pushed them into the block), soundboard ribs (stood on end),
+  bow on string (string pointed at the camera), bamboo (wave scale 0.9 gave a
+  node every 0.35 units; 0.24).
+- **A helper named `math`** shadowed Python's module and broke every builder;
+  renamed `mop`. **`rm -rf dir/*` after a `cd`** in one shell command is
+  refused by the session's safety check; the script took `--out DIR` instead.
+- **Size.** 360×240 RGBA renders average ~40 KB; libimagequant (`pip install
+  imagequant`, pngquant's library) to a 256-colour palette makes them ~10 KB
+  with no difference visible at 2× zoom (checked on chrome, glass, car paint,
+  lips). Lossless oxipng saved only 12 %.
+- **In the window.** `picture()` loads on change, builds three halvings (the
+  list icons are ~50 px wide at 1×, a 7× reduction that bilinear `gfx_blit`
+  aliases), fades the rust layer in with Age and shakes the element while it
+  sounds. Missing files fall back to the drawings (checked by screenshotting
+  while only two pictures existed). `tools/shot.cpp` takes `SHOT_SCALE=2` to
+  draw as on a Retina screen.
+
 ## Where things stand
 
 - Every energy × exciter × element combination plays and is stable at 44.1,

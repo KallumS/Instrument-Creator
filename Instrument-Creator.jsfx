@@ -53,6 +53,7 @@ ext_noinit = 1;
 VOICE_BASE = 0; VOICE_STRIDE = 512; VOICES_MAX = 8;
 MODE_OFF = 160; MODE_STRIDE = 8; MODES_MAX = 24;
 MAT_TAB = 13600; MAT_STRIDE = 16; MAT_N = 31;
+IMG_TAB = 14200; IMG_SLOT = 10;     // picture cache: 12 categories x 8 (window only)
 BESSEL_TAB = 4600; BAR_TAB = 4700; CANT_TAB = 4720; PLATE_TAB = 4750;
 BODY_BASE = 5000; BODY_STRIDE = 8; BODY_MAX = 24;
 HEAD_BASE = 5300; HEAD_MAX = 8;
@@ -1958,6 +1959,70 @@ cth = 40*gsc; cgp = 6*gsc;
 cty = gh - pad - 2*cth - cgp; gtop = cty - 8*gsc;
 
 function inbox(x, y, w, h) ( mouse_x >= x && mouse_x < x + w && mouse_y >= y && mouse_y < y + h; );
+
+// ---- rendered pictures (ADR 0020): PNGs in Instrument-Creator-images/ next to
+// this file, made by tools/render_parts.py. Each category keeps its current
+// picture in four image slots (full size and three halvings, so small icons are
+// not aliased) and its rust layer in four more. Loaded when first needed; if a
+// file is missing the drawing in draw_part() is used instead.
+function img_load(slot, key, row) local(r, l, w, h)
+(
+  IMG_TAB[row] = key;
+  r = gfx_loadimg(slot, #imgf);
+  r < 0 ? ( IMG_TAB[row + 1] = -1; ) : (
+    gfx_getimgdim(slot, w, h);
+    IMG_TAB[row + 1] = w > 0 ? 1 : -1; IMG_TAB[row + 2] = w; IMG_TAB[row + 3] = h;
+    l = 1; gfx_a = 1; gfx_mode = 2;
+    loop(3,
+      gfx_setimgdim(slot + l, max(1, w/2^l), max(1, h/2^l)); gfx_dest = slot + l;
+      gfx_blit(slot + l - 1, 1, 0, 0, 0, max(1, w/2^(l - 1)), max(1, h/2^(l - 1)), 0, 0, max(1, w/2^l), max(1, h/2^l));
+      l += 1;
+    );
+    gfx_dest = -1; gfx_mode = 0;
+  );
+  IMG_TAB[row + 1] > 0;
+);
+// blit a loaded picture to fit inside (x, y, w, h), centred, from the right halving
+// (the renders have a margin of their own, so they may spill 8 % past the box)
+function img_blit(slot, row, x, y, w, h, alpha, dy) local(iw, ih, s, l, dw, dh)
+(
+  iw = IMG_TAB[row + 2]; ih = IMG_TAB[row + 3];
+  s = 1.16*min(w/iw, h/ih); dw = iw*s; dh = ih*s;
+  l = max(0, min(3, floor(log(1/s)/log(2))));
+  gfx_a = alpha; gfx_mode = 0;
+  gfx_blit(slot + l, 1, 0, 0, 0, max(1, iw/2^l), max(1, ih/2^l), x + 0.5*(w - dw), y + 0.5*(h - dh) + dy, dw, dh);
+  gfx_a = 1;
+);
+function picture(c, i, x, y, w, h, big) local(m, key, row, ok, rr, ra, d)
+(
+  m = c == 2 ? elm : (c == 4 || c == 6 || c == 7) ? rsm : -1;
+  key = 1 + 100*i + (m >= 0 ? m + 1 : 0);
+  row = IMG_TAB + c*8;
+  IMG_TAB[row] != key ? (
+    (c == 3 || c == 5) ? sprintf(#imgf, "Instrument-Creator-images/mat%d.png", i) :
+    m >= 0 ? sprintf(#imgf, "Instrument-Creator-images/c%d_%d_m%d.png", c, i, m) :
+             sprintf(#imgf, "Instrument-Creator-images/c%d_%d.png", c, i);
+    img_load(IMG_SLOT + 8*c, key, row);
+  );
+  ok = IMG_TAB[row + 1] > 0;
+  ok ? (
+    // the vibrating element shakes while it sounds
+    d = (big && c == 2) ? min(0.06, 0.3*vis_lvl)*h : 0;
+    d > 0.5 ? ( img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 0.35, d); img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 0.35, -d); );
+    img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 1, 0);
+    // rust and grime, faded in by Age, on the parts made of a material
+    (m >= 0 || c == 3 || c == 5) && age_ > 0.02 ? (
+      rr = row + 4;
+      IMG_TAB[rr] != 1 + 100*i ? (
+        (c == 3 || c == 5) ? strcpy(#imgf, "Instrument-Creator-images/mat_rust.png") :
+                             sprintf(#imgf, "Instrument-Creator-images/c%d_%d_rust.png", c, i);
+        img_load(IMG_SLOT + 8*c + 4, 1 + 100*i, rr);
+      );
+      ra = age_*(is_metal(m >= 0 ? m : i) ? 0.9 : 0.5);
+      IMG_TAB[rr + 1] > 0 ? img_blit(IMG_SLOT + 8*c + 4, rr, x, y, w, h, ra, 0);
+    );
+  ) : draw_part(c, i, x, y, w, h, big);
+);
 function button(x, y, w, h, s, on) local(hv, tw, th)
 (
   hv = inbox(x, y, w, h);
@@ -1989,7 +2054,7 @@ function tile(c, x, y, w, h) local(v, hv, tw, th, s)
   hv = inbox(x, y, w, h); hv ? hov = c;
   gfx_set(hv ? 0.19 : 0.145, hv ? 0.2 : 0.15, hv ? 0.24 : 0.175, 1); gfx_rect(x, y, w, h, 1);
   group_col(c); gfx_rect(x, y, w, 2*gsc, 1);
-  draw_part(c, v, x + 0.1*w, y + 0.12*h, 0.8*w, 0.6*h, c == 2);
+  picture(c, v, x + 0.1*w, y + 0.12*h, 0.8*w, 0.6*h, c == 2);
   gfx_setfont(2); gfx_set(0.93, 0.94, 0.96, 1);
   s = opt_name(c, v); gfx_measurestr(s, tw, th); gfx_x = x + 0.5*(w - tw); gfx_y = y + h - 2.2*th; gfx_drawstr(s);
   gfx_setfont(1); gfx_set(0.58, 0.6, 0.67, 1);
@@ -2159,7 +2224,7 @@ loop(12,
   group_col(c); gfx_rect(lx, ry, 3*gsc, rht, 1);
   val = slider(c + 1)|0;
   isz = rht - 6*gsc;
-  draw_part(c, val, lx + 9*gsc, ry + 3*gsc, 1.4*isz, isz, 0);
+  picture(c, val, lx + 9*gsc, ry + 3*gsc, 1.4*isz, isz, 0);
   tx = lx + 18*gsc + 1.4*isz;
   gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = tx; gfx_y = ry + 0.16*rht; gfx_drawstr(cat_title(c));
   gfx_setfont(2); gfx_set(0.95, 0.95, 0.97, 1); gfx_x = tx; gfx_y = ry + 0.5*rht; gfx_drawstr(opt_name(c, val));
@@ -2211,7 +2276,7 @@ loop(4,
   hv = inbox(cx_, cy_, cw_, ch_); hv ? hov = cc;
   gfx_set(hv ? 0.19 : 0.145, hv ? 0.2 : 0.15, hv ? 0.24 : 0.175, 1); gfx_rect(cx_, cy_, cw_, ch_, 1);
   group_col(cc); gfx_rect(cx_, cy_, cw_, 2*gsc, 1);
-  draw_part(cc, v, cx_ + 0.2*cw_, cy_ + 0.08*ch_, 0.6*cw_, 0.55*ch_, 0);
+  picture(cc, v, cx_ + 0.2*cw_, cy_ + 0.08*ch_, 0.6*cw_, 0.55*ch_, 0);
   gfx_setfont(2); gfx_set(0.93, 0.94, 0.96, 1); s = opt_name(cc, v); gfx_measurestr(s, tww, thh);
   gfx_x = cx_ + 0.5*(cw_ - tww); gfx_y = cy_ + ch_ - 1.4*thh; gfx_drawstr(s);
   hv && clicked ? part_menu(cc);
@@ -2246,7 +2311,7 @@ ph_ > 40*gsc ? (
   psz = min(ph_ - 16*gsc, 0.22*pw_);
   pp = pc >= 100 ? ctl_part(pc - 100) : pc;
   v = slider(pp + 1)|0;
-  draw_part(pp, v, ax + 12*gsc, py_ + 8*gsc, 1.15*psz, psz, 1);
+  picture(pp, v, ax + 12*gsc, py_ + 8*gsc, 1.15*psz, psz, 1);
   sw = pw_ > 560*gsc ? min(200*gsc, 0.22*pw_) : 0;
   tx = ax + 24*gsc + 1.15*psz; tw2 = pw_ - (tx - ax) - 12*gsc - (sw > 0 ? sw + 12*gsc : 0);
   wrap_ymax = py_ + ph_ - 6*gsc;
