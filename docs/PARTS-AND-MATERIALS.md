@@ -65,7 +65,9 @@ nonlinearity and the limiter, all feed-forward.
   per-voice comb. `mod_st`, `trem` and the LFO (5.5 Hz) are updated at the same
   rate.
 - `@gfx` runs concurrently with `@sample` in REAPER (separate thread). The
-  only global written by both is `aud_req`.
+  only globals written by both are the flags `aud_req` (Play button) and
+  `gui_dirty`, set by the window and cleared in `@block`; the window also
+  writes the sliders themselves, as REAPER does.
 - Globals derived from sliders are recomputed by `update_globals` in
   `@slider`, and in `@block` when the window has changed a slider
   (`gui_dirty`). All 23 sliders are hidden in REAPER; the window's part list
@@ -705,6 +707,33 @@ Pedals. Sustain (CC64) defers release.
 1 − 0.3 mw. Levers: +2 mw semitones. Electronics: ±0.3 mw semitone vibrato
 and gain `1 − 0.3 mw·(½ + ½ sin(2π·5.5t + 1.2))`. Always: pitch bend,
 aftertouch (+0.4 L), CC2, CC11, CC64, CC67, CC120/123 (all off).
+
+**The window's control strip (sliders 13-23, ADR 0019).** Hidden in REAPER
+and drawn by `control(k, …)` in `@gfx`, control `k` = slider `13 + k`. The
+ranges and defaults repeat the `sliderN:` lines in `ctl_min/ctl_max/ctl_def`;
+`ctl_mid > 0` makes the track log on each half, with that value in the
+middle (`ctl_pos`/`ctl_val`); values are rounded to `ctl_step`.
+
+| k | slider | range | default | track |
+|---|---|---|---|---|
+| 0 | Force | 0…100 % | 70 | linear |
+| 1 | Size | 25…400 % | 100 | log, 100 in the middle |
+| 2 | Brightness | −100…100 | 0 | linear, fills from the middle |
+| 3 | Decay | 10…400 % | 100 | log, 100 in the middle |
+| 4 | Excite position | 2…50 % | 20 | linear |
+| 5 | Resonator amount | 0…100 % | 50 | linear |
+| 6 | Play mode | Poly / Mono | Poly | two-way switch |
+| 7 | Glide time | 5…1000 ms | 120 | log, 150 in the middle |
+| 8 | Fine tune | −100…100 c | 0 | linear, fills from the middle |
+| 9 | Output | −36…12 dB | 0 | linear, step 0.1 |
+| 10 | Age / rust | 0…100 % | 0 | linear |
+
+Drag is relative (Shift: × 0.1, re-anchored when Shift changes); a click more
+than 8 px from the handle jumps there first; a wheel notch moves 2 % of the
+track (Shift: one step on linear tracks, 0.5 % on log ones); a double-click within 0.35 s (`time_precise`)
+restores the default. Each change: `slider(13 + k) = v`,
+`slider_automate(2^(12 + k))`, `gui_dirty = 1`; mouse-up ends the touch with
+`slider_automate(mask, 1)`.
 
 ---
 

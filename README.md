@@ -234,7 +234,7 @@ Turn it up and the whole instrument wears out, whatever it is made of:
 The pictures rust and get grimy to match (metals rust most). Struck,
 plucked and bowed instruments get a little volume back as they age, so an
 old one is only a few dB quieter than a new one. Presets don't change the
-Age slider, so you can make any preset old. Changes to Age apply to the next
+Age control, so you can make any preset old. Changes to Age apply to the next
 note you play; the tuning wander and the leaks act on notes already playing.
 
 Everything you can change is in the window, so REAPER's own list of
@@ -334,12 +334,13 @@ Further reading:
 EEL2 engine as REAPER, including the graphics:
 
 ```bash
-tools/build_host.sh                      # builds tools/build/render, shot, inspect (~1 min)
+tools/build_host.sh                      # builds tools/build/render, shot, inspect, click (~1 min)
 python3 tools/sweep.py 60                # every energy x exciter x element: level, pitch
 python3 tools/range.py 1=0 2=0 3=5       # one combination across the keyboard
-python3 tools/check.py                   # stability sweep, must report 0 failures (~10 min)
+python3 tools/check.py                   # stability sweep, must report 0 failures (~40 min)
 python3 tools/trims.py                   # loudness trims after a sound change
 python3 tools/shot.py out.png            # screenshot of the window
+tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1 40,649,0   # drag a control
 python3 tools/spectrograms.py out.png    # spectrograms of every preset
 ```
 
