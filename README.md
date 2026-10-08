@@ -66,6 +66,8 @@ every one of the 31 materials, so a glass bell looks like glass and a chain
 link drum skin is a see-through mesh. They live in the
 `Instrument-Creator-images` folder. If that folder isn't next to the plugin,
 nothing breaks: the window falls back to simple drawings of each part.
+The 3D models themselves are in the [`blender`](blender/README.md) folder,
+one Blender file per part, if you'd like to open them in Blender.
 
 ## The parts
 
@@ -348,7 +350,8 @@ python3 tools/range.py 1=0 2=0 3=5       # one combination across the keyboard
 python3 tools/check.py                   # stability sweep, must report 0 failures (~40 min)
 python3 tools/trims.py                   # loudness trims after a sound change
 python3 tools/shot.py out.png            # screenshot of the window
-python3 tools/render_parts.py            # re-render every part picture in Blender (~35 min)
+python3 tools/render_parts.py            # re-render every part picture in Blender (~40 min)
+python3 tools/render_parts.py --blend    # save the models as .blend files in blender/
 tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1 40,649,0   # drag a control
 python3 tools/spectrograms.py out.png    # spectrograms of every preset
 ```

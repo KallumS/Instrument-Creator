@@ -6,6 +6,7 @@
     python3 tools/render_parts.py --samples 16 ...# quick draft
     python3 tools/render_parts.py --out DIR ...   # somewhere else
     python3 tools/render_parts.py --compress      # only re-compress what is in the folder
+    python3 tools/render_parts.py --blend         # save every model as a .blend in blender/
 
 Each PNG is compressed after rendering to a 256-colour palette with libimagequant
 (pip install imagequant; the same method as pngquant), about 4x smaller with no
@@ -1297,6 +1298,70 @@ def run_shape(c, i, mats, rust=True):
         print("c%d_%d_rust" % (c, i), flush=True)
 
 
+# names for the saved .blend files, in the plugin's option order
+CAT_SLUG = {0: "energy-source", 1: "exciter", 2: "vibrating-element", 4: "resonator", 6: "coupler",
+            7: "radiator", 8: "frequency-control", 9: "tuning", 10: "damping", 11: "modulation"}
+OPT_NAMES = {0: ["Breath", "Bow", "Finger", "Plectrum", "Hammer", "Electricity"],
+             1: ["Reed", "Lips", "Hammer", "Bow", "Plectrum", "Mallet"],
+             2: ["String", "Membrane", "Bar", "Plate", "Reed", "Air column"],
+             4: ["Bore", "Soundbox", "Pipe", "Cavity", "Body"],
+             6: ["Bridge", "Soundpost", "Mouthpiece", "Windway"],
+             7: ["Bell", "Soundboard", "Drumhead", "Cone"],
+             8: ["Fret", "Tone hole", "Valve", "Slide", "Key"],
+             9: ["Peg", "Tuning pin", "Machine head", "Slide"],
+             10: ["Damper", "Mute", "Palm", "Felt", "Hand"],
+             11: ["Keywork", "Pedals", "Valves", "Levers", "Electronics"]}
+BLEND_MAT = 1        # parts made of a material are saved in brass; the other 30 are in the file too
+
+
+def slug(t):
+    return t.lower().replace(" ", "-")
+
+
+def save_blend(path):
+    bpy.ops.wm.save_as_mainfile(filepath=path, compress=True)
+    print(os.path.basename(path), flush=True)
+
+
+def blend_shape(c, i, outdir):
+    """Save one model, as rendered, with every material available in the file."""
+    reset_scene()
+    holder = bpy.data.materials.new("HOLDER") if c in WITH_MAT else None
+    view = BUILD[c][i](holder)
+    frame(view)
+    if holder is not None:
+        mats = [mat_shader(m) for m in range(NMAT)] + [rust_shader()]
+        for mm in mats: mm.use_fake_user = True
+        for o in objects_with(holder): o.data.materials[0] = mats[BLEND_MAT]
+        bpy.data.materials.remove(holder)
+    bpy.context.scene.name = "%s: %s" % (CAT_SLUG[c].replace("-", " "), OPT_NAMES[c][i])
+    save_blend(os.path.join(outdir, "%s-%s.blend" % (CAT_SLUG[c], slug(OPT_NAMES[c][i]))))
+
+
+def blend_materials(outdir):
+    """All 31 material swatches (and the rust layer) on a table, labelled."""
+    reset_scene()
+    cols = 8; lab = plain("label", (0.9, 0.9, 0.92))
+    table = bpy.data.objects.new("table", None); link(table)
+    for m in list(range(NMAT)) + [-1]:
+        before = set(bpy.context.scene.objects)
+        M = mat_shader(m) if m >= 0 else rust_shader()
+        p_swatch(M, m if m >= 0 else None)
+        k = m if m >= 0 else NMAT
+        off = Vector(((k % cols - (cols - 1)/2)*3.4, (k//cols - 1.5)*3.6, 0))
+        cu = bpy.data.curves.new("label", 'FONT'); cu.body = MATS[m][0] if m >= 0 else "Rust (Age)"
+        cu.size = 0.42; cu.align_x = 'CENTER'
+        t = link(bpy.data.objects.new("label", cu)); t.location = (0, -1.25, -0.5); t.rotation_euler = (0.6, 0, 0)
+        t.data.materials.append(lab)
+        for o in set(bpy.context.scene.objects) - before:
+            if o.parent is None:
+                o.location += off; o.parent = table
+    table.scale = (0.3, 0.3, 0.3)
+    frame(Vector((0.0, -1, 1.3)), margin=0.03)
+    bpy.context.scene.name = "materials"
+    save_blend(os.path.join(outdir, "materials.blend"))
+
+
 def run_swatches(mats, rust=True):
     for m in mats:
         reset_scene()
@@ -1322,6 +1387,15 @@ def main(argv):
         if a == '--samples': SAMPLES = int(argv[k + 1]); k += 2; continue
         if a == '--norust': rust = False; k += 1; continue
         if a == '--out': OUT = argv[k + 1]; k += 2; continue
+        if a == '--blend':
+            outdir = os.path.join(ROOT, "blender"); os.makedirs(outdir, exist_ok=True)
+            for c in sorted(BUILD):
+                for i in range(len(BUILD[c])):
+                    if not want or str(c) in want or "%d_%d" % (c, i) in want:
+                        blend_shape(c, i, outdir)
+            if not want or "mat" in want:
+                blend_materials(outdir)
+            return
         if a == '--compress':
             for f in sorted(os.listdir(OUT)):
                 if f.endswith(".png"): compress(os.path.join(OUT, f))

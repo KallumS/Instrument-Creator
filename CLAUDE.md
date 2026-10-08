@@ -37,6 +37,7 @@ Where things are documented:
 ```
 Instrument-Creator.jsfx   the instrument: sliders, physics, voices, GUI (@gfx)
 Instrument-Creator-images/  the part pictures (3D renders, ADR 0020), installed beside the .jsfx
+blender/                  the models as .blend files for the user (render_parts.py --blend); not the source
 docs/window.png           screenshot used by the README (tools/shot.py)
 tools/build_host.sh       builds ysfx (with graphics) and four hosts into tools/build/
 tools/render.cpp          MIDI events file -> raw float32 stereo

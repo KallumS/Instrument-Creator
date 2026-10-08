@@ -346,6 +346,14 @@ out sprite sheets declared that way (ADR 0020).
   940×720 and 1880×1440 with `SHOT_SCALE=2`. The control strip still drags
   as before (`click`: Force 70 → 19).
 
+- **Blender files for the user** (asked for after the renders): there were
+  none, the script builds each model in memory. `--blend` saves one `.blend`
+  per option (51 files with `materials.blend`, 7.6 MB compressed), framed and
+  lit as rendered, material parts in brass with all 31 materials and rust kept
+  as fake users. Reopened two and rendered them: identical to the pictures.
+  `materials.blend` is a labelled table of swatches (first try viewed them
+  head-on and flat; now from above at an angle, scaled to fit the lights).
+
 ## Where things stand
 
 - Every energy × exciter × element combination plays and is stable at 44.1,
