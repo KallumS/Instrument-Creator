@@ -70,7 +70,7 @@ nonlinearity and the limiter, all feed-forward.
   writes the sliders themselves, as REAPER does.
 - Globals derived from sliders are recomputed by `update_globals` in
   `@slider`, and in `@block` when the window has changed a slider
-  (`gui_dirty`). All 23 sliders are hidden in REAPER; the window's part list
+  (`gui_dirty`). All 23 sliders are hidden in REAPER; the window's part tiles
   and control strip set them with `slider(n) = v; slider_automate(2^(n-1))`
   (ADR 0019). Part changes take effect at the next note-on (per-voice
   setup is done in `voice_start`), except shared-stage filters and the
@@ -712,7 +712,17 @@ aftertouch (+0.4 L), CC2, CC11, CC64, CC67, CC120/123 (all off).
 and drawn by `control(k, …)` in `@gfx`, control `k` = slider `13 + k`. The
 ranges and defaults repeat the `sliderN:` lines in `ctl_min/ctl_max/ctl_def`;
 `ctl_mid > 0` makes the track log on each half, with that value in the
-middle (`ctl_pos`/`ctl_val`); values are rounded to `ctl_step`.
+middle (`ctl_pos`/`ctl_val`); values are rounded to `ctl_step`. One row
+holds k = 0-5 and 10; **More** (`more_ctl`) adds a row with k = 6-9 (ADR
+0021). Names fall back `ctl_title` → `ctl_short` → `ctl_tiny` as the
+control narrows.
+
+**The part tiles (ADR 0021).** `tile(c, …)`: picture on the left (width
+`min(0.5w, 1.5(h − 14))`), then `cat_title` (or `cat_short`), the option,
+and for `mat_cat(c) ≥ 0` the material with a ▾. Click: arrows (top corner,
+on hover) step, the material opens `part_menu(mat_cat(c))`, elsewhere
+`part_menu(c)`, which ends with a "Made of" submenu: ids 1…n are options,
+n + 1… are materials. Wheel: over the material steps it, else the option.
 
 | k | slider | range | default | track |
 |---|---|---|---|---|

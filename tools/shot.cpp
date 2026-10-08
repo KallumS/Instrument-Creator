@@ -1,7 +1,8 @@
 // Headless screenshot of a JSFX's @gfx: writes raw BGRA pixels.
 // usage: shot fx.jsfx out.bgra width height mouse_x mouse_y [slider=value ...]
 // Runs one second of audio with a held note first, so meters have something to show.
-// SHOT_SCALE=2 in the environment draws as on a Retina screen (gfx_ext_retina = 2).
+// SHOT_SCALE=2 in the environment draws as on a Retina screen (gfx_ext_retina = 2);
+// SHOT_CLICK=1 clicks once at the mouse position first (menus return nothing).
 #include "ysfx.h"
 #include <cstdio>
 #include <cstdlib>
@@ -29,7 +30,9 @@ int main(int argc,char**argv){
   ysfx_gfx_config_t gc{}; gc.pixel_width=w; gc.pixel_height=h; gc.pixel_stride=4*w; gc.pixels=px.data(); gc.scale_factor=getenv("SHOT_SCALE")?atof(getenv("SHOT_SCALE")):1.0; gc.show_menu=&menu;
   ysfx_gfx_setup(fx,&gc);
   ysfx_gfx_set_window_state(fx,true,true,true);
-  for(int k=0;k<3;k++){ ysfx_gfx_update_mouse(fx,0,mx,my,0,0,0); ysfx_gfx_run(fx); }
+  // SHOT_CLICK=1: click once at the mouse position before the last frame
+  bool clk=getenv("SHOT_CLICK")!=nullptr;
+  for(int k=0;k<4;k++){ ysfx_gfx_update_mouse(fx,0,mx,my,(clk&&k==1)?ysfx_button_left:0,0,0); ysfx_gfx_run(fx); }
   FILE*fo=fopen(argv[2],"wb"); fwrite(px.data(),1,px.size(),fo); fclose(fo);
   ysfx_free(fx); return 0;
 }

@@ -41,22 +41,33 @@ Reverberator makes a very good partner after it.
 
 ## Using the window
 
-- **The list on the left** has your twelve choices: the ten parts, plus what
-  the vibrating element and the resonator are made of. Click a row for a menu,
-  click the small arrows to step through the options, or roll the mouse wheel
-  over it.
-- **The picture on the right** is your instrument, drawn part by part, in the
-  order the energy flows through it. Click any part in it to change it. The
-  element's picture moves when it sounds.
-- **Hover over anything** and the panel at the bottom shows a big picture of
-  that part, what it does, and (for materials) how stiff and heavy it is and
-  how long it rings. The green line tells you how your combination will play,
+- **The big picture** is your instrument, part by part, in the order the
+  energy flows through it (the arrows), with the four controls (frequency
+  control, tuning, damping, modulation) in the row underneath. Each part
+  shows its picture, what kind of part it is, and which option you chose.
+  To change a part:
+  - click it for a menu of its options;
+  - or hover over it and click the small arrows in its top corner to step
+    through them;
+  - or roll the mouse wheel over it.
+- **Materials.** The vibrating element, resonator, coupler and radiator also
+  show what they are made of, in colour with a small ▾. Click the material
+  name for the list of 31 materials, or roll the wheel over it. The part's
+  own menu has them too, under **Made of**. The resonator, coupler and
+  radiator always share one material, so changing it on one changes all
+  three. The element's picture shimmers while it sounds.
+- **Hover over anything** (a part, a material name, a control) and the
+  panel at the bottom shows a big picture of it, what it does, and (for a
+  material) how stiff and heavy it is and how long it rings. The green line tells you how your combination will play,
   and the little screen shows the sound's waveform as you play.
-- **The controls along the bottom** (Force, Size, Brightness, Decay and the
-  rest, described [below](#the-controls)) shape how it plays. Drag one to
-  change it (hold **Shift** for small steps), roll the mouse wheel over it,
-  or double-click it to put it back to normal. Hover over one and the panel
-  explains what it does. Play mode is a switch: click Poly or Mono.
+- **The controls along the bottom** (Force, Size, Brightness, Decay,
+  Position, Resonator and Age, described [below](#the-controls)) shape how
+  it plays. Drag one to change it (hold **Shift** for small steps), roll the
+  mouse wheel over it, or double-click it to put it back to normal. Hover
+  over one and the panel explains what it does.
+- **More** (bottom right) opens a second row with the four controls you
+  usually set once: Play mode (a switch: click Poly or Mono), Glide time,
+  Fine tune and Output. Click **Less** to tuck them away again.
 - **Presets** has 19 ready-made instruments to start from. **Surprise me**
   picks every part at random. **Play C4** plays a note so you can hear a change
   without touching your keyboard.
@@ -352,7 +363,7 @@ python3 tools/trims.py                   # loudness trims after a sound change
 python3 tools/shot.py out.png            # screenshot of the window
 python3 tools/render_parts.py            # re-render every part picture in Blender (~40 min)
 python3 tools/render_parts.py --blend    # save the models as .blend files in blender/
-tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1 40,649,0   # drag a control
+tools/build/click Instrument-Creator.jsfx - 940 720 85,699,0 85,699,1 40,699,1 40,699,0   # drag a control
 python3 tools/spectrograms.py out.png    # spectrograms of every preset
 ```
 

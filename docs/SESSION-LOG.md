@@ -354,6 +354,33 @@ out sprite sheets declared that way (ADR 0020).
   `materials.blend` is a labelled table of swatches (first try viewed them
   head-on and flat; now from above at an angle, scaled to fit the lights).
 
+## 19. A calmer window
+
+The user found the window busy and asked what could go under a tab or into
+a menu. Each part was shown three times (list row, diagram tile, preview)
+and eleven controls filled two rows. ADR 0021:
+
+- The list is gone; the diagram spans the window, each tile with the
+  picture on the left and category / option / material on the right,
+  arrows on hover, wheel to step. Materials: click the coloured name (or the
+  part menu's "Made of" submenu, ids after the options: REAPER's
+  `eel_lice.h` and ysfx number only real items).
+- One row of seven controls plus **More** for play mode, glide, fine tune
+  and output.
+- **Retina was never on.** `gfx_ext_retina` must be set to 1 in `@init`
+  for REAPER (and ysfx: `wants_retina`) to give the window full resolution;
+  without it `SHOT_SCALE=2` drew at 1× in a 2× window. The user's REAPER
+  screenshot in §16 was therefore a 1× window enlarged by macOS. Now set.
+- Tools: `shot.py` takes `SHOT_CLICK=1` (one click at the mouse position;
+  the first version passed the button as the modifier argument of
+  `ysfx_gfx_update_mouse(fx, mods, x, y, buttons, wheel, hwheel)` and
+  nothing happened); `click` prints all 23 sliders and takes `CLICK_MENU=n`.
+- Checked with `click`: element menu item 12 → Glass; material name item 1
+  → Steel; the exciter's right arrow → Lips; wheel over the material → next
+  material, over the bell → next radiator; resonator menu item 7 → Brass;
+  Force drag 70 → 21. Screenshots at 800×480, 940×720 (More open and shut),
+  1880×1440 at 2×, and without the picture folder (drawings).
+
 ## Where things stand
 
 - Every energy × exciter × element combination plays and is stable at 44.1,
@@ -403,6 +430,8 @@ Candidate next steps, roughly in order of value:
    part's model should change: each is one function in
    `tools/render_parts.py`; re-render just that shape with
    `python3 tools/render_parts.py 4_2` (needs `pip install bpy imagequant`).
+   The same session removed the part list and put four controls under More
+   (§19, ADR 0021), and switched on Retina drawing: ask how both look.
 1. Feedback from REAPER on the new window: the control strip (drag, Shift,
    wheel, double-click, Poly/Mono), the part menus, automation of hidden
    sliders, window size for an instance saved at the old 940×640, CPU on the

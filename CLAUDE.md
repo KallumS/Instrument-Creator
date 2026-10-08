@@ -43,7 +43,7 @@ tools/build_host.sh       builds ysfx (with graphics) and four hosts into tools/
 tools/render.cpp          MIDI events file -> raw float32 stereo
 tools/shot.cpp            screenshot of @gfx (plays a note first); tools/shot.py -> PNG; SHOT_SCALE=2 for Retina
 tools/render_parts.py     Blender (pip install bpy): models every part, renders Instrument-Creator-images/
-tools/click.cpp           drive @gfx with a mouse script; prints sliders 13-23 and automation flags
+tools/click.cpp           drive @gfx with a mouse script; prints sliders 1-23 and automation flags; CLICK_MENU=n picks menu item n
 tools/inspect.cpp         dump plugin memory after N blocks of a held note
 tools/analyse.py          render/measure helpers (LUFS, YIN pitch), the part and material name lists
 tools/sweep.py            every energy x exciter x element: level, pitch, flags
@@ -63,13 +63,14 @@ matplotlib`). `tools/build/` is git-ignored.
 ```
 1 energy source  2 exciter  3 vibrating element  4 element material  5 resonator
 6 resonator material  7 coupler  8 radiator  9 frequency control  10 tuning
-11 damping  12 modulation   (1-12 hidden; the window shows them, row = slider - 1)
+11 damping  12 modulation   (1-12 hidden; tile(c) in the window shows slider c + 1)
 13 force  14 size  15 brightness  16 decay  17 excite position  18 resonator amount
 19 play mode  20 glide time  21 fine tune  22 output  23 age / rust
 ```
 
 All 23 are hidden from REAPER's slider list (`-` before the name) and drawn
-in the window: 13-23 as the control strip (`control()`, ADR 0019), whose
+in the window: 13-23 as the control strip (`control()`, ADR 0019; one row
+and More, ADR 0021), whose
 ranges, defaults and log midpoints are repeated in `ctl_min/max/def/mid`;
 change both.
 
@@ -88,7 +89,9 @@ python3 tools/age_test.py                     # ~10 min
 python3 tools/shot.py out.png 940 720 mx my 3=2 4=8   # then look at the PNG
 SHOT_SCALE=2 python3 tools/shot.py out.png 1880 1440   # as on the user's Retina Mac
 python3 tools/render_parts.py --out /tmp/x --samples 16 --mats 12 2_0   # draft one shape; no args = all (~35 min)
-tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1 40,649,0   # drag Force
+tools/build/click Instrument-Creator.jsfx - 940 720 85,699,0 85,699,1 40,699,1 40,699,0   # drag Force
+CLICK_MENU=12 tools/build/click Instrument-Creator.jsfx - 940 720 700,140,0 700,140,1 700,140,0   # element menu: Made of > Glass
+SHOT_CLICK=1 python3 tools/shot.py out.png 940 720 890 690   # click once (here: More) before the screenshot
 ```
 
 ## EEL2 traps (Reverberator ADR 0010, and new ones)
