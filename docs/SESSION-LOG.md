@@ -24,7 +24,7 @@ after pull request 3 merged session 1), in five requests:
 | 2 | "Can you upload the Blender files to the repo?" | `blender/`: one `.blend` per part plus `materials.blend` | `55fa644` |
 | 3 | "The GUI looks busy. Is there anything that can be under a tab or inside a menu?" | the part list removed, materials in menus, four controls under More, Retina switched on; ADR 0021 | `e9e2fc8` |
 | 4 | "Can you port Instrument Creator to VST3, CLAP and Audio Unit?" | investigated, then set aside by the user (§20) | none |
-| 5 | "Update all of the docs so I can start a new chat" | this table, §20, "Where things stand" and the handover | (this commit) |
+| 5 | "Update all of the docs so I can start a new chat" | this table, §20, "Where things stand" and the handover | `7bb5677` |
 
 The user's original brief (session 1) is `docs/Instrument Creator 011026.odt`
 (an OpenDocument file they uploaded): the ten categories and their options,
