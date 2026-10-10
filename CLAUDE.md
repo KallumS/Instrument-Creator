@@ -2,10 +2,17 @@
 
 Working notes for Instrument Creator: a JSFX instrument for REAPER that
 assembles a playable instrument from ten kinds of part and two materials (31
-to choose from), with an Age / rust control that wears it out. The user is
-not a programmer: explain results in plain language and keep `README.md`
-readable for them. The repository was created as Wind-Instrument-Creator and
-is being renamed Instrument-Creator.
+to choose from), with an Age / rust control that wears it out, and a window
+of 3D-rendered pictures of every part. The user is not a programmer: explain
+results in plain language and keep `README.md` readable for them. The
+repository is `KallumS/Instrument-Creator` (it began as
+Wind-Instrument-Creator); the user's original brief is
+`docs/Instrument Creator 011026.odt`.
+
+**Starting a session:** read this file, then the end of `docs/SESSION-LOG.md`
+("Where things stand" and "Handover to the next session"). A fresh container
+needs `pip install numpy scipy matplotlib` and `tools/build_host.sh`; to
+render pictures also `pip install bpy imagequant`.
 
 REAPER's JSFX reference is at https://www.reaper.fm/sdk/js/ (the user
 supplied a copy in session 1; the useful parts are in SESSION-LOG §17).
@@ -88,7 +95,8 @@ python3 tools/check.py                        # ~40 min: run in the background; 
 python3 tools/age_test.py                     # ~10 min
 python3 tools/shot.py out.png 940 720 mx my 3=2 4=8   # then look at the PNG
 SHOT_SCALE=2 python3 tools/shot.py out.png 1880 1440   # as on the user's Retina Mac
-python3 tools/render_parts.py --out /tmp/x --samples 16 --mats 12 2_0   # draft one shape; no args = all (~35 min)
+python3 tools/render_parts.py --out /tmp/x --samples 16 --mats 12 2_0   # draft one shape; no args = all (~40 min)
+python3 tools/render_parts.py 2_0 && python3 tools/render_parts.py --blend 2_0   # re-render one shape for real, re-save its .blend
 tools/build/click Instrument-Creator.jsfx - 940 720 85,699,0 85,699,1 40,699,1 40,699,0   # drag Force
 CLICK_MENU=12 tools/build/click Instrument-Creator.jsfx - 940 720 700,140,0 700,140,1 700,140,0   # element menu: Made of > Glass
 SHOT_CLICK=1 python3 tools/shot.py out.png 940 720 890 690   # click once (here: More) before the screenshot
@@ -202,11 +210,15 @@ line A.
   depends on pressure).
 - Rubber, paper, cardboard, leather, jelly, PVC and cling film are less lossy
   than the real materials, so that they can be played.
-- First check in REAPER (macOS, Retina): the window renders as in ysfx.
+- First check in REAPER (macOS, Retina, session 1): the window rendered as
+  in ysfx, but at 1× (Retina was only switched on in session 2, ADR 0021).
   REAPER draws any visible slider above `@gfx` and takes that height from the
   window, which is why every slider is now hidden (ADR 0019). The layout
-  still fits any height (it reserves the preview panel first). Menus,
-  clicking, dragging and automation in REAPER are not yet confirmed (they
-  are tested in ysfx with `tools/click.cpp`).
-- The 3D pictures (ADR 0020) load in ysfx from the folder beside the .jsfx;
-  not yet seen in REAPER. Without the folder the window shows the drawings.
+  still fits any height (it reserves the preview panel first).
+- **Nothing from session 2 has been seen in REAPER**: the 3D pictures
+  (ADR 0020, loaded from the folder beside the .jsfx; drawings without it),
+  the tile layout and menus, More, Retina mode. Menus, clicking, dragging and
+  automation are tested only in ysfx (`tools/click.cpp`).
+- JSFX only, for REAPER. VST3 / CLAP / AU versions were looked at and set
+  aside by the user (SESSION-LOG §20: wrap with ysfx's JUCE plugin, build on
+  macOS, mind AGPL).

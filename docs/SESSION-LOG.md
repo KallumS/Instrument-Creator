@@ -15,6 +15,21 @@ built in this one session, in nine requests:
 | 8 | "Keep everything in one place" (move REAPER's sliders into the window), with REAPER's JSFX and API docs | all sliders hidden; a control strip in the window; `tools/click.cpp`; ADR 0019 | `dbe6539` |
 | 9 | "Please update all of the documents and write a prompt to continue in a fresh session" | docs checked against the code; "Where things stand" and the handover moved to the end and refreshed | `4837278` |
 
+**Session 2, 8-10 October 2026**, on the same branch (recreated from `main`
+after pull request 3 merged session 1), in five requests:
+
+| # | Request | Result | Commits |
+|---|---|---|---|
+| 1 | "The pictures of the instrument parts don't look great, is there a way to use 3D renders (preferred) or higher-quality drawings?" (with REAPER's JSFX reference again) | every part modelled in Blender and rendered in all 31 materials, loaded from `Instrument-Creator-images/`; ADR 0020 | `8bcd205`, `2d011b2` |
+| 2 | "Can you upload the Blender files to the repo?" | `blender/`: one `.blend` per part plus `materials.blend` | `55fa644` |
+| 3 | "The GUI looks busy. Is there anything that can be under a tab or inside a menu?" | the part list removed, materials in menus, four controls under More, Retina switched on; ADR 0021 | `e9e2fc8` |
+| 4 | "Can you port Instrument Creator to VST3, CLAP and Audio Unit?" | investigated, then set aside by the user (§20) | none |
+| 5 | "Update all of the docs so I can start a new chat" | this table, §20, "Where things stand" and the handover | (this commit) |
+
+The user's original brief (session 1) is `docs/Instrument Creator 011026.odt`
+(an OpenDocument file they uploaded): the ten categories and their options,
+"weird and wacky instruments", a preview of each part.
+
 What was built on: Trombolese and Reverberator, read from their
 repositories (read-only). What was measured, what failed and what was changed
 is below, in order. Numbers are from the headless rig (`tools/`), 48 kHz,
@@ -381,7 +396,35 @@ and eleven controls filled two rows. ADR 0021:
   Force drag 70 → 21. Screenshots at 800×480, 940×720 (More open and shut),
   1880×1440 at 2×, and without the picture folder (drawings).
 
+## 20. Plugin formats: looked at, set aside
+
+The user asked for VST3, CLAP and Audio Unit versions, then decided to stay
+with the JSFX for now. What was found, for when it comes back:
+
+- **Wrapping beats rewriting.** ysfx (already our test host) has a plugin
+  build (`YSFX_PLUGIN=ON`, `cmake.plugin.txt` in `tools/build/ysfx`): JUCE
+  8.0.6, `FORMATS VST3 AU`, plus `thirdparty/clap-juce-extensions` for CLAP,
+  instrument and effect variants. It runs the same EEL2 code with the same
+  `@gfx`, so the measured physics, trims and window would carry over
+  unchanged. A rewrite in C++ would mean re-validating everything
+  (pitch corrections, trims, stability) from scratch.
+- **What a wrapper needs:** load `Instrument-Creator.jsfx` and the picture
+  folder from the plugin bundle instead of a file browser, show only the
+  `@gfx` view (ysfx's editor adds its own controls around it), and name and
+  ID it as Instrument Creator. Not started; ysfx's editor code is in
+  `plugin/editor.cpp` and `plugin/processor.cpp`.
+- **Building for the user's Mac** (AU is macOS-only) cannot be done in this
+  Linux container: it needs a macOS build, e.g. a GitHub Actions macOS
+  runner, and unsigned plugins need the user to clear the quarantine flag
+  (or an Apple developer account to sign and notarise them).
+- **Licences:** this repository is GPL-3.0; the ysfx plugin is distributed
+  under AGPL-3.0 (`plugin_license/`), JUCE 8 under AGPL-3.0 or a commercial
+  licence. A wrapped plugin would have to stay open source under those terms;
+  check before publishing binaries.
+
 ## Where things stand
+
+Sound (unchanged since session 1):
 
 - Every energy × exciter × element combination plays and is stable at 44.1,
   48 and 96 kHz and at age 0 and 100; all 19 presets play.
@@ -391,57 +434,59 @@ and eleven controls filled two rows. ADR 0021:
 - Worst CPU: a bowed-plate chord at 14 % of a core at 48 kHz; 27.5 % for a
   three-note chord at 96 kHz.
 
+Window (session 2): 3D pictures of every part in every material, with a rust
+layer for Age and the drawings as a fallback (§18); one diagram of tiles,
+materials chosen from menus, seven controls plus More (§19); Retina drawing
+on. All checked in ysfx (screenshots at 800×480, 940×720, 2× Retina, with and
+without the picture folder; menus, arrows, wheel and drag with `click`).
+
 Open items:
 
-- **Try it in REAPER.** The window has been seen in REAPER (§16), before
-  the control strip existed; the strip, the popup menus, clicking, dragging
-  and automation have only been checked in ysfx (`tools/click.cpp`).
-- **The pictures in REAPER.** Loading PNGs from `Instrument-Creator-images/`
-  beside the plugin is checked only in ysfx; confirm REAPER finds the folder
-  (it should: same search order) and that Retina looks as in the
-  `SHOT_SCALE=2` screenshots.
+- **Nothing from session 2 has been seen in REAPER.** The user's only REAPER
+  screenshot (§16) predates the control strip, the pictures, the new layout
+  and Retina mode. Confirm: the pictures load from the folder beside the
+  plugin; menus (including the "Made of" submenu), arrows, wheel, dragging,
+  More; automation of the hidden sliders; that Retina mode looks as in the
+  `SHOT_SCALE=2` screenshots and the window is the right size.
 - The most lossless steels bowed at exactly 1/5 or 1/3 of the string can
   flip to the octave.
 - Lips on a membrane: bone is 57 c flat, jelly 26 c sharp.
 - A reed cannot play a true cone (ADR 0017).
 - A single push into lips sags in pitch as it fades.
+- Vestigial code listed in PARTS-AND-MATERIALS.md §14.
+- Plugin formats (VST3, CLAP, AU): set aside by the user (§20).
 
 ## Handover to the next session
 
-Session 2 (8 October 2026) added the 3D pictures (§18) on the same branch,
-recreated from `main` after pull request 3 merged session 1's work; a fresh
-container also needs `pip install bpy imagequant` to re-render them.
-
-State at the end of session 1 (1 October 2026): everything is committed and
+State at the end of session 2 (10 October 2026): everything is committed and
 pushed on `claude/reaper-custom-instrument-creator-xz08x6`; no pull request
-has been opened; the GitHub repository is still named Wind-Instrument-Creator
-(the user intends to rename it Instrument-Creator; the files already use the
-new name). A fresh container has no `tools/build/` and no Python packages:
-run `pip install numpy scipy matplotlib` and `tools/build_host.sh` first.
+has been opened for session 2's work (session 1's was merged as pull
+request 3). The GitHub repository is `KallumS/Instrument-Creator`.
 
-The user tests in REAPER on macOS (Retina) and reports back with
-screenshots. The last thing they saw in REAPER was the window before the
-control strip (§16); the strip (§17) is new to them.
+A fresh container has no `tools/build/` and no Python packages. Run
+`pip install numpy scipy matplotlib` and `tools/build_host.sh` first; for
+the pictures also `pip install bpy imagequant` (bpy is ~400 MB, Python 3.13).
+
+The user is not a programmer, tests in REAPER on macOS (Retina) and reports
+back with screenshots. They liked the 3D pictures ("brilliant") and the
+calmer window ("much better").
 
 Candidate next steps, roughly in order of value:
 
-0. Session 2 (8 October 2026) replaced the drawn pictures with 3D renders
-   (§18, ADR 0020). Ask the user how they look in REAPER, and whether any
-   part's model should change: each is one function in
-   `tools/render_parts.py`; re-render just that shape with
-   `python3 tools/render_parts.py 4_2` (needs `pip install bpy imagequant`).
-   The same session removed the part list and put four controls under More
-   (§19, ADR 0021), and switched on Retina drawing: ask how both look.
-1. Feedback from REAPER on the new window: the control strip (drag, Shift,
-   wheel, double-click, Poly/Mono), the part menus, automation of hidden
-   sliders, window size for an instance saved at the old 940×640, CPU on the
-   user's machine. Ask for a screenshot if something looks wrong.
-2. The open items above (bowed steel double-slip at 1/5 and 1/3; bone and
-   jelly lips on a membrane; a true conical reed; small-window tile labels).
-3. Removing the vestigial code listed in PARTS-AND-MATERIALS.md §14 (then
-   render, run `check.py`, commit).
-4. Anything new the user asks for. Before changing a design rule, read its
-   ADR; after any sound change, re-run `trims.py` / `apply_trims.py` and
-   `check.py`; after a window change, screenshot it at 940×720 and 800×560
-   and test the controls with `tools/build/click`; then update
+1. **Feedback from REAPER on everything in session 2** (open items above).
+   Ask for a screenshot of the window and of a part menu. If the pictures
+   don't appear, check the folder is beside the .jsfx in the same Effects
+   subfolder; the window falls back to drawings without it.
+2. Changes to individual models if the user asks: each is one `p_*`
+   function in `tools/render_parts.py`; draft with `--out /tmp/x --samples
+   16 --mats 12 4_2`, then render for real (`python3 tools/render_parts.py
+   4_2`, compressed automatically) and re-save its `.blend` (`--blend 4_2`).
+3. The sound open items above, then the vestigial code (render, run
+   `check.py`, commit).
+4. Plugin formats, if the user brings them back (§20).
+5. Anything new. Before changing a design rule, read its ADR; after any
+   sound change, re-run `trims.py` / `apply_trims.py` and `check.py`; after a
+   window change, screenshot it at 940×720, 800×480 and with `SHOT_SCALE=2`,
+   and test it with `tools/build/click`; after adding an option or material,
+   render its pictures and add its drawing (ADR 0020); then update
    PARTS-AND-MATERIALS.md, the README, CLAUDE.md and this log.
