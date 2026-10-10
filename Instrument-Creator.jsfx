@@ -45,6 +45,7 @@ out_pin:Right output
 @init
 
 ext_noinit = 1;
+gfx_ext_retina = 1;   // draw at full resolution on Retina/HiDPI screens (gsc in @gfx scales the layout)
 
 // ---------------------------------------------------------------------------
 // Memory map (units: EEL memory slots). Names are long on purpose: EEL2
@@ -53,6 +54,7 @@ ext_noinit = 1;
 VOICE_BASE = 0; VOICE_STRIDE = 512; VOICES_MAX = 8;
 MODE_OFF = 160; MODE_STRIDE = 8; MODES_MAX = 24;
 MAT_TAB = 13600; MAT_STRIDE = 16; MAT_N = 31;
+IMG_TAB = 14200; IMG_SLOT = 10;     // picture cache: 12 categories x 8 (window only)
 BESSEL_TAB = 4600; BAR_TAB = 4700; CANT_TAB = 4720; PLATE_TAB = 4750;
 BODY_BASE = 5000; BODY_STRIDE = 8; BODY_MAX = 24;
 HEAD_BASE = 5300; HEAD_MAX = 8;
@@ -1216,6 +1218,11 @@ update_globals();
 // GUI: part names, descriptions, pictures and presets
 // ===========================================================================
 function cat_count(c) ( c==0?6 : c==1?6 : c==2?6 : c==3?MAT_N : c==4?5 : c==5?MAT_N : c==6?4 : c==7?4 : c==8?5 : c==9?4 : 5; );
+function cat_short(c)
+(
+  c==0?"ENERGY" : c==1?"EXCITER" : c==2?"ELEMENT" : c==4?"RESONATOR" : c==6?"COUPLER" : c==7?"RADIATOR" :
+  c==8?"FREQUENCY" : c==9?"TUNING" : c==10?"DAMPING" : c==11?"MODULATION" : "MATERIAL";
+);
 function cat_title(c)
 (
   c==0?"ENERGY SOURCE" : c==1?"EXCITER" : c==2?"VIBRATING ELEMENT" : c==3?"ELEMENT MATERIAL" :
@@ -1953,11 +1960,76 @@ clicked = (mouse_cap & 1) && !(last_cap & 1);
 last_cap = mouse_cap;
 wheel = mouse_wheel; mouse_wheel = 0;
 hov = -1; hovc = -1;
-// the control strip along the bottom; everything else fits above gtop
+// the control strip along the bottom (one row, two with More open);
+// everything else fits above gtop
 cth = 40*gsc; cgp = 6*gsc;
-cty = gh - pad - 2*cth - cgp; gtop = cty - 8*gsc;
+cty = gh - pad - (more_ctl ? 2*cth + cgp : cth); gtop = cty - 8*gsc;
 
 function inbox(x, y, w, h) ( mouse_x >= x && mouse_x < x + w && mouse_y >= y && mouse_y < y + h; );
+
+// ---- rendered pictures (ADR 0020): PNGs in Instrument-Creator-images/ next to
+// this file, made by tools/render_parts.py. Each category keeps its current
+// picture in four image slots (full size and three halvings, so small icons are
+// not aliased) and its rust layer in four more. Loaded when first needed; if a
+// file is missing the drawing in draw_part() is used instead.
+function img_load(slot, key, row) local(r, l, w, h)
+(
+  IMG_TAB[row] = key;
+  r = gfx_loadimg(slot, #imgf);
+  r < 0 ? ( IMG_TAB[row + 1] = -1; ) : (
+    gfx_getimgdim(slot, w, h);
+    IMG_TAB[row + 1] = w > 0 ? 1 : -1; IMG_TAB[row + 2] = w; IMG_TAB[row + 3] = h;
+    l = 1; gfx_a = 1; gfx_mode = 2;
+    loop(3,
+      gfx_setimgdim(slot + l, max(1, w/2^l), max(1, h/2^l)); gfx_dest = slot + l;
+      gfx_blit(slot + l - 1, 1, 0, 0, 0, max(1, w/2^(l - 1)), max(1, h/2^(l - 1)), 0, 0, max(1, w/2^l), max(1, h/2^l));
+      l += 1;
+    );
+    gfx_dest = -1; gfx_mode = 0;
+  );
+  IMG_TAB[row + 1] > 0;
+);
+// blit a loaded picture to fit inside (x, y, w, h), centred, from the right halving
+// (the renders have a margin of their own, so they may spill 8 % past the box)
+function img_blit(slot, row, x, y, w, h, alpha, dy) local(iw, ih, s, l, dw, dh)
+(
+  iw = IMG_TAB[row + 2]; ih = IMG_TAB[row + 3];
+  s = 1.16*min(w/iw, h/ih); dw = iw*s; dh = ih*s;
+  l = max(0, min(3, floor(log(1/s)/log(2))));
+  gfx_a = alpha; gfx_mode = 0;
+  gfx_blit(slot + l, 1, 0, 0, 0, max(1, iw/2^l), max(1, ih/2^l), x + 0.5*(w - dw), y + 0.5*(h - dh) + dy, dw, dh);
+  gfx_a = 1;
+);
+function picture(c, i, x, y, w, h, big) local(m, key, row, ok, rr, ra, d)
+(
+  m = c == 2 ? elm : (c == 4 || c == 6 || c == 7) ? rsm : -1;
+  key = 1 + 100*i + (m >= 0 ? m + 1 : 0);
+  row = IMG_TAB + c*8;
+  IMG_TAB[row] != key ? (
+    (c == 3 || c == 5) ? sprintf(#imgf, "Instrument-Creator-images/mat%d.png", i) :
+    m >= 0 ? sprintf(#imgf, "Instrument-Creator-images/c%d_%d_m%d.png", c, i, m) :
+             sprintf(#imgf, "Instrument-Creator-images/c%d_%d.png", c, i);
+    img_load(IMG_SLOT + 8*c, key, row);
+  );
+  ok = IMG_TAB[row + 1] > 0;
+  ok ? (
+    // the vibrating element shakes while it sounds
+    d = (big && c == 2) ? min(0.06, 0.3*vis_lvl)*h : 0;
+    d > 0.5 ? ( img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 0.35, d); img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 0.35, -d); );
+    img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 1, 0);
+    // rust and grime, faded in by Age, on the parts made of a material
+    (m >= 0 || c == 3 || c == 5) && age_ > 0.02 ? (
+      rr = row + 4;
+      IMG_TAB[rr] != 1 + 100*i ? (
+        (c == 3 || c == 5) ? strcpy(#imgf, "Instrument-Creator-images/mat_rust.png") :
+                             sprintf(#imgf, "Instrument-Creator-images/c%d_%d_rust.png", c, i);
+        img_load(IMG_SLOT + 8*c + 4, 1 + 100*i, rr);
+      );
+      ra = age_*(is_metal(m >= 0 ? m : i) ? 0.9 : 0.5);
+      IMG_TAB[rr + 1] > 0 ? img_blit(IMG_SLOT + 8*c + 4, rr, x, y, w, h, ra, 0);
+    );
+  ) : draw_part(c, i, x, y, w, h, big);
+);
 function button(x, y, w, h, s, on) local(hv, tw, th)
 (
   hv = inbox(x, y, w, h);
@@ -1973,28 +2045,74 @@ function group_col(c)
   c <= 1 ? gfx_set(0.95, 0.6, 0.25, 1) : c <= 3 ? gfx_set(0.35, 0.8, 0.95, 1) :
   c <= 7 ? gfx_set(0.45, 0.85, 0.5, 1) : gfx_set(0.72, 0.55, 0.95, 1);
 );
-function part_menu(c) local(k, r)
+// the material category (3 or 5) that a part is made of, or -1
+function mat_cat(c) ( c == 2 ? 3 : (c == 4 || c == 6 || c == 7) ? 5 : -1; );
+// a part's options, then (for parts made of a material) a "Made of" submenu.
+// Menu ids count items only: separators and submenu headings take none.
+function part_menu(c) local(k, r, n, mc)
 (
+  n = cat_count(c); mc = mat_cat(c);
   strcpy(#menu, ""); k = 0;
-  loop(cat_count(c), k > 0 ? strcat(#menu, "|"); (slider(c + 1)|0) == k ? strcat(#menu, "!"); strcat(#menu, opt_name(c, k)); k += 1;);
+  loop(n, k > 0 ? strcat(#menu, "|"); (slider(c + 1)|0) == k ? strcat(#menu, "!"); strcat(#menu, opt_name(c, k)); k += 1;);
+  mc >= 0 ? (
+    strcat(#menu, "||>Made of: "); strcat(#menu, mat_name(slider(mc + 1)|0));
+    k = 0;
+    loop(MAT_N, strcat(#menu, k == MAT_N - 1 ? "|<" : "|"); (slider(mc + 1)|0) == k ? strcat(#menu, "!"); strcat(#menu, mat_name(k)); k += 1;);
+  );
   gfx_x = mouse_x; gfx_y = mouse_y;
   r = gfx_showmenu(#menu);
-  r > 0 ? set_part(c, r - 1);
+  r > 0 && r <= n ? set_part(c, r - 1) : r > n ? set_part(mc, r - n - 1);
 );
-function sub_name(c) ( c == 2 ? mat_name(elm) : (c == 4 || c == 6 || c == 7) ? mat_name(rsm) : ""; );
-// a clickable picture of one part of the assembled instrument
-function tile(c, x, y, w, h) local(v, hv, tw, th, s)
+// one part of the assembled instrument: its picture, and beside it the
+// category, the option and (for parts made of one) the material. Click for
+// the part's menu, click the material for the materials, roll the wheel to
+// step (over the material: step the material), or use the arrows on hover.
+function tile(c, x, y, w, h) local(v, hv, tw, th, s, pw, ph, tx, tmax, mc, m, bh, ty, t4, t2, t1, ax1, ax2, z, onm, ona1, ona2)
 (
-  v = slider(c + 1)|0;
+  v = slider(c + 1)|0; mc = mat_cat(c);
   hv = inbox(x, y, w, h); hv ? hov = c;
   gfx_set(hv ? 0.19 : 0.145, hv ? 0.2 : 0.15, hv ? 0.24 : 0.175, 1); gfx_rect(x, y, w, h, 1);
   group_col(c); gfx_rect(x, y, w, 2*gsc, 1);
-  draw_part(c, v, x + 0.1*w, y + 0.12*h, 0.8*w, 0.6*h, c == 2);
-  gfx_setfont(2); gfx_set(0.93, 0.94, 0.96, 1);
-  s = opt_name(c, v); gfx_measurestr(s, tw, th); gfx_x = x + 0.5*(w - tw); gfx_y = y + h - 2.2*th; gfx_drawstr(s);
-  gfx_setfont(1); gfx_set(0.58, 0.6, 0.67, 1);
-  strlen(sub_name(c)) ? ( s = sub_name(c); gfx_measurestr(s, tw, th); gfx_x = x + 0.5*(w - tw); gfx_y = y + h - 1.15*th; gfx_drawstr(s); );
-  hv && clicked ? part_menu(c);
+  ph = h - 14*gsc; pw = min(0.5*w, 1.5*ph);
+  picture(c, v, x + 6*gsc, y + 8*gsc, pw, ph, c == 2);
+  tx = x + pw + 14*gsc; tmax = x + w - 8*gsc;
+  gfx_setfont(4); gfx_measurestr("A", tw, t4); gfx_setfont(2); gfx_measurestr("A", tw, t2); gfx_setfont(1); gfx_measurestr("A", tw, t1);
+  bh = t4 + 4*gsc + t2 + (mc >= 0 ? 5*gsc + t1 : 0);
+  ty = y + 0.5*(h - bh) + gsc;
+  gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1);
+  s = cat_title(c); gfx_measurestr(s, tw, th); tx + tw > tmax ? s = cat_short(c);
+  gfx_x = tx; gfx_y = ty; gfx_drawstr(s);
+  ty += t4 + 4*gsc;
+  s = opt_name(c, v); gfx_setfont(2); gfx_measurestr(s, tw, th); tx + tw > tmax ? gfx_setfont(1);
+  gfx_set(0.95, 0.95, 0.97, 1); gfx_x = tx; gfx_y = ty; gfx_drawstr(s);
+  ty += t2 + 5*gsc;
+  onm = 0;
+  mc >= 0 ? (
+    m = slider(mc + 1)|0; s = mat_name(m); gfx_setfont(1); gfx_measurestr(s, tw, th);
+    onm = inbox(tx - 4*gsc, ty - 2*gsc, tw + 20*gsc, t1 + 4*gsc);
+    onm ? ( hov = mc; gfx_set(0.24, 0.26, 0.31, 1); gfx_rect(tx - 4*gsc, ty - 2*gsc, tw + 20*gsc, t1 + 4*gsc, 1); );
+    group_col(mc); onm ? gfx_set(0.97, 0.97, 0.99, 1);
+    gfx_x = tx; gfx_y = ty; gfx_drawstr(s);
+    gfx_triangle(tx + tw + 5*gsc, ty + 0.45*t1, tx + tw + 13*gsc, ty + 0.45*t1, tx + tw + 9*gsc, ty + 0.45*t1 + 4*gsc);
+  );
+  // step arrows, top right, only while the mouse is over the tile
+  z = 20*gsc; ax1 = x + w - 2*z - 4*gsc; ax2 = x + w - z - 4*gsc;
+  ona1 = inbox(ax1, y + 4*gsc, z, z); ona2 = inbox(ax2, y + 4*gsc, z, z);
+  hv ? (
+    ona1 ? gfx_set(0.95, 0.95, 0.97, 1) : gfx_set(0.5, 0.53, 0.6, 1);
+    gfx_triangle(ax1 + 13*gsc, y + 8*gsc, ax1 + 13*gsc, y + 20*gsc, ax1 + 6*gsc, y + 14*gsc);
+    ona2 ? gfx_set(0.95, 0.95, 0.97, 1) : gfx_set(0.5, 0.53, 0.6, 1);
+    gfx_triangle(ax2 + 7*gsc, y + 8*gsc, ax2 + 7*gsc, y + 20*gsc, ax2 + 14*gsc, y + 14*gsc);
+  );
+  hv && clicked ? (
+    ona1 ? set_part(c, (v + cat_count(c) - 1) % cat_count(c)) :
+    ona2 ? set_part(c, (v + 1) % cat_count(c)) :
+    onm ? part_menu(mc) : part_menu(c);
+  );
+  hv && wheel != 0 ? (
+    onm ? set_part(mc, (m + (wheel > 0 ? MAT_N - 1 : 1)) % MAT_N) :
+          set_part(c, (v + (wheel > 0 ? cat_count(c) - 1 : 1)) % cat_count(c));
+  );
 );
 function arrow(x1, y1, x2, y2) local(dx, dy, l, ux, uy)
 (
@@ -2027,6 +2145,7 @@ function ctl_desc(k)
   "How old and neglected it is, from new to found in a skip: duller, shorter, out of tune, rattly and leaky. Applies from the next note.";
 );
 function ctl_short(k) ( k==4?"Position":k==5?"Resonator":k==7?"Glide":k==10?"Age":ctl_title(k); );
+function ctl_tiny(k) ( k==2?"Bright":k==4?"Pos.":k==5?"Res.":k==8?"Tune":k==9?"Out":ctl_short(k); );
 function ctl_min(k) ( k==1?25:k==2?-100:k==3?10:k==4?2:k==7?5:k==8?-100:k==9?-36:0; );
 function ctl_max(k) ( k==1?400:k==3?400:k==4?50:k==6?1:k==7?1000:k==9?12:100; );
 function ctl_def(k) ( k==0?70:k==1?100:k==3?100:k==4?20:k==5?50:k==7?120:0; );
@@ -2068,7 +2187,7 @@ function set_ctl(k, v)
 );
 // one control: drag the track (Shift for fine steps), roll the wheel,
 // double-click to reset; Play mode is a two-way switch
-function control(k, x, y, w, h) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1, z, s, d)
+function control(k, x, y, w, h) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1, tw2, z, s, d)
 (
   v = slider(13 + k);
   hv = inbox(x, y, w, h) && drag_k < 0; hv ? hovc = k;
@@ -2080,7 +2199,8 @@ function control(k, x, y, w, h) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1, z, 
   // the short name when the full one would run into the value
   gfx_measurestr(ctl_title(k), tw1, th);
   gfx_set(0.72, 0.74, 0.8, 1); gfx_x = x + 10*gsc; gfx_y = y + 5*gsc;
-  gfx_drawstr(tw1 + tw + 26*gsc > w ? ctl_short(k) : ctl_title(k));
+  gfx_measurestr(ctl_short(k), tw2, th);
+  gfx_drawstr(tw1 + tw + 26*gsc <= w ? ctl_title(k) : tw2 + tw + 22*gsc <= w ? ctl_short(k) : ctl_tiny(k));
   k != 6 ? ( gfx_set(0.95, 0.95, 0.97, 1); gfx_x = x + w - 9*gsc - tw; gfx_y = y + 5*gsc; gfx_drawstr(s); );
   x0 = x + 12*gsc; x1 = x + w - 12*gsc; ty = y + h - 11*gsc;
   k == 6 ? (
@@ -2149,47 +2269,15 @@ button(bxx, byy, bw_, bh_, "Presets", 0) ? (
   r > 0 ? apply_preset(r - 1);
 );
 
-// ---- the part list: click to choose, wheel to step, arrows to step
-lx = pad; ly = hdr; lw = min(360*gsc, 0.4*gw); rhh = (gtop - ly)/12;
-c = 0;
-loop(12,
-  ry = ly + c*rhh; rht = rhh - 3*gsc;
-  hvr = inbox(lx, ry, lw, rht); hvr ? hov = c;
-  gfx_set(hvr ? 0.19 : 0.145, hvr ? 0.2 : 0.15, hvr ? 0.24 : 0.175, 1); gfx_rect(lx, ry, lw, rht, 1);
-  group_col(c); gfx_rect(lx, ry, 3*gsc, rht, 1);
-  val = slider(c + 1)|0;
-  isz = rht - 6*gsc;
-  draw_part(c, val, lx + 9*gsc, ry + 3*gsc, 1.4*isz, isz, 0);
-  tx = lx + 18*gsc + 1.4*isz;
-  gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = tx; gfx_y = ry + 0.16*rht; gfx_drawstr(cat_title(c));
-  gfx_setfont(2); gfx_set(0.95, 0.95, 0.97, 1); gfx_x = tx; gfx_y = ry + 0.5*rht; gfx_drawstr(opt_name(c, val));
-  // step arrows
-  ax1 = lx + lw - 46*gsc; ax2 = lx + lw - 23*gsc; ay1 = ry + 0.5*rht;
-  gfx_set(inbox(ax1, ry, 22*gsc, rht) ? 0.9 : 0.45, 0.5, inbox(ax1, ry, 22*gsc, rht) ? 0.5 : 0.55, 1);
-  gfx_set(0.5, 0.53, 0.6, 1);
-  inbox(ax1, ry, 22*gsc, rht) ? gfx_set(0.9, 0.92, 0.96, 1);
-  gfx_triangle(ax1 + 13*gsc, ay1 - 6*gsc, ax1 + 13*gsc, ay1 + 6*gsc, ax1 + 6*gsc, ay1);
-  gfx_set(0.5, 0.53, 0.6, 1);
-  inbox(ax2, ry, 22*gsc, rht) ? gfx_set(0.9, 0.92, 0.96, 1);
-  gfx_triangle(ax2 + 7*gsc, ay1 - 6*gsc, ax2 + 7*gsc, ay1 + 6*gsc, ax2 + 14*gsc, ay1);
-  hvr && clicked ? (
-    inbox(ax1, ry, 22*gsc, rht) ? set_part(c, (val + cat_count(c) - 1) % cat_count(c)) :
-    inbox(ax2, ry, 22*gsc, rht) ? set_part(c, (val + 1) % cat_count(c)) :
-    part_menu(c);
-  );
-  (hvr && wheel != 0) ? set_part(c, (val + (wheel > 0 ? cat_count(c) - 1 : 1)) % cat_count(c));
-  c += 1;
-);
-
 // ---- the assembled instrument
-ax = lx + lw + pad; aw = gw - ax - pad; ay = ly;
+ax = pad; aw = gw - 2*pad; ay = hdr;
 gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = ax; gfx_y = ay; gfx_drawstr("YOUR INSTRUMENT: CLICK A PART TO CHANGE IT, HOVER FOR A CLOSER LOOK");
 // the window can be any height: keep room for the preview panel, then fit
 // the pictures into what is left
-ph_min = max(140*gsc, 0.31*(gtop - ay));
+ph_min = max(130*gsc, 0.27*(gtop - ay));
 gap = min(26*gsc, max(12*gsc, 0.04*(gtop - ay)));
 tw_ = (aw - 2*gap)/3;
-th_ = max(40*gsc, min(0.78*tw_, (gtop - ay - 16*gsc - 1.6*gap - 12*gsc - ph_min)/2.72));
+th_ = max(40*gsc, min(0.5*tw_, (gtop - ay - 16*gsc - 1.6*gap - 12*gsc - ph_min)/2.72));
 ty1 = ay + 16*gsc; ty2 = ty1 + th_ + gap;
 tile(0, ax, ty1, tw_, th_);
 tile(1, ax + tw_ + gap, ty1, tw_, th_);
@@ -2205,25 +2293,24 @@ arrow(ax + tw_ + gap - 3*gsc, ty2 + 0.45*th_, ax + tw_ + 3*gsc, ty2 + 0.45*th_);
 // the four controls
 cy_ = ty2 + th_ + 0.6*gap; ch_ = 0.72*th_; cw_ = (aw - 3*10*gsc)/4;
 k = 0;
-loop(4,
-  cx_ = ax + k*(cw_ + 10*gsc);
-  cc = 8 + k; v = slider(cc + 1)|0;
-  hv = inbox(cx_, cy_, cw_, ch_); hv ? hov = cc;
-  gfx_set(hv ? 0.19 : 0.145, hv ? 0.2 : 0.15, hv ? 0.24 : 0.175, 1); gfx_rect(cx_, cy_, cw_, ch_, 1);
-  group_col(cc); gfx_rect(cx_, cy_, cw_, 2*gsc, 1);
-  draw_part(cc, v, cx_ + 0.2*cw_, cy_ + 0.08*ch_, 0.6*cw_, 0.55*ch_, 0);
-  gfx_setfont(2); gfx_set(0.93, 0.94, 0.96, 1); s = opt_name(cc, v); gfx_measurestr(s, tww, thh);
-  gfx_x = cx_ + 0.5*(cw_ - tww); gfx_y = cy_ + ch_ - 1.4*thh; gfx_drawstr(s);
-  hv && clicked ? part_menu(cc);
-  k += 1;
-);
+loop(4, tile(8 + k, ax + k*(cw_ + 10*gsc), cy_, cw_, ch_); k += 1;);
 
-// ---- the controls: six on the top row, five below
-k = 0;
-loop(11,
-  k < 6 ? ( cw2 = (gw - 2*pad - 5*cgp)/6; control(k, pad + k*(cw2 + cgp), cty, cw2, cth); ) :
-          ( cw2 = (gw - 2*pad - 4*cgp)/5; control(k, pad + (k - 6)*(cw2 + cgp), cty + cth + cgp, cw2, cth); );
-  k += 1;
+// ---- the controls: the seven that shape the sound in one row; More shows
+// the four that are usually set once (play mode, glide, fine tune, output)
+mbw = 72*gsc; cw2 = (gw - 2*pad - 7*cgp - mbw)/7;
+j = 0;
+loop(7, control(j < 6 ? j : 10, pad + j*(cw2 + cgp), cty, cw2, cth); j += 1;);
+mbx = pad + 7*(cw2 + cgp); hvm = inbox(mbx, cty, mbw, cth) && drag_k < 0;
+gfx_set(hvm ? 0.19 : 0.145, hvm ? 0.2 : 0.15, hvm ? 0.24 : 0.175, 1); gfx_rect(mbx, cty, mbw, cth, 1);
+gfx_setfont(1); gfx_set(0.8, 0.82, 0.87, 1); gfx_measurestr(more_ctl ? "Less" : "More", tww, thh);
+gfx_x = mbx + 0.5*(mbw - tww) - 6*gsc; gfx_y = cty + 0.5*(cth - thh); gfx_drawstr(more_ctl ? "Less" : "More");
+tx_ = gfx_x + 6*gsc; ty_ = cty + 0.5*cth;
+more_ctl ? gfx_triangle(tx_, ty_ + 2*gsc, tx_ + 8*gsc, ty_ + 2*gsc, tx_ + 4*gsc, ty_ - 2*gsc) :
+           gfx_triangle(tx_, ty_ - 2*gsc, tx_ + 8*gsc, ty_ - 2*gsc, tx_ + 4*gsc, ty_ + 2*gsc);
+hvm && clicked ? more_ctl = !more_ctl;
+more_ctl ? (
+  cw2 = (gw - 2*pad - 3*cgp)/4; j = 0;
+  loop(4, control(6 + j, pad + j*(cw2 + cgp), cty + cth + cgp, cw2, cth); j += 1;);
 );
 // a drag carries on wherever the mouse goes, until the button is let go
 drag_k >= 0 ? (
@@ -2246,7 +2333,7 @@ ph_ > 40*gsc ? (
   psz = min(ph_ - 16*gsc, 0.22*pw_);
   pp = pc >= 100 ? ctl_part(pc - 100) : pc;
   v = slider(pp + 1)|0;
-  draw_part(pp, v, ax + 12*gsc, py_ + 8*gsc, 1.15*psz, psz, 1);
+  picture(pp, v, ax + 12*gsc, py_ + 8*gsc, 1.15*psz, psz, 1);
   sw = pw_ > 560*gsc ? min(200*gsc, 0.22*pw_) : 0;
   tx = ax + 24*gsc + 1.15*psz; tw2 = pw_ - (tx - ax) - 12*gsc - (sw > 0 ? sw + 12*gsc : 0);
   wrap_ymax = py_ + ph_ - 6*gsc;

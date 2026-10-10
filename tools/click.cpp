@@ -2,7 +2,7 @@
 // usage: click fx.jsfx out.bgra|- width height step... [slider=value ...]
 // A step is one @gfx frame: "x,y,buttons[,mods[,wheel]]" (buttons: 1 left,
 // 4 right; mods: 1 shift, 2 ctrl, 4 alt), or "wait=MS" to let real time pass
-// (double-clicks are timed). Prints slider 13-23 values, and which sliders
+// (double-clicks are timed). Prints every slider value (1-23), and which sliders
 // the window changed, automated and touched.
 #include "ysfx.h"
 #include <chrono>
@@ -11,7 +11,8 @@
 #include <cstring>
 #include <vector>
 static void logr(intptr_t, ysfx_log_level l, const char *m){ fprintf(stderr,"[%s] %s\n", ysfx_log_level_string(l), m); }
-static int32_t menu(void*, const char*, int32_t, int32_t){ return 0; }
+// CLICK_MENU=n picks item n of any popup menu (0 = none); CLICK_MENU_SHOW prints the menu
+static int32_t menu(void*, const char*m, int32_t, int32_t){ if(getenv("CLICK_MENU_SHOW")) fprintf(stderr,"menu: %s\n",m); return getenv("CLICK_MENU")?atoi(getenv("CLICK_MENU")):0; }
 int main(int argc,char**argv){
   if(argc<5){fprintf(stderr,"usage\n");return 1;}
   ysfx_config_t*c=ysfx_config_new(); ysfx_set_log_reporter(c,&logr);
@@ -38,7 +39,7 @@ int main(int argc,char**argv){
     chg|=ysfx_fetch_slider_changes(fx,0); aut|=ysfx_fetch_slider_automations(fx,0); tch|=ysfx_fetch_slider_touches(fx,0);
   }
   ysfx_gfx_update_mouse(fx,0,-1,-1,0,0,0); ysfx_gfx_run(fx);
-  for(int s=13;s<=23;s++) printf("%d=%g ", s, ysfx_slider_get_value(fx,s-1));
+  for(int s=1;s<=23;s++) printf("%d=%g ", s, ysfx_slider_get_value(fx,s-1));
   printf("\nchanged=%llx automated=%llx touched=%llx visible=%llx\n",(unsigned long long)chg,(unsigned long long)aut,(unsigned long long)tch,(unsigned long long)ysfx_get_slider_visibility(fx,0));
   if(strcmp(argv[2],"-")){ FILE*fo=fopen(argv[2],"wb"); fwrite(px.data(),1,px.size(),fo); fclose(fo); }
   ysfx_free(fx); return 0;

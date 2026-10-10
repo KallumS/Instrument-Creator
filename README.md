@@ -14,17 +14,21 @@ made of, and play. The plugin works out how the whole thing sounds from the
 physics of the parts, the same way Trombolese does for its bore and
 Reverberator does for its materials.
 
-It is a single-file **JSFX** instrument for REAPER: `Instrument-Creator.jsfx`.
-No compiling, no installer.
+It is a **JSFX** instrument for REAPER: one file, `Instrument-Creator.jsfx`,
+plus a folder of pictures, `Instrument-Creator-images`. No compiling, no
+installer.
 
 ![The Instrument Creator window](docs/window.png)
 
 ## Installing in REAPER
 
-1. Download `Instrument-Creator.jsfx` from this repository.
+1. Download this repository: on its GitHub page click the green **Code**
+   button, then **Download ZIP**, and unzip it.
 2. In REAPER choose **Options → Show REAPER resource path in explorer/finder**.
-3. Open the **Effects** folder there and put `Instrument-Creator.jsfx` in it (a
-   subfolder is fine).
+3. Open the **Effects** folder there and copy two things into it, side by
+   side: the file `Instrument-Creator.jsfx` and the folder
+   `Instrument-Creator-images`. (A subfolder of Effects is fine, as long as
+   both go in the same one.)
 4. In the FX browser press **F5** to refresh (or restart REAPER), then search
    for **Instrument Creator**. It shows up as *JS: Instrument Creator - build
    impossible instruments from parts*.
@@ -37,28 +41,44 @@ Reverberator makes a very good partner after it.
 
 ## Using the window
 
-- **The list on the left** has your twelve choices: the ten parts, plus what
-  the vibrating element and the resonator are made of. Click a row for a menu,
-  click the small arrows to step through the options, or roll the mouse wheel
-  over it.
-- **The picture on the right** is your instrument, drawn part by part, in the
-  order the energy flows through it. Click any part in it to change it. The
-  element's picture moves when it sounds.
-- **Hover over anything** and the panel at the bottom shows a big picture of
-  that part, what it does, and (for materials) how stiff and heavy it is and
-  how long it rings. The green line tells you how your combination will play,
+- **The big picture** is your instrument, part by part, in the order the
+  energy flows through it (the arrows), with the four controls (frequency
+  control, tuning, damping, modulation) in the row underneath. Each part
+  shows its picture, what kind of part it is, and which option you chose.
+  To change a part:
+  - click it for a menu of its options;
+  - or hover over it and click the small arrows in its top corner to step
+    through them;
+  - or roll the mouse wheel over it.
+- **Materials.** The vibrating element, resonator, coupler and radiator also
+  show what they are made of, in colour with a small ▾. Click the material
+  name for the list of 31 materials, or roll the wheel over it. The part's
+  own menu has them too, under **Made of**. The resonator, coupler and
+  radiator always share one material, so changing it on one changes all
+  three. The element's picture shimmers while it sounds.
+- **Hover over anything** (a part, a material name, a control) and the
+  panel at the bottom shows a big picture of it, what it does, and (for a
+  material) how stiff and heavy it is and how long it rings. The green line tells you how your combination will play,
   and the little screen shows the sound's waveform as you play.
-- **The controls along the bottom** (Force, Size, Brightness, Decay and the
-  rest, described [below](#the-controls)) shape how it plays. Drag one to
-  change it (hold **Shift** for small steps), roll the mouse wheel over it,
-  or double-click it to put it back to normal. Hover over one and the panel
-  explains what it does. Play mode is a switch: click Poly or Mono.
+- **The controls along the bottom** (Force, Size, Brightness, Decay,
+  Position, Resonator and Age, described [below](#the-controls)) shape how
+  it plays. Drag one to change it (hold **Shift** for small steps), roll the
+  mouse wheel over it, or double-click it to put it back to normal. Hover
+  over one and the panel explains what it does.
+- **More** (bottom right) opens a second row with the four controls you
+  usually set once: Play mode (a switch: click Poly or Mono), Glide time,
+  Fine tune and Output. Click **Less** to tuck them away again.
 - **Presets** has 19 ready-made instruments to start from. **Surprise me**
   picks every part at random. **Play C4** plays a note so you can hear a change
   without touching your keyboard.
 
-You don't need to supply any pictures: every part and material is drawn by
-the plugin itself.
+The pictures are 3D renders: every part has been modelled and rendered in
+every one of the 31 materials, so a glass bell looks like glass and a chain
+link drum skin is a see-through mesh. They live in the
+`Instrument-Creator-images` folder. If that folder isn't next to the plugin,
+nothing breaks: the window falls back to simple drawings of each part.
+The 3D models themselves are in the [`blender`](blender/README.md) folder,
+one Blender file per part, if you'd like to open them in Blender.
 
 ## The parts
 
@@ -231,7 +251,8 @@ Turn it up and the whole instrument wears out, whatever it is made of:
 - **it leaks**: blown and bowed instruments get wheezy and breathy, and old
   tubes are rougher inside.
 
-The pictures rust and get grimy to match (metals rust most). Struck,
+The pictures rust and get grimy to match: a layer of rust fades in over
+the parts as you turn Age up (metals rust most). Struck,
 plucked and bowed instruments get a little volume back as they age, so an
 old one is only a few dB quieter than a new one. Presets don't change the
 Age control, so you can make any preset old. Changes to Age apply to the next
@@ -340,11 +361,14 @@ python3 tools/range.py 1=0 2=0 3=5       # one combination across the keyboard
 python3 tools/check.py                   # stability sweep, must report 0 failures (~40 min)
 python3 tools/trims.py                   # loudness trims after a sound change
 python3 tools/shot.py out.png            # screenshot of the window
-tools/build/click Instrument-Creator.jsfx - 940 720 103,649,0 103,649,1 40,649,1 40,649,0   # drag a control
+python3 tools/render_parts.py            # re-render every part picture in Blender (~40 min)
+python3 tools/render_parts.py --blend    # save the models as .blend files in blender/
+tools/build/click Instrument-Creator.jsfx - 940 720 85,699,0 85,699,1 40,699,1 40,699,0   # drag a control
 python3 tools/spectrograms.py out.png    # spectrograms of every preset
 ```
 
-The Python tools need `numpy`, `scipy` and `matplotlib`. See `CLAUDE.md` for
+The Python tools need `numpy`, `scipy` and `matplotlib`; the picture
+renderer needs Blender's Python module (`pip install bpy`) and `Pillow`. See `CLAUDE.md` for
 the traps.
 
 ## Licence

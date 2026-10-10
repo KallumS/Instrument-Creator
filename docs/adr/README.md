@@ -29,6 +29,8 @@ where useful the alternatives that were rejected.
 | [0017](0017-the-reed-always-plays-a-cylinder.md) | The reed always plays a cylinder |
 | [0018](0018-age-is-one-macro-over-the-existing-physics.md) | Age is one macro over the existing physics |
 | [0019](0019-every-control-in-the-window-reaper-sliders-hidden.md) | Every control in the window, REAPER's slider list hidden |
+| [0020](0020-rendered-pictures-in-a-folder-drawings-as-fallb.md) | Rendered pictures in a folder, drawings as the fallback |
+| [0021](0021-one-diagram-materials-in-menus-four-controls-und.md) | One diagram, materials in menus, four controls under More |
 
 Related: Reverberator's ADRs 0001 (JSFX first), 0002 (physical constants),
 0005 (dispersion budget), 0007 (loudness), 0008 (feed-forward nonlinear paths),

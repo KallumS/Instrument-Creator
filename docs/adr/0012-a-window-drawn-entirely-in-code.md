@@ -1,6 +1,6 @@
 # 0012. A window drawn entirely in code
 
-- Status: Accepted
+- Status: Accepted; amended by [0020](0020-rendered-pictures-in-a-folder-drawings-as-fallb.md) (the drawings are now the fallback for rendered pictures) and [0021](0021-one-diagram-materials-in-menus-four-controls-und.md) (the part list is gone)
 - Date: 2026-09-30
 
 ## Context
