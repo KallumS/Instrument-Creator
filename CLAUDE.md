@@ -158,6 +158,11 @@ SHOT_CLICK=1 python3 tools/shot.py out.png 940 720 890 690   # click once (here:
   every material if its part has one) and a drawing in `draw_part()`. Shapes
   are framed per shape, not per material, so a shape's versions and its rust
   layer line up: never frame on something that changes with the material.
+- **Text follows Apple's writing guidelines** (ADR 0022): title-style part,
+  material, control and slider names; sentence-case descriptions and hints;
+  "…", curly quotes, em dashes. Rename a label, never reorder a list. Text
+  beyond ASCII is UTF-8 and `str_getchar` reads its bytes as negative, so
+  copy text with `strcpy_substr`, not `sprintf("%c")`; screenshot after.
 
 ## Memory map (keep regions disjoint; check this when adding a table, ADR 0014)
 

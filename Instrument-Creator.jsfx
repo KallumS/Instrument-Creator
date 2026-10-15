@@ -1,4 +1,4 @@
-desc:Instrument Creator - build impossible instruments from parts
+desc:Instrument Creator — Build Impossible Instruments from Parts
 //tags: instrument synthesizer physical-modelling
 //author: KallumS
 //
@@ -14,29 +14,29 @@ desc:Instrument Creator - build impossible instruments from parts
 // loss factor), the air column from Trombolese's boundary-layer physics, and
 // the loop tuning from Reverberator's phase-exact method. See README.md.
 
-slider1:0<0,5,1{Breath,Bow,Finger,Plectrum,Hammer,Electricity}>-Energy source
+slider1:0<0,5,1{Breath,Bow,Finger,Plectrum,Hammer,Electricity}>-Energy Source
 slider2:0<0,5,1{Reed,Lips,Hammer,Bow,Plectrum,Mallet}>-Exciter
-slider3:5<0,5,1{String,Membrane,Bar,Plate,Reed,Air column}>-Vibrating element
-slider4:12<0,30,1{Steel,Brass,Bronze,Aluminium,Gold,Glass,Crystal,Ice,Marble,Clay,Spruce,Rosewood,Bamboo,Bone,Gut,Nylon,Carbon fibre,Rubber,Paper,Jelly,Plastic,PVC,Wood,Leather,Cardboard,Foil,Cling film,Tin,Car panel,Chain link,Handpan steel}>-Element material
+slider3:5<0,5,1{String,Membrane,Bar,Plate,Reed,Air Column}>-Vibrating Element
+slider4:12<0,30,1{Steel,Brass,Bronze,Aluminium,Gold,Glass,Crystal,Ice,Marble,Clay,Spruce,Rosewood,Bamboo,Bone,Gut,Nylon,Carbon Fibre,Rubber,Paper,Jelly,Plastic,PVC,Wood,Leather,Cardboard,Foil,Cling Film,Tin,Car Panel,Chain Link,Handpan Steel}>-Element Material
 slider5:0<0,4,1{Bore,Soundbox,Pipe,Cavity,Body}>-Resonator
-slider6:12<0,30,1{Steel,Brass,Bronze,Aluminium,Gold,Glass,Crystal,Ice,Marble,Clay,Spruce,Rosewood,Bamboo,Bone,Gut,Nylon,Carbon fibre,Rubber,Paper,Jelly,Plastic,PVC,Wood,Leather,Cardboard,Foil,Cling film,Tin,Car panel,Chain link,Handpan steel}>-Resonator material
+slider6:12<0,30,1{Steel,Brass,Bronze,Aluminium,Gold,Glass,Crystal,Ice,Marble,Clay,Spruce,Rosewood,Bamboo,Bone,Gut,Nylon,Carbon Fibre,Rubber,Paper,Jelly,Plastic,PVC,Wood,Leather,Cardboard,Foil,Cling Film,Tin,Car Panel,Chain Link,Handpan Steel}>-Resonator Material
 slider7:2<0,3,1{Bridge,Soundpost,Mouthpiece,Windway}>-Coupler
 slider8:0<0,3,1{Bell,Soundboard,Drumhead,Cone}>-Radiator
-slider9:1<0,4,1{Fret,Tone hole,Valve,Slide,Key}>-Frequency control
-slider10:2<0,3,1{Peg,Tuning pin,Machine head,Slide}>-Tuning mechanism
+slider9:1<0,4,1{Fret,Tone Hole,Valve,Slide,Key}>-Frequency Control
+slider10:2<0,3,1{Peg,Tuning Pin,Machine Head,Slide}>-Tuning Mechanism
 slider11:0<0,4,1{Damper,Mute,Palm,Felt,Hand}>-Damping
-slider12:0<0,4,1{Keywork,Pedals,Valves,Levers,Electronics}>-Modulation/control
-slider13:70<0,100,1>-Force / pressure (%)
+slider12:0<0,4,1{Keywork,Pedals,Valves,Levers,Electronics}>-Modulation / Control
+slider13:70<0,100,1>-Force / Pressure (%)
 slider14:100<25,400,1:log=100>-Size (%)
 slider15:0<-100,100,1>-Brightness
 slider16:100<10,400,1:log=100>-Decay (%)
-slider17:20<2,50,1>-Excite position (%)
-slider18:50<0,100,1>-Resonator amount (%)
-slider19:0<0,1,1{Poly,Mono (legato)}>-Play mode
-slider20:120<5,1000,1:log=150>-Glide time (ms)
-slider21:0<-100,100,1>-Fine tune (cents)
+slider17:20<2,50,1>-Excite Position (%)
+slider18:50<0,100,1>-Resonator Amount (%)
+slider19:0<0,1,1{Poly,Mono (Legato)}>-Play Mode
+slider20:120<5,1000,1:log=150>-Glide Time (ms)
+slider21:0<-100,100,1>-Fine Tune (cents)
 slider22:0<-36,12,0.1>-Output (dB)
-slider23:0<0,100,1>-Age / rust (%)
+slider23:0<0,100,1>-Age / Rust (%)
 
 in_pin:none
 out_pin:Left output
@@ -1233,21 +1233,21 @@ function mat_name(i)
 (
   i==0?"Steel":i==1?"Brass":i==2?"Bronze":i==3?"Aluminium":i==4?"Gold":i==5?"Glass":i==6?"Crystal":
   i==7?"Ice":i==8?"Marble":i==9?"Clay":i==10?"Spruce":i==11?"Rosewood":i==12?"Bamboo":i==13?"Bone":
-  i==14?"Gut":i==15?"Nylon":i==16?"Carbon fibre":i==17?"Rubber":i==18?"Paper":i==19?"Jelly":
+  i==14?"Gut":i==15?"Nylon":i==16?"Carbon Fibre":i==17?"Rubber":i==18?"Paper":i==19?"Jelly":
   i==20?"Plastic":i==21?"PVC":i==22?"Wood":i==23?"Leather":i==24?"Cardboard":i==25?"Foil":
-  i==26?"Cling film":i==27?"Tin":i==28?"Car panel":i==29?"Chain link":"Handpan steel";
+  i==26?"Cling Film":i==27?"Tin":i==28?"Car Panel":i==29?"Chain Link":"Handpan Steel";
 );
 function opt_name(c, i)
 (
   c==0 ? (i==0?"Breath":i==1?"Bow":i==2?"Finger":i==3?"Plectrum":i==4?"Hammer":"Electricity") :
   c==1 ? (i==0?"Reed":i==1?"Lips":i==2?"Hammer":i==3?"Bow":i==4?"Plectrum":"Mallet") :
-  c==2 ? (i==0?"String":i==1?"Membrane":i==2?"Bar":i==3?"Plate":i==4?"Reed":"Air column") :
+  c==2 ? (i==0?"String":i==1?"Membrane":i==2?"Bar":i==3?"Plate":i==4?"Reed":"Air Column") :
   (c==3 || c==5) ? mat_name(i) :
   c==4 ? (i==0?"Bore":i==1?"Soundbox":i==2?"Pipe":i==3?"Cavity":"Body") :
   c==6 ? (i==0?"Bridge":i==1?"Soundpost":i==2?"Mouthpiece":"Windway") :
   c==7 ? (i==0?"Bell":i==1?"Soundboard":i==2?"Drumhead":"Cone") :
-  c==8 ? (i==0?"Fret":i==1?"Tone hole":i==2?"Valve":i==3?"Slide":"Key") :
-  c==9 ? (i==0?"Peg":i==1?"Tuning pin":i==2?"Machine head":"Slide") :
+  c==8 ? (i==0?"Fret":i==1?"Tone Hole":i==2?"Valve":i==3?"Slide":"Key") :
+  c==9 ? (i==0?"Peg":i==1?"Tuning Pin":i==2?"Machine Head":"Slide") :
   c==10 ? (i==0?"Damper":i==1?"Mute":i==2?"Palm":i==3?"Felt":"Hand") :
           (i==0?"Keywork":i==1?"Pedals":i==2?"Valves":i==3?"Levers":"Electronics");
 );
@@ -1296,7 +1296,7 @@ function opt_desc(c, i)
          "A steady, noiseless electric drive. Sustains forever; with a striking exciter it becomes a buzzer.") :
   c==1 ? (
     i==0?"A cane reed that chops the airflow into pulses, like a clarinet. Needs a push to get going." :
-    i==1?"Buzzing lips: a valve that blows open, like a trumpet (Trombolese's lip model). Through a windway it becomes a flute's air jet." :
+    i==1?"Buzzing lips: a valve that blows open, like a trumpet (Trombolese’s lip model). Through a windway it becomes a flute’s air jet." :
     i==2?"A hard, short strike, like a piano hammer." :
     i==3?"Stick-slip friction, like a violin bow. Keeps the element singing while it is driven. Through a windway it becomes an air jet." :
     i==4?"Pulls the element aside and lets go, like a guitar pick." :
@@ -1307,19 +1307,19 @@ function opt_desc(c, i)
     i==2?"A free bar, like a xylophone key. Its partials sit at 1 : 2.76 : 5.40 : 8.93." :
     i==3?"A flat sheet, like a bell plate or gong: dense, shimmering and inharmonic." :
     i==4?"A clamped tongue, like a kalimba tine or harmonica reed. Blown, it buzzes." :
-         "A column of air in a tube, like a clarinet or trumpet. Its losses come from Trombolese's physics.") :
+         "A column of air in a tube, like a clarinet or trumpet. Its losses come from Trombolese’s physics.") :
   (c==3 || c==5) ? mat_desc(i) :
   c==4 ? (
     i==0?"A cone-shaped tube tuned to each note. Reinforces every harmonic, like a saxophone." :
     i==1?"A hollow box, like a guitar body: resonances from about 100 to 2000 Hz, scaled by its material and Size." :
     i==2?"A stopped tube under each note, like a marimba resonator. Reinforces the odd harmonics." :
     i==3?"An enclosed pocket of air, like a gourd or bottle: a hollow boom with ringing walls." :
-         "A solid block of the material. Adds the material's own ring: stone clinks, glass shimmers.") :
+         "A solid block of the material. Adds the material’s own ring: stone clinks, glass shimmers.") :
   c==6 ? (
-    i==0?"Carries the vibration into the body, with the bright 'bridge hill' around 2.5 kHz." :
+    i==0?"Carries the vibration into the body, with the bright “bridge hill” around 2.5 kHz." :
     i==1?"A post that couples strongly into the body: warm and woody, with a shorter ring." :
     i==2?"A small cup between exciter and element: a vocal, brassy formant." :
-         "A narrow air duct, like a recorder's: breathy. Turns lips or a bow into a flute's air jet.") :
+         "A narrow air duct, like a recorder’s: breathy. Turns lips or a bow into a flute’s air jet.") :
   c==7 ? (
     i==0?"A flared bell. Throws the high frequencies forward, and gets brassy when loud." :
     i==1?"A wide board that spreads and softens the sound." :
@@ -1748,7 +1748,7 @@ function draw_wrapped(s, x, y, w, lh) local(n, k, ch, tw, th, cy)
       (tw > w && strlen(#wl)) ? ( cy + lh <= wrap_ymax ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); ); cy += lh; strcpy(#wl, #ww); ) : strcpy(#wl, #wt);
       strcpy(#ww, "");
     ) : (
-      sprintf(#wc, "%c", ch); strcat(#ww, #wc);
+      strcpy_substr(#wc, s, k, 1); strcat(#ww, #wc);
     );
     k += 1;
   );
@@ -2127,8 +2127,8 @@ function arrow(x1, y1, x2, y2) local(dx, dy, l, ux, uy)
 // take its height) and drawn here; they stay automatable.
 function ctl_title(k)
 (
-  k==0?"Force":k==1?"Size":k==2?"Brightness":k==3?"Decay":k==4?"Excite position":k==5?"Resonator amount":
-  k==6?"Play mode":k==7?"Glide time":k==8?"Fine tune":k==9?"Output":"Age / rust";
+  k==0?"Force":k==1?"Size":k==2?"Brightness":k==3?"Decay":k==4?"Excite Position":k==5?"Resonator Amount":
+  k==6?"Play Mode":k==7?"Glide Time":k==8?"Fine Tune":k==9?"Output":"Age / Rust";
 );
 function ctl_desc(k)
 (
@@ -2138,7 +2138,7 @@ function ctl_desc(k)
   k==3?"A longer or shorter ring, without changing anything else.":
   k==4?"Where the exciter touches: near the end (thin, bright) or towards the middle (full, round).":
   k==5?"How much of the resonator you hear against the bare vibrating element.":
-  k==6?"Poly plays chords. Mono (legato) plays one note at a time, so frets, tone holes, valves and slides change pitch the way they do on the real thing.":
+  k==6?"Poly plays chords. Mono (Legato) plays one note at a time, so frets, tone holes, valves and slides change pitch the way they do on the real thing.":
   k==7?"How long a Slide takes to reach the next note.":
   k==8?"Moves the whole instrument up or down, by up to a semitone.":
   k==9?"The overall level.":
@@ -2175,7 +2175,7 @@ function ctl_text(k) local(v)
   k == 8 ? sprintf(#cv, v > 0 ? "+%d cents" : "%d cents", v) :
   k == 9 ? sprintf(#cv, v > 0.04 ? "+%.1f dB" : "%.1f dB", v) :
   k == 2 ? sprintf(#cv, v > 0 ? "+%d" : "%d", v) :
-  sprintf(#cv, "%d %%", v);
+  sprintf(#cv, "%d%%", v);
   #cv;
 );
 function set_ctl(k, v)
@@ -2249,7 +2249,7 @@ gfx_setfont(3); gfx_set(0.96, 0.96, 0.98, 1); gfx_x = pad; gfx_y = 12*gsc; gfx_d
 gfx_setfont(1); gfx_set(0.55, 0.58, 0.65, 1); gfx_x = pad + 230*gsc; gfx_y = 20*gsc;
 // is this still the chosen preset, or has a part been changed (here or by automation)?
 cur_preset >= 0 ? ( k = 0; pm = PRESET_TAB + cur_preset*PRESET_STRIDE; loop(12, (slider(k + 1)|0) != pm[k] ? cur_preset = -1; k += 1;); );
-gfx_drawstr(cur_preset >= 0 ? preset_name(cur_preset) : "your own instrument");
+gfx_drawstr(cur_preset >= 0 ? preset_name(cur_preset) : "Your own instrument");
 bw_ = 104*gsc; bh_ = 28*gsc; bxx = gw - pad - bw_; byy = 11*gsc;
 // the age note, shortened (or left out) when it would run under the buttons
 age_ > 0 ? (
@@ -2257,9 +2257,9 @@ age_ > 0 ? (
   gfx_measurestr(#agestr, aw_, ah_); gfx_x + aw_ > gw - pad - 3*bw_ - 24*gsc ? sprintf(#agestr, "  (age %d%%)", age_*100);
   gfx_measurestr(#agestr, aw_, ah_); gfx_x + aw_ <= gw - pad - 3*bw_ - 24*gsc ? ( gfx_set(0.8, 0.5, 0.3, 1); gfx_drawstr(#agestr); );
 );
-button(bxx, byy, bw_, bh_, aud_on ? "Playing..." : "Play C4", aud_on) ? ( aud_note = 60; aud_req = 1; );
+button(bxx, byy, bw_, bh_, aud_on ? "Playing…" : "Play C4", aud_on) ? ( aud_note = 60; aud_req = 1; );
 bxx -= bw_ + 8*gsc;
-button(bxx, byy, bw_, bh_, "Surprise me", 0) ? randomise();
+button(bxx, byy, bw_, bh_, "Surprise Me", 0) ? randomise();
 bxx -= bw_ + 8*gsc;
 button(bxx, byy, bw_, bh_, "Presets", 0) ? (
   strcpy(#menu, ""); k = 0;
@@ -2271,7 +2271,7 @@ button(bxx, byy, bw_, bh_, "Presets", 0) ? (
 
 // ---- the assembled instrument
 ax = pad; aw = gw - 2*pad; ay = hdr;
-gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = ax; gfx_y = ay; gfx_drawstr("YOUR INSTRUMENT: CLICK A PART TO CHANGE IT, HOVER FOR A CLOSER LOOK");
+gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = ax; gfx_y = ay; gfx_drawstr("YOUR INSTRUMENT — CLICK A PART TO CHANGE IT, HOVER FOR A CLOSER LOOK");
 // the window can be any height: keep room for the preview panel, then fit
 // the pictures into what is left
 ph_min = max(130*gsc, 0.27*(gtop - ay));
@@ -2345,7 +2345,7 @@ ph_ > 40*gsc ? (
   gfx_setfont(1); gfx_set(0.8, 0.82, 0.87, 1);
   yy = draw_wrapped(pc >= 100 ? ctl_desc(pc - 100) : opt_desc(pc, v), tx, py_ + 52*gsc, tw2, 17*gsc);
   pc >= 100 ? (
-    strcpy(#info, pc == 106 ? "Click either side to choose." : "Drag to change it (hold Shift for small steps), roll the mouse wheel, or double-click to reset.");
+    strcpy(#info, pc == 106 ? "Click either side to choose." : "Drag to change it (hold Shift for small steps), scroll, or double-click to reset.");
     wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); wrap_ymax = wlim;
     hy <= wrap_ymax ? ( gfx_set(0.6, 0.63, 0.7, 1); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
   );
@@ -2354,7 +2354,7 @@ ph_ > 40*gsc ? (
     ee = mat(v, M_E);
     ee >= 1 ? sprintf(#stf, "%g GPa", ee) : ee >= 0.001 ? sprintf(#stf, "%g MPa", ee*1000) : sprintf(#stf, "%g kPa", ee*1000000);
     t60 >= 1 ? sprintf(#rng, "%.1f s", t60) : sprintf(#rng, "%d ms", t60*1000);
-    sprintf(#info, "Stiffness %s, density %d kg/m3. A 440 Hz ring lasts about %s.", #stf, mat(v, M_RHO), #rng);
+    sprintf(#info, "Stiffness %s, density %d kg/m³. A 440 Hz ring lasts about %s.", #stf, mat(v, M_RHO), #rng);
     wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); wrap_ymax = wlim;
     hy <= wrap_ymax ? ( gfx_set(0.6, 0.63, 0.7, 1); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
   );

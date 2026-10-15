@@ -49,10 +49,10 @@ Reverberator makes a very good partner after it.
   - click it for a menu of its options;
   - or hover over it and click the small arrows in its top corner to step
     through them;
-  - or roll the mouse wheel over it.
+  - or scroll over it.
 - **Materials.** The vibrating element, resonator, coupler and radiator also
   show what they are made of, in colour with a small ▾. Click the material
-  name for the list of 31 materials, or roll the wheel over it. The part's
+  name for the list of 31 materials, or scroll over it. The part's
   own menu has them too, under **Made of**. The resonator, coupler and
   radiator always share one material, so changing it on one changes all
   three. The element's picture shimmers while it sounds.
@@ -62,13 +62,13 @@ Reverberator makes a very good partner after it.
   and the little screen shows the sound's waveform as you play.
 - **The controls along the bottom** (Force, Size, Brightness, Decay,
   Position, Resonator and Age, described [below](#the-controls)) shape how
-  it plays. Drag one to change it (hold **Shift** for small steps), roll the
-  mouse wheel over it, or double-click it to put it back to normal. Hover
+  it plays. Drag one to change it (hold **Shift** for small steps), scroll
+  over it, or double-click it to put it back to normal. Hover
   over one and the panel explains what it does.
 - **More** (bottom right) opens a second row with the four controls you
-  usually set once: Play mode (a switch: click Poly or Mono), Glide time,
-  Fine tune and Output. Click **Less** to tuck them away again.
-- **Presets** has 19 ready-made instruments to start from. **Surprise me**
+  usually set once: Play Mode (a switch: click Poly or Mono), Glide Time,
+  Fine Tune and Output. Click **Less** to tuck them away again.
+- **Presets** has 19 ready-made instruments to start from. **Surprise Me**
   picks every part at random. **Play C4** plays a note so you can hear a change
   without touching your keyboard.
 
@@ -118,7 +118,7 @@ lips, bow) makes each note swell and then fade, like squeezing a bulb.
 | **Bar** | A xylophone-style bar: overtones at 2.76 and 5.40 times the note. |
 | **Plate** | A flat sheet, like a gong or bell plate: dense and shimmering. |
 | **Reed** | A clamped tongue or tine, like a kalimba or harmonica. Blown, it buzzes. |
-| **Air column** | Air in a tube, like a clarinet, trumpet or flute. |
+| **Air Column** | Air in a tube, like a clarinet, trumpet or flute. |
 
 ### Materials: for the element, and for the resonator
 
@@ -127,10 +127,10 @@ loss, which decide how long it rings and how bright it stays.
 
 | Family | Materials |
 |---|---|
-| Metals | Steel, Brass, Bronze, Aluminium, Gold, Tin (galvanised roof sheet), Car panel (painted steel), Chain link (steel wire mesh), Handpan steel, Foil (crumpled aluminium) |
+| Metals | Steel, Brass, Bronze, Aluminium, Gold, Tin (galvanised roof sheet), Car Panel (painted steel), Chain Link (steel wire mesh), Handpan Steel, Foil (crumpled aluminium) |
 | Glass and stone | Glass, Crystal, Ice, Marble, Clay |
 | Woods | Wood (plain hardwood), Spruce, Rosewood, Bamboo |
-| Plastics | Plastic, PVC, Nylon, Carbon fibre, Cling film |
+| Plastics | Plastic, PVC, Nylon, Carbon Fibre, Cling Film |
 | Soft and natural | Bone, Gut, Leather, Rubber, Paper, Cardboard, Jelly |
 
 Ice, marble, clay, wood, bone, foil, tin and chain link are irregular
@@ -147,23 +147,23 @@ these are the materials they are made of:
 
 | Reverberator | Instrument Creator material |
 |---|---|
-| Chain link fence | Chain link |
-| Ice sheet | Ice |
-| Tension wire, piano string, guitar string, metal barrel | Steel |
+| Chain Link Fence | Chain Link |
+| Ice Sheet | Ice |
+| Tension Wire, Piano String, Guitar String, Metal Barrel | Steel |
 | Gong | Bronze |
-| PVC pipe | PVC |
-| Glass, wine bottle | Glass |
+| PVC Pipe | PVC |
+| Glass, Wine Bottle | Glass |
 | Marble | Marble |
-| Car body panel | Car panel |
+| Car Body Panel | Car Panel |
 | Leather | Leather |
-| Violin string | Gut (or Steel) |
-| Steel handpan | Handpan steel |
-| Toilet roll tube | Cardboard |
-| Aluminium foil | Foil |
-| Cling film | Cling film |
-| Corrugated tin roof | Tin |
+| Violin String | Gut (or Steel) |
+| Steel Handpan | Handpan Steel |
+| Toilet Roll Tube | Cardboard |
+| Aluminium Foil | Foil |
+| Cling Film | Cling Film |
+| Corrugated Tin Roof | Tin |
 
-To make, say, a PVC flute, choose **Air column** with **PVC** as the element
+To make, say, a PVC flute, choose **Air Column** with **PVC** as the element
 material (and PVC for the resonator too, if you like).
 
 ### Resonator: what the vibration fills
@@ -198,14 +198,14 @@ material (and PVC for the resonator too, if you like).
 
 | Part | Option | What it does |
 |---|---|---|
-| **Frequency control** | Fret | Fixed semitone stops; in Mono mode new notes hammer on. |
-| | Tone hole | Harmonics above about 1.5 kHz leak out (woodwind); in Mono mode, a key blip between notes. |
+| **Frequency Control** | Fret | Fixed semitone stops; in Mono mode new notes hammer on. |
+| | Tone Hole | Harmonics above about 1.5 kHz leak out (woodwind); in Mono mode, a key blip between notes. |
 | | Valve | A few notes are slightly sharp, as on a real trumpet; in Mono mode, a valve blip between notes. |
 | | Slide | Every note glides from the last one (trombone). Pitch bend covers 7 semitones. |
 | | Key | Every note is independent (piano). |
-| **Tuning mechanism** | Peg | Never quite in tune, drifting a little. |
-| | Tuning pin | Piano-style stretched octaves. |
-| | Machine head | Exact equal temperament. |
+| **Tuning Mechanism** | Peg | Never quite in tune, drifting a little. |
+| | Tuning Pin | Piano-style stretched octaves. |
+| | Machine Head | Exact equal temperament. |
 | | Slide | Each note starts a little flat and settles into tune. |
 | **Damping** | Damper | Stops the note when you let go (sustain pedal lifts it). |
 | | Mute | Darker and more nasal. |
@@ -222,19 +222,19 @@ material (and PVC for the resonator too, if you like).
 
 | Control | What it does |
 |---|---|
-| **Force / pressure** | How hard it is blown, bowed or struck. |
+| **Force / Pressure** | How hard it is blown, bowed or struck. |
 | **Size** | Scales the resonator, coupler and radiator: bigger is lower and boomier. |
 | **Brightness** | Lets the high frequencies ring longer (+) or die faster (−). |
 | **Decay** | Longer or shorter ring, without changing anything else. |
-| **Excite position** | Where the exciter touches: near the end (thin, bright) or towards the middle (full, round). |
-| **Resonator amount** | How much of the resonator you hear against the bare element. |
-| **Play mode** | Poly, or Mono (legato): one note at a time, so frets, tone holes, valves and slides change pitch the way they do on the real thing. |
-| **Glide time** | How long a Slide takes to reach the next note. |
-| **Fine tune** | ± 100 cents. |
+| **Excite Position** | Where the exciter touches: near the end (thin, bright) or towards the middle (full, round). |
+| **Resonator Amount** | How much of the resonator you hear against the bare element. |
+| **Play Mode** | Poly, or Mono (Legato): one note at a time, so frets, tone holes, valves and slides change pitch the way they do on the real thing. |
+| **Glide Time** | How long a Slide takes to reach the next note. |
+| **Fine Tune** | ± 100 cents. |
 | **Output** | Overall level. |
-| **Age / rust** | How old and neglected the instrument is, from new (0 %) to found in a skip (100 %). See below. |
+| **Age / Rust** | How old and neglected the instrument is, from new (0%) to found in a skip (100%). See below. |
 
-### Age / rust
+### Age / Rust
 
 Turn it up and the whole instrument wears out, whatever it is made of:
 
@@ -298,7 +298,7 @@ Velocity, pitch bend, mod wheel (CC1), breath controller (CC2), expression
 
 - Sustaining instruments (reed, lips, bow, jet) respond to how hard you play,
   to the mod wheel with *Keywork*, and to a breath controller if you have one.
-- For a real legato wind or brass line, set **Play mode** to *Mono*.
+- For a real legato wind or brass line, set **Play Mode** to *Mono*.
 - Very lossy materials (rubber, paper, cardboard, leather, jelly) are quiet and short when struck.
   That's what they are like; give them a steady energy source, or turn Decay up.
 - Changing a part changes the next note you play. Notes already sounding
