@@ -55,6 +55,8 @@ VOICE_BASE = 0; VOICE_STRIDE = 512; VOICES_MAX = 8;
 MODE_OFF = 160; MODE_STRIDE = 8; MODES_MAX = 24;
 MAT_TAB = 13600; MAT_STRIDE = 16; MAT_N = 31;
 IMG_TAB = 14200; IMG_SLOT = 10;     // picture cache: 12 categories x 8 (window only)
+FOCUS_TAB = 14400; FOCUS_MAX = 64;  // keyboard focus list: id, x, y, w, h per control (window only)
+HIG_TXT = 14800; HIG_TXT_MAX = 180; // text audit for the tests: count, then r, g, b, x, y, w, h, - per string (window only)
 BESSEL_TAB = 4600; BAR_TAB = 4700; CANT_TAB = 4720; PLATE_TAB = 4750;
 BODY_BASE = 5000; BODY_STRIDE = 8; BODY_MAX = 24;
 HEAD_BASE = 5300; HEAD_MAX = 8;
@@ -1736,6 +1738,21 @@ function draw_part(c, i, x, y, w, h, big) local(m, k, u, a, v, r0, u2)
 );
 
 // Word-wrapped text; returns the y below the last line.
+// every word in the window is drawn through say(): it draws s at gfx_x, gfx_y
+// in the current colour, as gfx_drawstr does. When the test host sets
+// hig_audit it also writes down the colour and the box of each string, and
+// with hig_notext it leaves the words out, so the host can measure the ground
+// under every string (tools/hig.cpp, ADR 0023).
+function say(s) local(tw, th, p)
+(
+  gfx_measurestr(s, tw, th);
+  hig_audit && HIG_TXT[0] < HIG_TXT_MAX ? (
+    p = HIG_TXT + 1 + HIG_TXT[0]*8;
+    p[0] = gfx_r; p[1] = gfx_g; p[2] = gfx_b; p[3] = gfx_x; p[4] = gfx_y; p[5] = tw; p[6] = th;
+    HIG_TXT[0] += 1;
+  );
+  hig_notext ? gfx_x += tw : gfx_drawstr(s);
+);
 function draw_wrapped(s, x, y, w, lh) local(n, k, ch, tw, th, cy)
 (
   n = strlen(s); k = 0; cy = y;
@@ -1745,14 +1762,14 @@ function draw_wrapped(s, x, y, w, lh) local(n, k, ch, tw, th, cy)
     ch == 32 ? (
       strcpy(#wt, #wl); strlen(#wt) ? strcat(#wt, " "); strcat(#wt, #ww);
       gfx_measurestr(#wt, tw, th);
-      (tw > w && strlen(#wl)) ? ( cy + lh <= wrap_ymax ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); ); cy += lh; strcpy(#wl, #ww); ) : strcpy(#wl, #wt);
+      (tw > w && strlen(#wl)) ? ( cy + lh <= wrap_ymax ? ( gfx_x = x; gfx_y = cy; say(#wl); ); cy += lh; strcpy(#wl, #ww); ) : strcpy(#wl, #wt);
       strcpy(#ww, "");
     ) : (
       strcpy_substr(#wc, s, k, 1); strcat(#ww, #wc);
     );
     k += 1;
   );
-  (strlen(#wl) && cy + lh <= wrap_ymax) ? ( gfx_x = x; gfx_y = cy; gfx_drawstr(#wl); );
+  (strlen(#wl) && cy + lh <= wrap_ymax) ? ( gfx_x = x; gfx_y = cy; say(#wl); );
   strlen(#wl) ? cy += lh;
   cy;
 );
@@ -1943,40 +1960,97 @@ spl0 = yl; spl1 = yr;
 vis_lvl = max(abs(yl), vis_lvl*vis_dec);
 SCOPE_BUF[scope_w] = 0.5*(yl + yr); scope_w = (scope_w + 1) & (SCOPE_LEN - 1);
 
+@serialize
+// The window's own preferences, kept with the project (ADR 0023): the
+// interface size and Reduce Motion. Nothing the sound reads is here, and the
+// sliders are saved by REAPER as before. An older project has neither and
+// reads back as 100% with motion on.
+file_var(0, ui_zoom);
+file_var(0, calm);
+(ui_zoom != 1.25 && ui_zoom != 1.5 && ui_zoom != 2) ? ui_zoom = 1;
+calm = calm > 0.5;
+
 @gfx 940 720
 
-gsc = max(1, gfx_ext_retina);
-anim_ph += 0.3; anim_ph > 628.3 ? anim_ph -= 628.3;
+// ---- one scale for every size in the window: Retina (ADR 0021) times the
+// interface size chosen under Options (ADR 0023)
+ui_zoom < 1 ? ui_zoom = 1;
+gsc = max(1, gfx_ext_retina)*ui_zoom;
+// Reduce Motion stills the drawings' wobble and the element's shake
+calm ? anim_ph = 0 : ( anim_ph += 0.3; anim_ph > 628.3 ? anim_ph -= 628.3; );
 gw = gfx_w; gh = gfx_h;
-gfx_set(0.105, 0.11, 0.125, 1); gfx_rect(0, 0, gw, gh, 1);
-pad = 10*gsc; hdr = 50*gsc;
-gfx_setfont(1, "Arial", 13*gsc);
-gfx_setfont(2, "Arial", 15*gsc, 'b');
-gfx_setfont(3, "Arial", 23*gsc, 'b');
-gfx_setfont(4, "Arial", 10*gsc, 'b');
-gfx_setfont(5, "Arial", 19*gsc, 'b');
+
+// ---- colours (0xRRGGBB). Every word is at least 7:1 on what it sits on
+// (ADR 0023); tools/hig_check.py measures each one on the real pixels.
+C_WIN = 0x1B1C20; C_TILE = 0x25262D; C_TILE_HOV = 0x30333D; C_PREV = 0x212228; C_SUNK = 0x17181C;
+C_BTN = 0x2E303B; C_BTN_HOV = 0x404552; C_ON = 0x2B4C80; C_EDGE = 0x4D5261; C_SEG = 0x1C1D21; C_MAT_HOV = 0x3D424F;
+T_MAIN = 0xF2F2F7;   // names, values, button labels: 11:1 or more
+T_BODY = 0xCCD1DE;   // descriptions and messages: 10:1 on the preview
+T_DIM = 0xB0B6C0;    // secondary words on the window and the preview: 7.8:1 or more
+T_LABEL = 0xC4C9D2;  // captions and control names on a tile or cell: 7.6:1 even hovered
+T_HINT = 0x8CD999;   // the hint and a control's value in the preview: 9.4:1
+T_AGE = 0xF5B48A;    // the age note: 9.5:1
+T_ELEM = 0x7FD8F5; T_RES = 0x8EE29A;  // a material's name, in its group's hue: 7.8:1 hovered
+C_RING = 0xF2F4F7;   // the keyboard focus ring
+function col(c) ( gfx_set(((c >> 16) & 255)/255, ((c >> 8) & 255)/255, (c & 255)/255, 1); );
+col(C_WIN); gfx_rect(0, 0, gw, gh, 1);
+
+// ---- the system's own typeface: Segoe UI on Windows, San Francisco on a
+// Mac, else Arial. gfx_getfont names the face actually given, so a missing
+// font is caught rather than guessed. Nothing is under 10 px at 100%.
+function pick_font()
+(
+  gfx_setfont(1, "Segoe UI", 13, 0); gfx_getfont(#fgot);
+  matchi("Segoe UI*", #fgot) ? ( strcpy(#ui_font, "Segoe UI"); font_kind = 1; ) : (
+    gfx_setfont(1, ".AppleSystemUIFont", 13, 0); gfx_getfont(#fgot);
+    (matchi("*System*", #fgot) || matchi("*SF*", #fgot)) ? ( strcpy(#ui_font, ".AppleSystemUIFont"); font_kind = 2; ) :
+                                                           ( strcpy(#ui_font, "Arial"); font_kind = 3; );
+  );
+  font_ready = 1;
+);
+!font_ready ? pick_font();
+gfx_setfont(1, #ui_font, 13*gsc);
+gfx_setfont(2, #ui_font, 15*gsc, 'b');
+gfx_setfont(3, #ui_font, 19*gsc, 'b');
+gfx_setfont(4, #ui_font, 10*gsc, 'b');
+gfx_setfont(5, #ui_font, 19*gsc, 'b');
 
 clicked = (mouse_cap & 1) && !(last_cap & 1);
 last_cap = mouse_cap;
 wheel = mouse_wheel; mouse_wheel = 0;
-hov = -1; hovc = -1;
-// the control strip along the bottom (one row, two with More open);
-// everything else fits above gtop
-cth = 40*gsc; cgp = 6*gsc;
-cty = gh - pad - (more_ctl ? 2*cth + cgp : cth); gtop = cty - 8*gsc;
+hov = -1; hovc = -1; focc = -1;
+// one key a frame; Tab, Return, Space, the arrows, Delete and Esc are used
+key = gfx_getchar(); key < 0 ? key = 0;
+clicked ? focus_id = 0;     // pointing takes over from the keyboard
+fl_n = 0; fr_on = 0;
+hig_audit ? HIG_TXT[0] = 0;
 
 function inbox(x, y, w, h) ( mouse_x >= x && mouse_x < x + w && mouse_y >= y && mouse_y < y + h; );
+
+// ---- keyboard focus (ADR 0023). Every control registers itself as it is
+// drawn, so Tab and Shift+Tab move through them in the order they are drawn:
+// top to bottom, and through the diagram the way its arrows go. The ring is
+// drawn last, over everything, round the focused control.
+function focusable(id, x, y, w, h) local(p)
+(
+  fl_n < FOCUS_MAX ? ( p = FOCUS_TAB + fl_n*5; p[0] = id; p[1] = x; p[2] = y; p[3] = w; p[4] = h; fl_n += 1; );
+  focus_id == id ? ( fr_on = 1; fr_x = x; fr_y = y; fr_w = w; fr_h = h; );
+  focus_id == id;
+);
+// Return or Space presses the focused control
+function activated(id) ( (focus_id == id && (key == 13 || key == 32)) ? ( key = 0; 1; ) : 0; );
 
 // ---- rendered pictures (ADR 0020): PNGs in Instrument-Creator-images/ next to
 // this file, made by tools/render_parts.py. Each category keeps its current
 // picture in four image slots (full size and three halvings, so small icons are
 // not aliased) and its rust layer in four more. Loaded when first needed; if a
-// file is missing the drawing in draw_part() is used instead.
-function img_load(slot, key, row) local(r, l, w, h)
+// file is missing the drawing in draw_part() is used instead, and the message
+// bar says where the pictures go.
+function img_load(slot, key_, row) local(r, l, w, h)
 (
-  IMG_TAB[row] = key;
+  IMG_TAB[row] = key_;
   r = gfx_loadimg(slot, #imgf);
-  r < 0 ? ( IMG_TAB[row + 1] = -1; ) : (
+  r < 0 ? ( IMG_TAB[row + 1] = -1; pics_missing = 1; ) : (
     gfx_getimgdim(slot, w, h);
     IMG_TAB[row + 1] = w > 0 ? 1 : -1; IMG_TAB[row + 2] = w; IMG_TAB[row + 3] = h;
     l = 1; gfx_a = 1; gfx_mode = 2;
@@ -2000,21 +2074,21 @@ function img_blit(slot, row, x, y, w, h, alpha, dy) local(iw, ih, s, l, dw, dh)
   gfx_blit(slot + l, 1, 0, 0, 0, max(1, iw/2^l), max(1, ih/2^l), x + 0.5*(w - dw), y + 0.5*(h - dh) + dy, dw, dh);
   gfx_a = 1;
 );
-function picture(c, i, x, y, w, h, big) local(m, key, row, ok, rr, ra, d)
+function picture(c, i, x, y, w, h, big) local(m, key_, row, ok, rr, ra, d)
 (
   m = c == 2 ? elm : (c == 4 || c == 6 || c == 7) ? rsm : -1;
-  key = 1 + 100*i + (m >= 0 ? m + 1 : 0);
+  key_ = 1 + 100*i + (m >= 0 ? m + 1 : 0);
   row = IMG_TAB + c*8;
-  IMG_TAB[row] != key ? (
+  IMG_TAB[row] != key_ ? (
     (c == 3 || c == 5) ? sprintf(#imgf, "Instrument-Creator-images/mat%d.png", i) :
     m >= 0 ? sprintf(#imgf, "Instrument-Creator-images/c%d_%d_m%d.png", c, i, m) :
              sprintf(#imgf, "Instrument-Creator-images/c%d_%d.png", c, i);
-    img_load(IMG_SLOT + 8*c, key, row);
+    img_load(IMG_SLOT + 8*c, key_, row);
   );
   ok = IMG_TAB[row + 1] > 0;
   ok ? (
-    // the vibrating element shakes while it sounds
-    d = (big && c == 2) ? min(0.06, 0.3*vis_lvl)*h : 0;
+    // the vibrating element shakes while it sounds (not with Reduce Motion)
+    d = (big && c == 2 && !calm) ? min(0.06, 0.3*vis_lvl)*h : 0;
     d > 0.5 ? ( img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 0.35, d); img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 0.35, -d); );
     img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 1, 0);
     // rust and grime, faded in by Age, on the parts made of a material
@@ -2030,15 +2104,19 @@ function picture(c, i, x, y, w, h, big) local(m, key, row, ok, rr, ra, d)
     );
   ) : draw_part(c, i, x, y, w, h, big);
 );
-function button(x, y, w, h, s, on) local(hv, tw, th)
+// a button 28 px tall, never narrower than its label. On (Playing…), it is
+// blue and has a bar under its label, so colour is not the only sign.
+function bwidth(s) local(tw, th) ( gfx_setfont(2); gfx_measurestr(s, tw, th); max(72*gsc, tw + 28*gsc); );
+function button(id, x, y, w, h, s, on) local(hv, tw, th, f)
 (
+  f = focusable(id, x, y, w, h);
   hv = inbox(x, y, w, h);
-  gfx_set(on ? 0.26 : hv ? 0.25 : 0.18, on ? 0.42 : hv ? 0.27 : 0.19, on ? 0.66 : hv ? 0.32 : 0.23, 1);
-  gfx_rect(x, y, w, h, 1);
-  gfx_set(0.3, 0.32, 0.38, 1); gfx_rect(x, y, w, h, 0);
-  gfx_setfont(2); gfx_set(0.93, 0.94, 0.96, 1);
-  gfx_measurestr(s, tw, th); gfx_x = x + 0.5*(w - tw); gfx_y = y + 0.5*(h - th); gfx_drawstr(s);
-  hv && clicked;
+  col(on ? C_ON : hv ? C_BTN_HOV : C_BTN); gfx_rect(x, y, w, h, 1);
+  col(C_EDGE); gfx_rect(x, y, w, h, 0);
+  gfx_setfont(2); col(T_MAIN);
+  gfx_measurestr(s, tw, th); gfx_x = x + 0.5*(w - tw); gfx_y = y + 0.5*(h - th) - (on ? gsc : 0); say(s);
+  on ? gfx_rect(x + 0.5*(w - tw), y + h - 5*gsc, tw, max(1, 2*gsc), 1);
+  (hv && clicked) || activated(id);
 );
 function group_col(c)
 (
@@ -2047,9 +2125,10 @@ function group_col(c)
 );
 // the material category (3 or 5) that a part is made of, or -1
 function mat_cat(c) ( c == 2 ? 3 : (c == 4 || c == 6 || c == 7) ? 5 : -1; );
-// a part's options, then (for parts made of a material) a "Made of" submenu.
-// Menu ids count items only: separators and submenu headings take none.
-function part_menu(c) local(k, r, n, mc)
+// a part's options, then (for parts made of a material) a "Made of" submenu,
+// opened at (mx, my). Menu ids count items only: separators and submenu
+// headings take none.
+function part_menu(c, mx, my) local(k, r, n, mc)
 (
   n = cat_count(c); mc = mat_cat(c);
   strcpy(#menu, ""); k = 0;
@@ -2059,7 +2138,7 @@ function part_menu(c) local(k, r, n, mc)
     k = 0;
     loop(MAT_N, strcat(#menu, k == MAT_N - 1 ? "|<" : "|"); (slider(mc + 1)|0) == k ? strcat(#menu, "!"); strcat(#menu, mat_name(k)); k += 1;);
   );
-  gfx_x = mouse_x; gfx_y = mouse_y;
+  gfx_x = mx; gfx_y = my;
   r = gfx_showmenu(#menu);
   r > 0 && r <= n ? set_part(c, r - 1) : r > n ? set_part(mc, r - n - 1);
 );
@@ -2067,51 +2146,72 @@ function part_menu(c) local(k, r, n, mc)
 // category, the option and (for parts made of one) the material. Click for
 // the part's menu, click the material for the materials, roll the wheel to
 // step (over the material: step the material), or use the arrows on hover.
-function tile(c, x, y, w, h) local(v, hv, tw, th, s, pw, ph, tx, tmax, mc, m, bh, ty, t4, t2, t1, ax1, ax2, z, onm, ona1, ona2)
+// From the keyboard: Return or Space opens the menu, the arrow keys step.
+function tile(c, x, y, w, h) local(v, hv, tw, th, s, pw, ph, tx, tmax, mc, m, bh, ty, t4, t2, t1, ax1, ax2, z, onm, ona1, ona2, f, cap, mh, my_)
 (
   v = slider(c + 1)|0; mc = mat_cat(c);
+  f = focusable(10 + c, x, y, w, h); f ? focc = c;
   hv = inbox(x, y, w, h); hv ? hov = c;
-  gfx_set(hv ? 0.19 : 0.145, hv ? 0.2 : 0.15, hv ? 0.24 : 0.175, 1); gfx_rect(x, y, w, h, 1);
+  col(hv ? C_TILE_HOV : C_TILE); gfx_rect(x, y, w, h, 1);
   group_col(c); gfx_rect(x, y, w, 2*gsc, 1);
-  ph = h - 14*gsc; pw = min(0.5*w, 1.5*ph);
-  picture(c, v, x + 6*gsc, y + 8*gsc, pw, ph, c == 2);
-  tx = x + pw + 14*gsc; tmax = x + w - 8*gsc;
+  // the picture gives way before the words do: never narrower than the
+  // option's name (in the smaller font) and the material with its arrow
+  gfx_setfont(1); gfx_measurestr(opt_name(c, v), tw, th); s = tw;
+  mc >= 0 ? ( gfx_measurestr(mat_name(slider(mc + 1)|0), tw, th); s = max(s, tw + 20*gsc); );
+  // (when even a fifth of the tile is too much, the picture goes: the
+  // preview panel and the menu still show it)
+  ph = h - 14*gsc; pw = min(min(0.5*w, 1.5*ph), w - 22*gsc - s); pw < 0.2*w ? pw = 0;
+  pw > 0 ? picture(c, v, x + 6*gsc, y + 8*gsc, pw, ph, c == 2);
+  tx = x + (pw > 0 ? pw + 14*gsc : 10*gsc); tmax = x + w - 8*gsc;
   gfx_setfont(4); gfx_measurestr("A", tw, t4); gfx_setfont(2); gfx_measurestr("A", tw, t2); gfx_setfont(1); gfx_measurestr("A", tw, t1);
-  bh = t4 + 4*gsc + t2 + (mc >= 0 ? 5*gsc + t1 : 0);
+  // a short tile keeps the lines that fit: the option, then the material
+  // (also in the part's menu), then the caption; none runs off the tile
+  bh = t2; mc >= 0 && bh + 5*gsc + t1 <= h - 6*gsc ? bh += 5*gsc + t1 : mc = -1;
+  cap = bh + t4 + 4*gsc <= h - 6*gsc; cap ? bh += t4 + 4*gsc;
   ty = y + 0.5*(h - bh) + gsc;
-  gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1);
-  s = cat_title(c); gfx_measurestr(s, tw, th); tx + tw > tmax ? s = cat_short(c);
-  gfx_x = tx; gfx_y = ty; gfx_drawstr(s);
-  ty += t4 + 4*gsc;
+  cap ? (
+    gfx_setfont(4); col(T_LABEL);
+    s = cat_title(c); gfx_measurestr(s, tw, th); tx + tw > tmax ? s = cat_short(c);
+    gfx_x = tx; gfx_y = ty; say(s);
+    ty += t4 + 4*gsc;
+  );
   s = opt_name(c, v); gfx_setfont(2); gfx_measurestr(s, tw, th); tx + tw > tmax ? gfx_setfont(1);
-  gfx_set(0.95, 0.95, 0.97, 1); gfx_x = tx; gfx_y = ty; gfx_drawstr(s);
+  col(T_MAIN); gfx_x = tx; gfx_y = ty; say(s);
   ty += t2 + 5*gsc;
   onm = 0;
   mc >= 0 ? (
     m = slider(mc + 1)|0; s = mat_name(m); gfx_setfont(1); gfx_measurestr(s, tw, th);
-    onm = inbox(tx - 4*gsc, ty - 2*gsc, tw + 20*gsc, t1 + 4*gsc);
-    onm ? ( hov = mc; gfx_set(0.24, 0.26, 0.31, 1); gfx_rect(tx - 4*gsc, ty - 2*gsc, tw + 20*gsc, t1 + 4*gsc, 1); );
-    group_col(mc); onm ? gfx_set(0.97, 0.97, 0.99, 1);
-    gfx_x = tx; gfx_y = ty; gfx_drawstr(s);
+    // the material is a target of its own, at least 24 px tall
+    mh = max(t1 + 4*gsc, 24*gsc); my_ = ty - 2*gsc - 0.5*(mh - t1 - 4*gsc);
+    onm = inbox(tx - 4*gsc, my_, tw + 20*gsc, mh);
+    onm ? ( hov = mc; col(C_MAT_HOV); gfx_rect(tx - 4*gsc, my_, tw + 20*gsc, mh, 1); );
+    col(onm ? T_MAIN : mc == 3 ? T_ELEM : T_RES);
+    gfx_x = tx; gfx_y = ty; say(s);
     gfx_triangle(tx + tw + 5*gsc, ty + 0.45*t1, tx + tw + 13*gsc, ty + 0.45*t1, tx + tw + 9*gsc, ty + 0.45*t1 + 4*gsc);
   );
-  // step arrows, top right, only while the mouse is over the tile
-  z = 20*gsc; ax1 = x + w - 2*z - 4*gsc; ax2 = x + w - z - 4*gsc;
+  // step arrows, top right, only while the mouse is over the tile: a pair,
+  // like a stepper, each 24 px square (smaller only on a very short tile)
+  z = min(24*gsc, floor(0.42*h)); ax1 = x + w - 2*z - 4*gsc; ax2 = x + w - z - 4*gsc;
   ona1 = inbox(ax1, y + 4*gsc, z, z); ona2 = inbox(ax2, y + 4*gsc, z, z);
   hv ? (
-    ona1 ? gfx_set(0.95, 0.95, 0.97, 1) : gfx_set(0.5, 0.53, 0.6, 1);
-    gfx_triangle(ax1 + 13*gsc, y + 8*gsc, ax1 + 13*gsc, y + 20*gsc, ax1 + 6*gsc, y + 14*gsc);
-    ona2 ? gfx_set(0.95, 0.95, 0.97, 1) : gfx_set(0.5, 0.53, 0.6, 1);
-    gfx_triangle(ax2 + 7*gsc, y + 8*gsc, ax2 + 7*gsc, y + 20*gsc, ax2 + 14*gsc, y + 14*gsc);
+    ona1 ? col(T_MAIN) : gfx_set(0.5, 0.53, 0.6, 1);
+    gfx_triangle(ax1 + 0.65*z, y + 4*gsc + 0.25*z, ax1 + 0.65*z, y + 4*gsc + 0.75*z, ax1 + 0.3*z, y + 4*gsc + 0.5*z);
+    ona2 ? col(T_MAIN) : gfx_set(0.5, 0.53, 0.6, 1);
+    gfx_triangle(ax2 + 0.35*z, y + 4*gsc + 0.25*z, ax2 + 0.35*z, y + 4*gsc + 0.75*z, ax2 + 0.7*z, y + 4*gsc + 0.5*z);
   );
   hv && clicked ? (
     ona1 ? set_part(c, (v + cat_count(c) - 1) % cat_count(c)) :
     ona2 ? set_part(c, (v + 1) % cat_count(c)) :
-    onm ? part_menu(mc) : part_menu(c);
+    onm ? part_menu(mc, mouse_x, mouse_y) : part_menu(c, mouse_x, mouse_y);
   );
   hv && wheel != 0 ? (
     onm ? set_part(mc, (m + (wheel > 0 ? MAT_N - 1 : 1)) % MAT_N) :
           set_part(c, (v + (wheel > 0 ? cat_count(c) - 1 : 1)) % cat_count(c));
+  );
+  f ? (
+    (key == 'rght' || key == 'down') ? ( key = 0; set_part(c, (v + 1) % cat_count(c)); ) :
+    (key == 'left' || key == 'up') ? ( key = 0; set_part(c, (v + cat_count(c) - 1) % cat_count(c)); );
+    activated(10 + c) ? part_menu(c, x + 6*gsc, y + h);
   );
 );
 function arrow(x1, y1, x2, y2) local(dx, dy, l, ux, uy)
@@ -2145,7 +2245,18 @@ function ctl_desc(k)
   "How old and neglected it is, from new to found in a skip: duller, shorter, out of tune, rattly and leaky. Applies from the next note.";
 );
 function ctl_short(k) ( k==4?"Position":k==5?"Resonator":k==7?"Glide":k==10?"Age":ctl_title(k); );
-function ctl_tiny(k) ( k==2?"Bright":k==4?"Pos.":k==5?"Res.":k==8?"Tune":k==9?"Out":ctl_short(k); );
+// the widest value a control can show, so a row can be laid out once
+function ctl_widest(k) ( k==2?"+100":k==4?"50%":k==6?"":k==7?"1000 ms":k==8?"+100 cents":k==9?"-36.0 dB":"400%"; );
+// can every control in a row show its short name and its widest value side
+// by side in cells w wide? (k0, n: the row is controls k0 .. k0+n-1, 6 meaning Age)
+function ctl_row_fits(k0, n, w) local(j, k, a, b, th, ok)
+(
+  gfx_setfont(1); ok = 1; j = 0;
+  loop(n, k = k0 + j; k == 6 && k0 == 0 ? k = 10;
+    gfx_measurestr(ctl_short(k), a, th); gfx_measurestr(ctl_widest(k), b, th);
+    a + b + 26*gsc > w ? ok = 0; j += 1;);
+  ok;
+);
 function ctl_min(k) ( k==1?25:k==2?-100:k==3?10:k==4?2:k==7?5:k==8?-100:k==9?-36:0; );
 function ctl_max(k) ( k==1?400:k==3?400:k==4?50:k==6?1:k==7?1000:k==9?12:100; );
 function ctl_def(k) ( k==0?70:k==1?100:k==3?100:k==4?20:k==5?50:k==7?120:0; );
@@ -2167,6 +2278,13 @@ function ctl_val(k, p) local(a, b, m, s, v)
   v = m > 0 ? ( p <= 0.5 ? a*(m/a)^(2*p) : m*(b/m)^(2*p - 1); ) : a + p*(b - a);
   max(a, min(b, floor(v/s + 0.5)*s));
 );
+// one step of the wheel or an arrow key (z = +1 or -1), finer with Shift
+function ctl_nudge(k, v, z, fine) local(d)
+(
+  ctl_mid(k) > 0 ? ( d = ctl_val(k, ctl_pos(k, v) + z*(fine ? 0.005 : 0.02)); d == v ? d = v + z*ctl_step(k); ) :
+                   d = v + z*(fine ? ctl_step(k) : max(ctl_step(k), floor(0.02*(ctl_max(k) - ctl_min(k)) + 0.5)));
+  d;
+);
 function ctl_text(k) local(v)
 (
   v = slider(13 + k);
@@ -2185,46 +2303,55 @@ function set_ctl(k, v)
   slider_automate(2^(12 + k));
   gui_dirty = 1; last_cat = 100 + k;
 );
-// one control: drag the track (Shift for fine steps), roll the wheel,
-// double-click to reset; Play mode is a two-way switch
-function control(k, x, y, w, h) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1, tw2, z, s, d)
+// one control, 44 px tall: drag the track (Shift for fine steps), roll the
+// wheel, double-click to reset; Play mode is a two-way switch. From the
+// keyboard: the arrow keys step (Shift finer), Delete resets, and Return or
+// Space flips Play mode. The name is never cut short: with vin the value
+// sits beside it, else at the end of the track, and the name has the width.
+function control(k, x, y, w, h, vin) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1, tw2, z, s, d, f, segy, segh, sw_, on, vw)
 (
   v = slider(13 + k);
+  f = focusable(40 + k, x, y, w, h); f ? focc = 100 + k;
   hv = inbox(x, y, w, h) && drag_k < 0; hv ? hovc = k;
-  gfx_set(hv || drag_k == k ? 0.19 : 0.145, hv || drag_k == k ? 0.2 : 0.15, hv || drag_k == k ? 0.24 : 0.175, 1);
-  gfx_rect(x, y, w, h, 1);
+  col(hv || drag_k == k ? C_TILE_HOV : C_TILE); gfx_rect(x, y, w, h, 1);
   ctl_col(k); gfx_rect(x, y, 3*gsc, h, 1);
   gfx_setfont(1);
   s = ctl_text(k); gfx_measurestr(s, tw, th); k == 6 ? tw = 0;
-  // the short name when the full one would run into the value
-  gfx_measurestr(ctl_title(k), tw1, th);
-  gfx_set(0.72, 0.74, 0.8, 1); gfx_x = x + 10*gsc; gfx_y = y + 5*gsc;
-  gfx_measurestr(ctl_short(k), tw2, th);
-  gfx_drawstr(tw1 + tw + 26*gsc <= w ? ctl_title(k) : tw2 + tw + 22*gsc <= w ? ctl_short(k) : ctl_tiny(k));
-  k != 6 ? ( gfx_set(0.95, 0.95, 0.97, 1); gfx_x = x + w - 9*gsc - tw; gfx_y = y + 5*gsc; gfx_drawstr(s); );
-  x0 = x + 12*gsc; x1 = x + w - 12*gsc; ty = y + h - 11*gsc;
+  gfx_measurestr(ctl_widest(k), vw, th);
+  // the full name where it fits, else the short one
+  gfx_measurestr(ctl_title(k), tw1, th); gfx_measurestr(ctl_short(k), tw2, th);
+  col(T_LABEL); gfx_x = x + 10*gsc; gfx_y = y + 6*gsc;
+  say(tw1 + (vin ? vw + 26*gsc : 20*gsc) <= w ? ctl_title(k) : ctl_short(k));
+  x0 = x + 12*gsc; x1 = x + w - 12*gsc; ty = y + h - 13*gsc;
+  k != 6 ? (
+    col(T_MAIN);
+    vin ? ( gfx_x = x + w - 9*gsc - tw; gfx_y = y + 6*gsc; ) :
+          ( x1 -= vw + 8*gsc; gfx_x = x + w - 9*gsc - tw; gfx_y = ty - 0.5*th; );
+    say(s);
+  );
   k == 6 ? (
-    // Poly | Mono
+    // Poly | Mono: the chosen half is blue, its word white and underlined
+    segy = y + 23*gsc; segh = h - 27*gsc; sw_ = 0.5*(x1 - x0) - 2*gsc;
     z = 0;
     loop(2,
-      d = x0 + z*0.5*(x1 - x0);
-      (v >= 0.5) == z ? gfx_set(0.26, 0.42, 0.66, 1) : gfx_set(0.11, 0.115, 0.13, 1);
-      gfx_rect(d, ty - 8*gsc, 0.5*(x1 - x0) - 2*gsc, 15*gsc, 1);
-      gfx_setfont(4); (v >= 0.5) == z ? gfx_set(0.97, 0.97, 0.99, 1) : gfx_set(0.55, 0.58, 0.65, 1);
-      gfx_measurestr(z ? "MONO" : "POLY", tw, th);
-      gfx_x = d + 0.5*(0.5*(x1 - x0) - 2*gsc - tw); gfx_y = ty - 0.5*gsc - 0.5*th; gfx_drawstr(z ? "MONO" : "POLY");
+      d = x0 + z*0.5*(x1 - x0); on = (v >= 0.5) == z;
+      col(on ? C_ON : C_SEG); gfx_rect(d, segy, sw_, segh, 1);
+      gfx_setfont(4); col(on ? T_MAIN : T_DIM);
+      s = z ? "MONO" : "POLY"; gfx_measurestr(s, tw, th);
+      gfx_x = d + 0.5*(sw_ - tw); gfx_y = segy + gsc; say(s);
+      on ? gfx_rect(d + 0.5*(sw_ - tw), segy + gsc + th + 0.5*gsc, tw, max(1, floor(1.5*gsc)), 1);
       z += 1;
     );
     hv && clicked ? set_ctl(k, mouse_x >= x + 0.5*w);
     hv && wheel != 0 ? set_ctl(k, v < 0.5);
   ) : (
     p = ctl_pos(k, v); hx = x0 + p*(x1 - x0);
-    gfx_set(0.09, 0.095, 0.11, 1); gfx_rect(x0, ty - 2*gsc, x1 - x0, 4*gsc, 1);
+    col(C_SUNK); gfx_rect(x0, ty - 2*gsc, x1 - x0, 4*gsc, 1);
     ctl_col(k);
     // bipolar controls fill from the middle
     d = (k == 2 || k == 8) ? 0.5*(x0 + x1) : x0;
     gfx_rect(min(d, hx), ty - 2*gsc, abs(hx - d), 4*gsc, 1);
-    gfx_set(0.93, 0.94, 0.96, 1); gfx_circle(hx, ty, (hv || drag_k == k ? 6 : 5)*gsc, 1, 1);
+    col(T_MAIN); gfx_circle(hx, ty, (hv || drag_k == k ? 6 : 5)*gsc, 1, 1);
     hv && clicked ? (
       (time_precise() - ctl_t < 0.35 && ctl_last == k) ? (
         set_ctl(k, ctl_def(k)); ctl_t = 0;
@@ -2232,85 +2359,121 @@ function control(k, x, y, w, h) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1, tw2
         ctl_t = time_precise(); ctl_last = k;
         // clicking away from the handle moves it there first
         (abs(mouse_x - hx) > 8*gsc && !(mouse_cap & 8)) ? ( p = max(0, min(1, (mouse_x - x0)/(x1 - x0))); set_ctl(k, ctl_val(k, p)); );
-        drag_k = k; drag_p = drag_p0 = p; drag_x0 = mouse_x; drag_w = x1 - x0; drag_sh = (mouse_cap & 8) > 0;
+        drag_k = k; drag_p = drag_p0 = p; drag_x0 = mouse_x; drag_sh = (mouse_cap & 8) > 0;
+        // a drag is as fine as the whole cell is wide, even with the value at the end of the track
+        drag_w = w - 24*gsc;
       );
     );
-    hv && wheel != 0 ? (
-      z = wheel > 0 ? 1 : -1;
-      ctl_mid(k) > 0 ? ( d = ctl_val(k, p + z*((mouse_cap & 8) ? 0.005 : 0.02)); d == v ? d = v + z*ctl_step(k); ) :
-                       d = v + z*((mouse_cap & 8) ? ctl_step(k) : max(ctl_step(k), floor(0.02*(ctl_max(k) - ctl_min(k)) + 0.5)));
-      set_ctl(k, d);
-    );
+    hv && wheel != 0 ? set_ctl(k, ctl_nudge(k, v, wheel > 0 ? 1 : -1, (mouse_cap & 8) > 0));
+  );
+  f ? (
+    z = (key == 'rght' || key == 'up') ? 1 : (key == 'left' || key == 'down') ? -1 : 0;
+    z != 0 ? ( key = 0; set_ctl(k, k == 6 ? z > 0 : ctl_nudge(k, v, z, (mouse_cap & 8) > 0)); );
+    k == 6 ? ( activated(40 + k) ? set_ctl(k, v < 0.5); ) :
+             ( (key == 8 || key == 'del') ? ( key = 0; set_ctl(k, ctl_def(k)); ); );
   );
 );
+// More / Less, at the end of the first row of controls
+function more_button(x, y, w, h) local(hv, f, tw, th, s, tx, ty)
+(
+  f = focusable(60, x, y, w, h);
+  hv = inbox(x, y, w, h) && drag_k < 0;
+  col(hv ? C_TILE_HOV : C_TILE); gfx_rect(x, y, w, h, 1);
+  s = more_ctl ? "Less" : "More";
+  gfx_setfont(1); col(T_BODY); gfx_measurestr(s, tw, th);
+  gfx_x = x + 0.5*(w - tw) - 6*gsc; gfx_y = y + 0.5*(h - th); say(s);
+  tx = gfx_x + 6*gsc; ty = y + 0.5*h;
+  more_ctl ? gfx_triangle(tx, ty + 2*gsc, tx + 8*gsc, ty + 2*gsc, tx + 4*gsc, ty - 2*gsc) :
+             gfx_triangle(tx, ty - 2*gsc, tx + 8*gsc, ty - 2*gsc, tx + 4*gsc, ty + 2*gsc);
+  ((hv && clicked) || activated(60)) ? more_ctl = !more_ctl;
+);
 
-// ---- header
-gfx_setfont(3); gfx_set(0.96, 0.96, 0.98, 1); gfx_x = pad; gfx_y = 12*gsc; gfx_drawstr("Instrument Creator");
-gfx_setfont(1); gfx_set(0.55, 0.58, 0.65, 1); gfx_x = pad + 230*gsc; gfx_y = 20*gsc;
+// ---- header: the instrument's name and the buttons, all at the top (Apple:
+// nothing that matters along a window's bottom edge, which can end up off
+// the screen). REAPER's title bar already says "Instrument Creator".
+pad = 12*gsc; bh_ = 28*gsc; bgap = 12*gsc;
 // is this still the chosen preset, or has a part been changed (here or by automation)?
 cur_preset >= 0 ? ( k = 0; pm = PRESET_TAB + cur_preset*PRESET_STRIDE; loop(12, (slider(k + 1)|0) != pm[k] ? cur_preset = -1; k += 1;); );
-gfx_drawstr(cur_preset >= 0 ? preset_name(cur_preset) : "Your own instrument");
-bw_ = 104*gsc; bh_ = 28*gsc; bxx = gw - pad - bw_; byy = 11*gsc;
+wP = bwidth("Presets"); wS = bwidth("Surprise Me"); wA = max(bwidth("Play C4"), bwidth("Playing…")); wO = bwidth("Options");
+bws = wP + wS + wA + wO + 3*bgap;
+nm_ = cur_preset >= 0 ? preset_name(cur_preset) : "Your Own Instrument";
+gfx_setfont(3); gfx_measurestr(nm_, nw_, nh_);
+// one row while the name and the buttons fit side by side, else two
+one_row = pad + nw_ + 24*gsc + bws + pad <= gw;
+bxx = one_row ? gw - pad - bws : pad; byy = one_row ? pad : pad + max(nh_, bh_) + 8*gsc;
+nw_ > gw - 2*pad ? gfx_setfont(2);
+col(T_MAIN); gfx_x = pad; gfx_y = pad + 0.5*(bh_ - nh_); say(nm_);
+nmr = one_row ? bxx - 24*gsc : gw - pad;
 // the age note, shortened (or left out) when it would run under the buttons
 age_ > 0 ? (
+  gfx_setfont(1);
   sprintf(#agestr, age_ < 0.34 ? "  (a little worn: age %d%%)" : age_ < 0.67 ? "  (old and rusty: age %d%%)" : "  (found in a skip: age %d%%)", age_*100);
-  gfx_measurestr(#agestr, aw_, ah_); gfx_x + aw_ > gw - pad - 3*bw_ - 24*gsc ? sprintf(#agestr, "  (age %d%%)", age_*100);
-  gfx_measurestr(#agestr, aw_, ah_); gfx_x + aw_ <= gw - pad - 3*bw_ - 24*gsc ? ( gfx_set(0.8, 0.5, 0.3, 1); gfx_drawstr(#agestr); );
+  gfx_measurestr(#agestr, aw_, ah_); gfx_x + aw_ > nmr ? sprintf(#agestr, "  (age %d%%)", age_*100);
+  gfx_measurestr(#agestr, aw_, ah_); gfx_y = pad + 0.5*(bh_ - ah_);
+  gfx_x + aw_ <= nmr ? ( col(T_AGE); say(#agestr); );
 );
-button(bxx, byy, bw_, bh_, aud_on ? "Playing…" : "Play C4", aud_on) ? ( aud_note = 60; aud_req = 1; );
-bxx -= bw_ + 8*gsc;
-button(bxx, byy, bw_, bh_, "Surprise Me", 0) ? randomise();
-bxx -= bw_ + 8*gsc;
-button(bxx, byy, bw_, bh_, "Presets", 0) ? (
+button(1, bxx, byy, wP, bh_, "Presets", 0) ? (
   strcpy(#menu, ""); k = 0;
   loop(PRESET_N, k > 0 ? strcat(#menu, "|"); k == cur_preset ? strcat(#menu, "!"); strcat(#menu, preset_name(k)); k += 1;);
   gfx_x = bxx; gfx_y = byy + bh_;
   r = gfx_showmenu(#menu);
   r > 0 ? apply_preset(r - 1);
 );
+bxx += wP + bgap;
+button(2, bxx, byy, wS, bh_, "Surprise Me", 0) ? randomise();
+bxx += wS + bgap;
+button(3, bxx, byy, wA, bh_, aud_on ? "Playing…" : "Play C4", aud_on) ? ( aud_note = 60; aud_req = 1; );
+bxx += wA + bgap;
+button(4, bxx, byy, wO, bh_, "Options", 0) ? (
+  sprintf(#menu, "%sInterface Size 100%%|%sInterface Size 125%%|%sInterface Size 150%%|%sInterface Size 200%%||%sReduce Motion",
+          ui_zoom == 1 ? "!" : "", ui_zoom == 1.25 ? "!" : "", ui_zoom == 1.5 ? "!" : "", ui_zoom == 2 ? "!" : "", calm ? "!" : "");
+  gfx_x = bxx; gfx_y = byy + bh_;
+  r = gfx_showmenu(#menu);
+  r >= 1 && r <= 4 ? ui_zoom = (r == 1 ? 1 : r == 2 ? 1.25 : r == 3 ? 1.5 : 2);
+  r == 5 ? calm = !calm;
+);
+top_ = byy + bh_;
 
-// ---- the assembled instrument
-ax = pad; aw = gw - 2*pad; ay = hdr;
-gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = ax; gfx_y = ay; gfx_drawstr("YOUR INSTRUMENT — CLICK A PART TO CHANGE IT, HOVER FOR A CLOSER LOOK");
-// the window can be any height: keep room for the preview panel, then fit
-// the pictures into what is left
-ph_min = max(130*gsc, 0.27*(gtop - ay));
-gap = min(26*gsc, max(12*gsc, 0.04*(gtop - ay)));
-tw_ = (aw - 2*gap)/3;
-th_ = max(40*gsc, min(0.5*tw_, (gtop - ay - 16*gsc - 1.6*gap - 12*gsc - ph_min)/2.72));
-ty1 = ay + 16*gsc; ty2 = ty1 + th_ + gap;
-tile(0, ax, ty1, tw_, th_);
-tile(1, ax + tw_ + gap, ty1, tw_, th_);
-tile(2, ax + 2*(tw_ + gap), ty1, tw_, th_);
-tile(6, ax + 2*(tw_ + gap), ty2, tw_, th_);
-tile(4, ax + tw_ + gap, ty2, tw_, th_);
-tile(7, ax, ty2, tw_, th_);
-arrow(ax + tw_ + 3*gsc, ty1 + 0.45*th_, ax + tw_ + gap - 3*gsc, ty1 + 0.45*th_);
-arrow(ax + 2*tw_ + gap + 3*gsc, ty1 + 0.45*th_, ax + 2*(tw_ + gap) - 3*gsc, ty1 + 0.45*th_);
-arrow(ax + 2*(tw_ + gap) + 0.5*tw_, ty1 + th_ + 3*gsc, ax + 2*(tw_ + gap) + 0.5*tw_, ty2 - 3*gsc);
-arrow(ax + 2*(tw_ + gap) - 3*gsc, ty2 + 0.45*th_, ax + 2*tw_ + gap + 3*gsc, ty2 + 0.45*th_);
-arrow(ax + tw_ + gap - 3*gsc, ty2 + 0.45*th_, ax + tw_ + 3*gsc, ty2 + 0.45*th_);
-// the four controls
-cy_ = ty2 + th_ + 0.6*gap; ch_ = 0.72*th_; cw_ = (aw - 3*10*gsc)/4;
-k = 0;
-loop(4, tile(8 + k, ax + k*(cw_ + 10*gsc), cy_, cw_, ch_); k += 1;);
+// ---- a message, at the top, until it is dismissed (never on a timer)
+msg_on = pics_missing && !msg_gone;
+msg_on ? (
+  strcpy(#msg, "The part pictures weren’t found, so drawings are shown instead. To see the pictures, put the Instrument-Creator-images folder next to Instrument-Creator.jsfx.");
+  dw_ = bwidth("Dismiss"); my_ = top_ + 12*gsc;
+  gfx_setfont(1);
+  wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#msg, pad + 12*gsc, my_, gw - 2*pad - dw_ - 36*gsc, 17*gsc); wrap_ymax = wlim;
+  mh_ = max(bh_ + 8*gsc, hy - my_ + 12*gsc);
+  col(C_PREV); gfx_rect(pad, my_, gw - 2*pad, mh_, 1);
+  gfx_set(0.95, 0.6, 0.25, 1); gfx_rect(pad, my_, 3*gsc, mh_, 1);
+  col(T_BODY); draw_wrapped(#msg, pad + 12*gsc, my_ + 0.5*(mh_ - (hy - my_)), gw - 2*pad - dw_ - 36*gsc, 17*gsc);
+  button(5, gw - pad - dw_ - 8*gsc, my_ + 0.5*(mh_ - bh_), dw_, bh_, "Dismiss", 0) ? msg_gone = 1;
+  top_ = my_ + mh_;
+);
 
-// ---- the controls: the seven that shape the sound in one row; More shows
-// the four that are usually set once (play mode, glide, fine tune, output)
-mbw = 72*gsc; cw2 = (gw - 2*pad - 7*cgp - mbw)/7;
+// ---- the controls: the seven that shape the sound, then More, which shows
+// the four that are usually set once (play mode, glide, fine tune, output).
+// Cells 44 px tall and 12 apart; they wrap onto more rows when the window is
+// narrow for the interface size.
+cth = 44*gsc; cgp = 12*gsc; cty = top_ + 12*gsc; cw_all = gw - 2*pad;
+gfx_setfont(1); gfx_measurestr("More", tww, thh); mbw = max(64*gsc, tww + 34*gsc);
+// a cell is never narrower than its short name needs, with the value at the
+// end of the track
+cmin = 86*gsc; j = 0;
+loop(11, gfx_measurestr(ctl_short(j), tww, thh); cmin = max(cmin, tww + 20*gsc); j += 1;);
+cpr = max(1, min(7, floor((cw_all - mbw)/(cmin + cgp))));
+cw2 = (cw_all - mbw - cgp - (cpr - 1)*cgp)/cpr;
+vin1 = ctl_row_fits(0, 7, cw2);
 j = 0;
-loop(7, control(j < 6 ? j : 10, pad + j*(cw2 + cgp), cty, cw2, cth); j += 1;);
-mbx = pad + 7*(cw2 + cgp); hvm = inbox(mbx, cty, mbw, cth) && drag_k < 0;
-gfx_set(hvm ? 0.19 : 0.145, hvm ? 0.2 : 0.15, hvm ? 0.24 : 0.175, 1); gfx_rect(mbx, cty, mbw, cth, 1);
-gfx_setfont(1); gfx_set(0.8, 0.82, 0.87, 1); gfx_measurestr(more_ctl ? "Less" : "More", tww, thh);
-gfx_x = mbx + 0.5*(mbw - tww) - 6*gsc; gfx_y = cty + 0.5*(cth - thh); gfx_drawstr(more_ctl ? "Less" : "More");
-tx_ = gfx_x + 6*gsc; ty_ = cty + 0.5*cth;
-more_ctl ? gfx_triangle(tx_, ty_ + 2*gsc, tx_ + 8*gsc, ty_ + 2*gsc, tx_ + 4*gsc, ty_ - 2*gsc) :
-           gfx_triangle(tx_, ty_ - 2*gsc, tx_ + 8*gsc, ty_ - 2*gsc, tx_ + 4*gsc, ty_ + 2*gsc);
-hvm && clicked ? more_ctl = !more_ctl;
+loop(7,
+  control(j < 6 ? j : 10, pad + (j % cpr)*(cw2 + cgp), cty + floor(j/cpr)*(cth + cgp), cw2, cth, vin1);
+  j == min(cpr, 7) - 1 ? more_button(gw - pad - mbw, cty, mbw, cth);
+  j += 1;
+);
+y2 = cty + ceil(7/cpr)*(cth + cgp);
 more_ctl ? (
-  cw2 = (gw - 2*pad - 3*cgp)/4; j = 0;
-  loop(4, control(6 + j, pad + j*(cw2 + cgp), cty + cth + cgp, cw2, cth); j += 1;);
+  cpr2 = max(1, min(4, floor((cw_all + cgp)/(cmin + cgp)))); cw3 = (cw_all - (cpr2 - 1)*cgp)/cpr2; j = 0;
+  vin2 = ctl_row_fits(6, 4, cw3);
+  loop(4, control(6 + j, pad + (j % cpr2)*(cw3 + cgp), y2 + floor(j/cpr2)*(cth + cgp), cw3, cth, vin2); j += 1;);
+  y2 += ceil(4/cpr2)*(cth + cgp);
 );
 // a drag carries on wherever the mouse goes, until the button is let go
 drag_k >= 0 ? (
@@ -2324,11 +2487,44 @@ drag_k >= 0 ? (
   );
 );
 
-// ---- the close-up preview of the hovered (or last changed) part or control
-pc = hov >= 0 ? hov : drag_k >= 0 ? 100 + drag_k : hovc >= 0 ? 100 + hovc : last_cat;
-py_ = cy_ + ch_ + 12*gsc; ph_ = gtop - py_; pw_ = aw;
-ph_ > 40*gsc ? (
-  gfx_set(0.13, 0.135, 0.155, 1); gfx_rect(ax, py_, pw_, ph_, 1);
+// ---- the assembled instrument
+ax = pad; aw = gw - 2*pad; ay = y2 + 2*gsc;
+gfx_setfont(4); col(T_DIM); s_ = "YOUR INSTRUMENT — CLICK A PART TO CHANGE IT, HOVER FOR A CLOSER LOOK";
+gfx_measurestr(s_, tww, thh); tww > aw ? s_ = "YOUR INSTRUMENT";
+gfx_x = ax; gfx_y = ay; say(s_);
+// keep room for the preview panel, then fit the pictures into what is left;
+// when even the parts are short of room (a large interface size in a small
+// window) the preview gives way to them
+avail = gh - pad - ay;
+gap = min(26*gsc, max(12*gsc, 0.04*avail));
+ph_min = max(130*gsc, 0.27*avail);
+tw_ = (aw - 2*gap)/3;
+th_ = min(0.5*tw_, (avail - 20*gsc - 2*gap - 12*gsc - ph_min)/2.72);
+prev_on = th_ >= 56*gsc;
+!prev_on ? th_ = min(0.5*tw_, (avail - 20*gsc - 2*gap)/2.72);
+th_ = max(28*gsc, th_);
+ty1 = ay + 20*gsc; ty2 = ty1 + th_ + gap;
+tile(0, ax, ty1, tw_, th_);
+tile(1, ax + tw_ + gap, ty1, tw_, th_);
+tile(2, ax + 2*(tw_ + gap), ty1, tw_, th_);
+tile(6, ax + 2*(tw_ + gap), ty2, tw_, th_);
+tile(4, ax + tw_ + gap, ty2, tw_, th_);
+tile(7, ax, ty2, tw_, th_);
+arrow(ax + tw_ + 3*gsc, ty1 + 0.45*th_, ax + tw_ + gap - 3*gsc, ty1 + 0.45*th_);
+arrow(ax + 2*tw_ + gap + 3*gsc, ty1 + 0.45*th_, ax + 2*(tw_ + gap) - 3*gsc, ty1 + 0.45*th_);
+arrow(ax + 2*(tw_ + gap) + 0.5*tw_, ty1 + th_ + 3*gsc, ax + 2*(tw_ + gap) + 0.5*tw_, ty2 - 3*gsc);
+arrow(ax + 2*(tw_ + gap) - 3*gsc, ty2 + 0.45*th_, ax + 2*tw_ + gap + 3*gsc, ty2 + 0.45*th_);
+arrow(ax + tw_ + gap - 3*gsc, ty2 + 0.45*th_, ax + tw_ + 3*gsc, ty2 + 0.45*th_);
+// the four controls
+cy_ = ty2 + th_ + gap; ch_ = max(28*gsc, 0.72*th_); cw_ = (aw - 3*12*gsc)/4;
+k = 0;
+loop(4, tile(8 + k, ax + k*(cw_ + 12*gsc), cy_, cw_, ch_); k += 1;);
+
+// ---- the close-up preview of the focused, hovered or last changed part or control
+pc = focus_id > 0 && focc >= 0 ? focc : hov >= 0 ? hov : drag_k >= 0 ? 100 + drag_k : hovc >= 0 ? 100 + hovc : last_cat;
+py_ = cy_ + ch_ + 12*gsc; ph_ = gh - pad - py_; pw_ = aw;
+prev_on && ph_ > 40*gsc ? (
+  col(C_PREV); gfx_rect(ax, py_, pw_, ph_, 1);
   pc >= 100 ? ctl_col(pc - 100) : group_col(pc); gfx_rect(ax, py_, 3*gsc, ph_, 1);
   psz = min(ph_ - 16*gsc, 0.22*pw_);
   pp = pc >= 100 ? ctl_part(pc - 100) : pc;
@@ -2337,17 +2533,20 @@ ph_ > 40*gsc ? (
   sw = pw_ > 560*gsc ? min(200*gsc, 0.22*pw_) : 0;
   tx = ax + 24*gsc + 1.15*psz; tw2 = pw_ - (tx - ax) - 12*gsc - (sw > 0 ? sw + 12*gsc : 0);
   wrap_ymax = py_ + ph_ - 6*gsc;
-  gfx_setfont(4); gfx_set(0.52, 0.55, 0.62, 1); gfx_x = tx; gfx_y = py_ + 10*gsc; gfx_drawstr(pc >= 100 ? "CONTROL" : cat_title(pc));
-  gfx_setfont(5); gfx_set(0.97, 0.97, 0.99, 1); gfx_x = tx; gfx_y = py_ + 24*gsc;
+  gfx_setfont(4); col(T_DIM); gfx_x = tx; gfx_y = py_ + 10*gsc; say(pc >= 100 ? "CONTROL" : cat_title(pc));
+  gfx_setfont(5); col(T_MAIN); gfx_x = tx; gfx_y = py_ + 24*gsc;
   pc >= 100 ? (
-    gfx_drawstr(ctl_title(pc - 100)); gfx_drawstr("   "); gfx_set(0.55, 0.85, 0.6, 1); gfx_drawstr(ctl_text(pc - 100));
-  ) : gfx_drawstr(opt_name(pc, v));
-  gfx_setfont(1); gfx_set(0.8, 0.82, 0.87, 1);
+    say(ctl_title(pc - 100)); say("   "); col(T_HINT); say(ctl_text(pc - 100));
+  ) : say(opt_name(pc, v));
+  gfx_setfont(1); col(T_BODY);
   yy = draw_wrapped(pc >= 100 ? ctl_desc(pc - 100) : opt_desc(pc, v), tx, py_ + 52*gsc, tw2, 17*gsc);
-  pc >= 100 ? (
-    strcpy(#info, pc == 106 ? "Click either side to choose." : "Drag to change it (hold Shift for small steps), scroll, or double-click to reset.");
+  // how to use it: with the mouse, or (when the keyboard is in use) the keys
+  pc >= 100 || focus_id > 0 ? (
+    strcpy(#info, focus_id > 0 ? (pc >= 100 ? (pc == 106 ? "Return or the arrow keys switch it." : "The arrow keys change it (hold Shift for small steps); Delete resets it.") :
+                                              "Return opens its menu; the arrow keys step through the choices.") :
+                  pc == 106 ? "Click either side to choose." : "Drag to change it (hold Shift for small steps), scroll, or double-click to reset.");
     wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); wrap_ymax = wlim;
-    hy <= wrap_ymax ? ( gfx_set(0.6, 0.63, 0.7, 1); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
+    hy <= wrap_ymax ? ( col(T_DIM); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
   );
   (pc == 3 || pc == 5) ? (
     t60 = mat_t60(v, 440);
@@ -2356,17 +2555,18 @@ ph_ > 40*gsc ? (
     t60 >= 1 ? sprintf(#rng, "%.1f s", t60) : sprintf(#rng, "%d ms", t60*1000);
     sprintf(#info, "Stiffness %s, density %d kg/m³. A 440 Hz ring lasts about %s.", #stf, mat(v, M_RHO), #rng);
     wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); wrap_ymax = wlim;
-    hy <= wrap_ymax ? ( gfx_set(0.6, 0.63, 0.7, 1); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
+    hy <= wrap_ymax ? ( col(T_DIM); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
   );
   // the hint only if it fits whole (measure it first by drawing nothing)
   wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(combo_hint(), tx, yy + 6*gsc, tw2, 17*gsc); wrap_ymax = wlim;
-  hy <= wrap_ymax ? ( gfx_set(0.55, 0.85, 0.6, 1); yy = draw_wrapped(combo_hint(), tx, yy + 6*gsc, tw2, 17*gsc); );
+  hy <= wrap_ymax ? ( col(T_HINT); yy = draw_wrapped(combo_hint(), tx, yy + 6*gsc, tw2, 17*gsc); );
   wrap_ymax = 1000000;
-  // what it sounds like right now, in its own column
+  // what it sounds like right now, in its own column (real audio, so it
+  // moves with Reduce Motion too)
   sh = min(90*gsc, ph_ - 20*gsc);
   (sw > 0 && sh > 16*gsc) ? (
     sx = ax + pw_ - sw - 12*gsc; sy = py_ + 0.5*(ph_ - sh);
-    gfx_set(0.09, 0.095, 0.11, 1); gfx_rect(sx, sy, sw, sh, 1);
+    col(C_SUNK); gfx_rect(sx, sy, sw, sh, 1);
     st0 = (scope_w - 1024 + SCOPE_LEN) & (SCOPE_LEN - 1); k = 0;
     while (k < 400 && !(SCOPE_BUF[(st0 + k) & (SCOPE_LEN - 1)] <= 0 && SCOPE_BUF[(st0 + k + 1) & (SCOPE_LEN - 1)] > 0)) ( k += 1; );
     st0 += k; sc_ = 0.45*sh/max(0.05, vis_lvl);
@@ -2377,4 +2577,20 @@ ph_ > 40*gsc ? (
       k += 1;
     );
   );
+);
+
+// ---- the keyboard: Tab and Shift+Tab move the focus, Esc lets it go. The
+// controls above have already taken Return, Space, the arrows and Delete.
+key == 9 ? (
+  fl_n > 0 ? (
+    cur = -1; i = 0;
+    loop(fl_n, FOCUS_TAB[i*5] == focus_id ? cur = i; i += 1;);
+    (mouse_cap & 8) ? ( cur = cur <= 0 ? fl_n - 1 : cur - 1; ) : ( cur = cur < 0 ? 0 : (cur + 1) % fl_n; );
+    focus_id = FOCUS_TAB[cur*5];
+  );
+) : key == 27 ? focus_id = 0;
+// the focus ring, near-white and two pixels thick, drawn over everything
+fr_on && focus_id > 0 ? (
+  col(C_RING); k = 0;
+  loop(max(2, floor(2*gsc + 0.5)), gfx_rect(fr_x - 3*gsc - k, fr_y - 3*gsc - k, fr_w + 6*gsc + 2*k, fr_h + 6*gsc + 2*k, 0); k += 1;);
 );

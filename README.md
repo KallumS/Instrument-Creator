@@ -41,6 +41,10 @@ Reverberator makes a very good partner after it.
 
 ## Using the window
 
+The window reads from the top: your instrument's name and the buttons, then
+the controls, then the instrument itself, then a close-up of whatever you're
+looking at.
+
 - **The big picture** is your instrument, part by part, in the order the
   energy flows through it (the arrows), with the four controls (frequency
   control, tuning, damping, modulation) in the row underneath. Each part
@@ -55,28 +59,56 @@ Reverberator makes a very good partner after it.
   name for the list of 31 materials, or scroll over it. The part's
   own menu has them too, under **Made of**. The resonator, coupler and
   radiator always share one material, so changing it on one changes all
-  three. The element's picture shimmers while it sounds.
-- **Hover over anything** (a part, a material name, a control) and the
-  panel at the bottom shows a big picture of it, what it does, and (for a
+  three. The element's picture shimmers while it sounds (unless Reduce
+  Motion is on).
+- **Hover over anything** (a part, a material name, a control), or move to
+  it with **Tab**, and the panel at the bottom shows a big picture of it, what it does, and (for a
   material) how stiff and heavy it is and how long it rings. The green line tells you how your combination will play,
   and the little screen shows the sound's waveform as you play.
-- **The controls along the bottom** (Force, Size, Brightness, Decay,
+- **The controls under the buttons** (Force, Size, Brightness, Decay,
   Position, Resonator and Age, described [below](#the-controls)) shape how
   it plays. Drag one to change it (hold **Shift** for small steps), scroll
   over it, or double-click it to put it back to normal. Hover
-  over one and the panel explains what it does.
-- **More** (bottom right) opens a second row with the four controls you
+  over one and the panel explains what it does. Where a row is short of
+  room, each control's value moves to the end of its slider so that its
+  name is never cut short.
+- **More** (at the end of the controls) opens a second row with the four controls you
   usually set once: Play Mode (a switch: click Poly or Mono), Glide Time,
   Fine Tune and Output. Click **Less** to tuck them away again.
 - **Presets** has 19 ready-made instruments to start from. **Surprise Me**
   picks every part at random. **Play C4** plays a note so you can hear a change
   without touching your keyboard.
+- **Options** sets the **Interface Size** (100%, 125%, 150% or 200%: every
+  word, control and picture grows together) and **Reduce Motion** (the
+  pictures stay still while you play; the little waveform screen still shows
+  the sound, because that is the sound itself). Both are saved with your
+  project. At a large size, make the window bigger by dragging its corner:
+  if it's too small, the close-up panel gives way first, then the smaller
+  words on the parts.
+
+### Using it from the keyboard
+
+Click the window first, so it has the keyboard.
+
+| Key | What it does |
+|---|---|
+| **Tab** / **Shift+Tab** | Move to the next or previous button, control or part. A white ring shows where you are, and the close-up panel shows what it is. The order is the buttons, the controls, then the parts in the order the arrows go. |
+| **Return** or **Space** | Press the button; open a part's menu (its materials are in it, under **Made of**); switch Play Mode. |
+| **←** **→** **↑** **↓** | Step a part through its options; move a control (hold **Shift** for small steps); switch Play Mode. |
+| **Delete** (or **Backspace**) | Put a control back to normal. |
+| **Esc** | Let go of the keyboard focus. |
+
+REAPER may keep some keys for itself (Space often starts playback). If a key
+does nothing here, either use **Return**, or turn on REAPER's *Send all
+keyboard input to plug-in* in the FX window's menu. Your playing keyboard and
+MIDI are not affected either way.
 
 The pictures are 3D renders: every part has been modelled and rendered in
 every one of the 31 materials, so a glass bell looks like glass and a chain
 link drum skin is a see-through mesh. They live in the
 `Instrument-Creator-images` folder. If that folder isn't next to the plugin,
-nothing breaks: the window falls back to simple drawings of each part.
+nothing breaks: the window falls back to simple drawings of each part, and a
+message at the top says where the folder goes (click **Dismiss** to hide it).
 The 3D models themselves are in the [`blender`](blender/README.md) folder,
 one Blender file per part, if you'd like to open them in Blender.
 
@@ -355,7 +387,7 @@ Further reading:
 EEL2 engine as REAPER, including the graphics:
 
 ```bash
-tools/build_host.sh                      # builds tools/build/render, shot, inspect, click (~1 min)
+tools/build_host.sh                      # builds tools/build/render, shot, inspect, click, hig (~1 min)
 python3 tools/sweep.py 60                # every energy x exciter x element: level, pitch
 python3 tools/range.py 1=0 2=0 3=5       # one combination across the keyboard
 python3 tools/check.py                   # stability sweep, must report 0 failures (~40 min)
@@ -363,7 +395,8 @@ python3 tools/trims.py                   # loudness trims after a sound change
 python3 tools/shot.py out.png            # screenshot of the window
 python3 tools/render_parts.py            # re-render every part picture in Blender (~40 min)
 python3 tools/render_parts.py --blend    # save the models as .blend files in blender/
-tools/build/click Instrument-Creator.jsfx - 940 720 85,699,0 85,699,1 40,699,1 40,699,0   # drag a control
+tools/build/click Instrument-Creator.jsfx - 940 720 55,83,0 55,83,1 30,83,1 30,83,0   # drag a control
+python3 tools/hig_check.py               # the window against Apple's guidelines (~1 min)
 python3 tools/spectrograms.py out.png    # spectrograms of every preset
 ```
 
