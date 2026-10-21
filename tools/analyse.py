@@ -13,11 +13,11 @@ PLUGIN = os.path.join(ROOT, "Instrument-Creator.jsfx")
 
 ENERGY = ["Breath", "Bow", "Finger", "Plectrum", "Hammer", "Electricity"]
 EXCITER = ["Reed", "Lips", "Hammer", "Bow", "Plectrum", "Mallet"]
-ELEMENT = ["String", "Membrane", "Bar", "Plate", "Reed", "Air column"]
+ELEMENT = ["String", "Membrane", "Bar", "Plate", "Reed", "Air Column"]
 MATERIAL = ["Steel", "Brass", "Bronze", "Aluminium", "Gold", "Glass", "Crystal", "Ice",
             "Marble", "Clay", "Spruce", "Rosewood", "Bamboo", "Bone", "Gut", "Nylon",
-            "Carbon fibre", "Rubber", "Paper", "Jelly", "Plastic", "PVC", "Wood", "Leather", "Cardboard",
-            "Foil", "Cling film", "Tin", "Car panel", "Chain link", "Handpan steel"]
+            "Carbon Fibre", "Rubber", "Paper", "Jelly", "Plastic", "PVC", "Wood", "Leather", "Cardboard",
+            "Foil", "Cling Film", "Tin", "Car Panel", "Chain Link", "Handpan Steel"]
 RESONATOR = ["Bore", "Soundbox", "Pipe", "Cavity", "Body"]
 COUPLER = ["Bridge", "Soundpost", "Mouthpiece", "Windway"]
 RADIATOR = ["Bell", "Soundboard", "Drumhead", "Cone"]

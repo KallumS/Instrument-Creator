@@ -422,6 +422,30 @@ with the JSFX for now. What was found, for when it comes back:
   licence. A wrapped plugin would have to stay open source under those terms;
   check before publishing binaries.
 
+## 21. Wording to Apple's writing guidelines (session 3, 14 October 2026)
+
+The user asked for every app's text to follow Apple's writing guidelines
+(ADR 0022). Text only: no slider renumbered, reordered or re-ranged, no
+sound changed.
+
+- Title-style names everywhere they are labels: parts and materials ("Air
+  column" → "Air Column", "Machine head" → "Machine Head", "Carbon fibre" →
+  "Carbon Fibre"), controls ("Glide time" → "Glide Time", "Age / rust" →
+  "Age / Rust"), slider names, "Surprise Me", and the description line
+  "Instrument Creator — Build Impossible Instruments from Parts".
+- "Playing…" with one character; curly quotes and apostrophes in the
+  descriptions; "kg/m³"; "70%" without a space; "scroll" for the wheel.
+- `draw_wrapped` now copies bytes with `strcpy_substr`, so the curly
+  apostrophes survive the word wrap.
+- README labels and the Reverberator table (which now uses Reverberator's
+  new names) updated; `docs/window.png` re-rendered.
+
+Verified: screenshots at 940×720 with a part, a material, the coupler and
+More open (nothing clipped, “bridge hill” and kg/m³ drawn); the element menu
+still picks Glass (`CLICK_MENU=12`); `range.py` on the default instrument
+plays in tune as before. `check.py` was not run: nothing the sound reads
+changed.
+
 ## Where things stand
 
 Sound (unchanged since session 1):
