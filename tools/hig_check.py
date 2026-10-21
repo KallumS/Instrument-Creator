@@ -32,7 +32,7 @@ def run(steps, w=940, h=720, scale=1, jsfx=JSFX):
     r = subprocess.run([HOST, jsfx, str(w), str(h)] + steps, capture_output=True, text=True, env=env)
     if r.returncode:
         raise SystemExit("hig failed: " + r.stderr[-2000:])
-    out = {"text": [], "focus": [], "var": {}, "menu": [], "sliders": None, "focused": [], "restored": None, "texts": []}
+    out = {"text": [], "focus": [], "var": {}, "menu": [], "sliders": None, "focused": [], "restored": None, "texts": [], "undo": []}
     for line in r.stdout.splitlines():
         p = line.split(" ")
         if p[0] == "text":
@@ -47,6 +47,8 @@ def run(steps, w=940, h=720, scale=1, jsfx=JSFX):
             out["menu"].append(line[5:])
         elif p[0] == "sliders":
             out["sliders"] = [float(x) for x in p[1:]]
+        elif p[0] == "undo":
+            out["undo"].append([float(x) for x in p[1:]])
         elif p[0] == "restored":
             out["restored"] = (float(p[2]), float(p[4]))
         elif p[0] == "scale":
@@ -109,6 +111,9 @@ WIDEST = ["slider=13,100", "slider=14,400", "slider=15,100", "slider=16,400", "s
           "slider=20,1000", "slider=21,-100", "slider=22,-36", "slider=23,100", "set=more_ctl,1", "frame=2", "audit"]
 for w in range(960, 1601, 40):
     states["widest values, %d x 720" % w] = (WIDEST, w, 720, 1, JSFX)
+# 200% in windows too small for it: drawn at whatever size fits (final sweep)
+for w in (900, 1000, 1105, 1300, 1500, 1700):
+    states["200%% fitted to a %d x %d window, widest values" % (w, w * 3 // 4)] = (["set=ui_zoom,2"] + WIDEST, w, w * 3 // 4, 1, JSFX)
 
 for name, (steps, w, h, sc, fx) in states.items():
     out = run(steps, w, h, sc, fx)
@@ -158,10 +163,12 @@ for name, w, h, sc, z, more in [("940 x 720", 940, 720, 1, 1, 0), ("940 x 720, M
     out = run(["set=ui_zoom,%g" % z, "set=more_ctl,%d" % more, "frame=2", "focus", "audit"], w, h, sc)
     layout_checks(name, out, w, h, sc * z)
 
-# 200% in the default window: too small to fit, so the preview gives way, and
-# what is there must not overlap
-out = run(["set=ui_zoom,2", "frame=2", "focus", "audit"], 940, 720)
-layout_checks("200% in a 940 x 720 window", out, 940, 720, 2, fits=False)
+# 200% in a window too small for it is drawn as large as the window holds
+# (never below 100%), so everything is still inside it (final sweep)
+for w, h, z, want in [(940, 720, 2, 1.175), (1880, 720, 2, 1.5), (1200, 900, 1.5, 1.5), (700, 420, 2, 1), (1300, 975, 2, 1.625)]:
+    out = run(["set=ui_zoom,%g" % z, "set=more_ctl,1", "frame=2", "focus", "audit", "vars=gsc"], w, h)
+    check(abs(out["var"]["gsc"] - want) < 0.001, "%d%% in a %d x %d window is drawn at %d%%" % (z * 100, w, h, want * 100), str(out["var"]["gsc"]))
+    layout_checks("%d%% in a %d x %d window" % (z * 100, w, h), out, w, h, out["var"]["gsc"], fits=w >= 800)
 
 # ---- 3. one scale: 200% is 100% doubled, and Retina is the same as 200% ---------------------------------
 a = run(["frame=2", "focus", "audit"], 940, 720)
@@ -198,7 +205,7 @@ out = run(["frame"] + tabs_to(1) + ["key=esc", "vars=focus_id"])
 check(out["var"]["focus_id"] == 0, "Esc lets go of the focus")
 out = run(["frame"] + tabs_to(12) + ["mouse=300,500,1", "vars=focus_id"])
 check(out["var"]["focus_id"] == 0, "a click takes over from the keyboard")
-out = run(["frame", "menu=3"] + tabs_to(1) + ["key=ret", "vars=cur_preset"])
+out = run(["frame", "menu=3"] + tabs_to(1) + ["key=ret", "frame", "vars=cur_preset"])
 check(out["var"]["cur_preset"] == 2 and out["menu"], "Return on Presets opens the presets; choosing one applies it")
 out = run(["frame", "menu=3"] + tabs_to(12) + ["key=space", "sliders"])
 check(out["sliders"][2] == 2 and any("Made of" in m for m in out["menu"]), "Space on a part opens its menu, materials included; choosing Bar sets it")
@@ -292,6 +299,115 @@ check(out["var"]["font_kind"] == 3, "here (Linux, ysfx) neither system face is f
 calls = [m.start() for m in re.finditer(r"gfx_drawstr\(", src)]
 say = src.index("function say(")
 check(len(calls) == 1 and say < calls[0] < say + 800, "every word is drawn through say(), so the audit sees it")
+
+# ---- 9. the final sweep: edges, nothing cut short, a size that fits, an undo point ---------------------------
+def lumi(p):
+    c = np.asarray(p, dtype=float) / 255
+    c = np.where(c <= 0.03928, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * c[..., 0] + 0.7152 * c[..., 1] + 0.0722 * c[..., 2]
+
+
+def ratio(a, b):
+    la, lb = lumi(a), lumi(b)
+    return (np.maximum(la, lb) + 0.05) / (np.minimum(la, lb) + 0.05)
+
+
+def edges(name, steps, w, h, mouse=None):
+    """every button, part, control cell and More: its right and bottom edges
+    3:1 on the window just outside them"""
+    out = run(steps + ["frame", "focus", "set=hig_notext,1"] + (["mouse=%d,%d" % mouse] if mouse else ["frame"]) + ["png=" + png1], w, h)
+    p = pixels(png1, w, h)
+    bad = []
+    for f in out["focus"]:
+        x, y, fw, fh = f[1:]
+        xr, yb, xm, ym = int(x + fw), int(y + fh), int(x + fw / 2), int(y + fh / 2)
+        right = max(ratio(p[ym, c], p[ym, xr + 5]) for c in range(xr - 3, xr + 2))
+        bottom = max(ratio(p[rw, xm], p[yb + 5, xm]) for rw in range(yb - 3, yb + 2))
+        if min(right, bottom) < 3:
+            bad.append((f[0], round(float(right), 2), round(float(bottom), 2)))
+    check(len(out["focus"]) > 20 and not bad, "every button, part and control has an edge 3:1 on the window, %s" % name, str(bad[:4]))
+
+
+edges("940 x 720, More open", ["set=more_ctl,1"], 940, 720)
+edges("940 x 720, a part hovered", [], 940, 720, (100, 200))
+edges("200%", ["set=ui_zoom,2", "set=more_ctl,1"], 1880, 1440)
+
+
+def inner_lines(fid, steps, half, hover):
+    """the longest run of pixels 3:1 on the cell, in one row of the lower part of
+    a control cell (half: 0 the whole cell, 2 its right half), as a share of the width"""
+    out = run(steps + ["set=more_ctl,1", "frame", "focus"])
+    f = [g for g in out["focus"] if g[0] == fid][0]
+    x, y, fw, fh = f[1:]
+    out = run(steps + ["set=more_ctl,1", "frame", "set=hig_notext,1"] + (["mouse=%d,%d" % (x + fw / 2, y + 0.3 * fh)] if hover else ["frame"]) + ["png=" + png1])
+    p = pixels(png1, 940, 720)
+    fill = p[int(y + 0.3 * fh), int(x + 0.5 * fw)]
+    x0 = int(x + (0.5 * fw if half == 2 else 8)); x1 = int(x + fw - 8)
+    best = 0
+    for rw in range(int(y + 0.5 * fh), int(y + fh - 2)):
+        best = max(best, float((ratio(p[rw, x0:x1], fill) >= 3).mean()))
+    return best
+
+
+for hv in (0, 1):
+    tr = inner_lines(40, ["slider=13,0"], 0, hv)
+    check(tr > 0.35, "a slider's track at its lowest still shows, 3:1 on the cell%s (%.0f%% of a row)" % (", hovered" if hv else "", 100 * tr))
+    sw = inner_lines(46, ["slider=19,0"], 2, hv)
+    check(sw > 0.6, "Play Mode's unchosen half shows its edge, 3:1 on the cell%s (%.0f%% of a row)" % (", hovered" if hv else "", 100 * sw))
+
+# the diagram's arrows grow with the interface size
+def arrow_rows(z, w, h):
+    out = run(["set=ui_zoom,%g" % z, "frame", "focus", "set=hig_notext,1", "frame", "png=" + png1], w, h)
+    a, b = [g for g in out["focus"] if g[0] == 10][0], [g for g in out["focus"] if g[0] == 11][0]
+    p = pixels(png1, w, h)
+    xc, yc = int(0.5 * (a[1] + a[3] + b[1])), int(a[2] + 0.45 * a[4])
+    return int((ratio(p[yc - 12:yc + 12, xc], p[yc - 20, xc]) >= 3).sum())
+
+
+a1, a2 = arrow_rows(1, 940, 720), arrow_rows(2, 1880, 1440)
+check(a1 >= 2 and a2 >= 2 * a1, "the diagram's arrows are 3:1 on the window and twice as thick at 200%% (%d and %d px)" % (a1, a2))
+
+# nothing cut short: no "…" but Playing…, and no line of a description dropped
+words = re.findall(r'"([^"\n]*)"', gfx)
+check([w_ for w_ in words if "…" in w_] == ["Playing…", "Playing…"], "no words are cut short with an ellipsis (only Playing…, which is not cut)",
+      str([w_ for w_ in words if "…" in w_]))
+cnt = [6, 6, 6, 31, 5, 31, 4, 4, 5, 4, 5, 5]
+steps, n = ["set=more_ctl,1", "frame"], 0
+for c, k in enumerate(cnt):
+    for v in range(k):
+        steps += ["slider=%d,%d" % (c + 1, v)] + (["set=focus_id,0", "set=last_cat,%d" % c] if c in (3, 5) else ["set=focus_id,%d" % (10 + c)]) + ["frame", "vars=wrap_cut"]
+        n += 1
+for k in range(11):
+    steps += ["set=focus_id,%d" % (40 + k), "frame", "vars=wrap_cut"]; n += 1
+for w, h, z in [(940, 720, 1), (860, 560, 1), (940, 720, 2), (1880, 1440, 2)]:
+    r = subprocess.run([HOST, JSFX, str(w), str(h), "set=ui_zoom,%g" % z] + steps, capture_output=True, text=True)
+    cut = [float(l.split()[2]) for l in r.stdout.splitlines() if l.startswith("var wrap_cut")]
+    check(len(cut) == n and not any(cut), "every part's and control's description shown whole in the close-up, %d%% in %d x %d" % (z * 100, w, h),
+          "%d of %d cut" % (sum(1 for c in cut if c), len(cut)))
+
+# Options says when the size chosen is more than the window holds
+def options_menu(w, h):
+    f = [g for g in run(["set=ui_zoom,2", "frame", "focus"], w, h)["focus"] if g[0] == 4][0]
+    at = "%d,%d" % (f[1] + f[3] / 2, f[2] + f[4] / 2)
+    return run(["set=ui_zoom,2", "frame", "menu=0", "mouse=%s,1" % at, "mouse=" + at], w, h)
+
+
+out, out2 = options_menu(940, 720), options_menu(1880, 1440)
+check(any("#Shown at 118% Until the Window Is Larger" in m for m in out["menu"]) and out2["menu"] and not any("Shown at" in m for m in out2["menu"]),
+      "Options says 200% is shown at 118% in a 940 x 720 window, and nothing when it fits", str(out["menu"]) + str(out2["menu"]))
+
+# a preset and Surprise Me add an undo point before they change anything, and one after
+out = run(["frame", "menu=3"] + tabs_to(1) + ["key=ret", "frame", "frame"])
+u = out["undo"]
+check(len(u) == 2 and u[0][:12] == [0, 0, 5, 12, 0, 12, 2, 0, 1, 2, 0, 0] and u[1][:12] == [4, 5, 2, 8, 2, 8, 0, 1, 4, 2, 0, 1]
+      and any("#Edit → Undo Puts Your Instrument Back" in m for m in out["menu"]),
+      "choosing a preset adds an undo point before the change and another after; the menu says so", str(u))
+out = run(["frame", "mouse=650,26,1", "mouse=650,26", "frame"])
+u = out["undo"]
+check(len(u) == 2 and u[0][:12] == [0, 0, 5, 12, 0, 12, 2, 0, 1, 2, 0, 0] and u[1][:12] != u[0][:12],
+      "Surprise Me adds an undo point before the change and another after", str(u))
+out = run(["frame"] + tabs_to(10) + ["key=right", "frame", "mouse=60,70,1", "mouse=80,70,1", "mouse=80,70", "frame"])
+check(not out["undo"], "a single part or control changed adds no extra undo point (REAPER's own covers it)", str(len(out["undo"])))
 
 shutil.rmtree(tmp)
 print("\n%d check(s) failed" % len(fails) if fails else "\nall checks passed")

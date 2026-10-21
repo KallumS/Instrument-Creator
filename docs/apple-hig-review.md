@@ -100,3 +100,72 @@ arrows), Images (the part pictures are content, made by
 - Screenshots looked at: 940 × 720 (with More, with keyboard focus), 800 ×
   480, 200% in 1880 × 1440 and in 940 × 720, Retina, and without pictures.
 - **None of this has been run in REAPER.**
+
+## Final sweep (21 October 2026)
+
+Every guideline the shared checklist marks as doable in a window a plug-in
+draws itself was taken back to its Foundations page and decided for this
+window, alongside the same sweep in AutoCC and Reese Basser. Contrast is
+WCAG's ratio at 100%, measured on the real `@gfx` drawing in ysfx.
+
+### Fixed now
+
+| Guideline (page) | Before | Now |
+| --- | --- | --- |
+| Non-text contrast of controls (Accessibility; Color; Dark Mode) | The buttons' edge `#4D5261` was 2.2:1 on the window. The part tiles, the control cells and More had no edge at all: their fills are 1.1:1 on the window, so only the coloured strip showed where a tile or cell was. | One edge colour, `#6D7581` from the house ramp: 3.7:1 on the window round every button, tile, cell and More (3.2:1 on a tile's own fill). It thickens at larger sizes. |
+| Non-text contrast inside a control (Accessibility; Color) | A slider's empty track was `#17181C`, 1.2:1 on its cell, so a control at its lowest showed only the knob; Play Mode's unchosen half was 1.1:1 on the cell. | Both are outlined in `#80879A`, the grey the step arrows already use: 4.2:1 on the cell, 3.5:1 when it is hovered. |
+| Marks grow with the text (Accessibility; Typography) | The diagram's arrows were two pixels wide at every size, and the scope's line one. | Both grow with the interface size (the arrows 4 px at 200%). The arrows are 4.0:1 on the window, the scope's line 11:1 on its screen. |
+| Adapt to the window; nothing out of reach (Layout) | An interface size the window could not hold ran off its bottom (200% needs about 1880 × 1440), and the window cannot scroll. | A larger size is drawn only as large as the window holds (the layout needs 800 × 480 points at 100%), never below 100%. Options keeps the size chosen ticked and adds a greyed line, "Shown at 118% Until the Window Is Larger"; the chosen size comes back when the window grows. |
+| Make mistakes cheap to recover from (Design principles; Accessibility) | Choosing a preset or Surprise Me replaced every part at once. Whether REAPER's Undo could put the old instrument back depended on whether REAPER had kept an undo point for the changes before it. | The click adds an undo point (`sliderchange(-1)`, the JSFX way) before anything changes; the next frame makes the change and adds another. So **Edit → Undo** puts back the instrument as it was, controls included. The Presets menu says so in a greyed last line. Nothing asks first: trying presets one after another is the point, and a question each time would get in the way. A single part or control changed is one REAPER parameter change, which REAPER's own Undo already covers. |
+| Words clear of edges (Accessibility; Layout) | On a short tile the three lines filled it to within 3 px of its top and bottom. | Lines keep 5 px clear of the tile's edge and its coloured strip; a tile too short for that drops its caption first, as before. Play Mode's bar sits on whole pixels below its word at any size (at sizes between the four, it touched it). |
+
+### Already met
+
+| Guideline | Why |
+| --- | --- |
+| Truncation (Typography; Layout) | No word is cut with "…" (the only "…" is *Playing…*, a whole word). A short tile or row uses a shorter name ("Position" for "Excite Position") or drops a line, and the close-up shows everything. New: every description of every part, material and control was measured whole in the close-up at four sizes. |
+| Esc (house rule) | Esc lets go of the keyboard focus. The plug-in never closes its own window, and draws no popup of its own. |
+| Menus lighter than the window (Dark Mode) | Every menu is REAPER's own (`gfx_showmenu`), drawn by the system. |
+| System font (Typography) | `pick_font` asks for Segoe UI, then `.AppleSystemUIFont`, and keeps only what `gfx_getfont` says it got; Arial otherwise. |
+| Reduce Motion (Motion; Accessibility) | It stills the drawings' wobble and the element's shake, the only decoration that moves. The scope is the sound. Hover changes are instant. |
+| No flashing (Motion; Color) | Nothing blinks. The wobble is a smooth swing about 1.4 times a second; the shake is a blur that grows with the level, not a flicker; *Playing…* turns on once per press. |
+| Colour never alone (Accessibility; Color) | Chosen things carry a bar; a part's kind is in words on its tile and in the close-up; the group colours only repeat it. |
+| Hit targets (Accessibility) | Buttons 28 px tall; cells 44; tiles 28 or more; the step arrows and a material's name 24, each with another way in. |
+| Text floor (Accessibility; Typography) | 10 px or more at 100%. |
+| Every gesture has another way (Accessibility) | Drag: the arrows or the wheel; double-click: Delete; hover arrows: the wheel, the menu or the arrow keys. |
+| Shortcuts (Accessibility) | Only Tab, Return, Space, the arrows, Delete and Esc, inside the window; `want_all_kb` stays off. |
+| Sound (Accessibility) | Nothing plays by itself: Play C4 plays one note when pressed, and says *Playing…* with a bar while it does. |
+| No time limits (Accessibility) | The one message stays until *Dismiss*. |
+| Words (Writing; Inclusion) | No "we", "OK", "Oops", "Click here" or idioms; the new menu lines are in title style. |
+| Dark only (Dark Mode) | A media tool, which the page allows; a JSFX cannot read the system's appearance. |
+| Window title (Branding) | REAPER's FX window names the plug-in; the header names the instrument. |
+
+### Not done, and why
+
+| Guideline | Why |
+| --- | --- |
+| Picture frames | The pictures are content inside a tile; the tile's new edge is what shows the target. The close-up's picture and the scope's screen are not controls. |
+| A minimum window size (Layout) | A JSFX cannot set one. Below 800 × 480 at 100% the parts shrink and the close-up gives way; nothing overlaps. |
+| Show selection more softly when the window isn't key (Color) | A JSFX can ask whether its window has focus, but ysfx cannot answer, so it could not be checked; nothing chosen here is shown by colour alone. |
+| Let people recolour (Accessibility; Color) | The group colours mean the four kinds of part; the house scheme is the user's decision. |
+| VoiceOver, Dynamic Type, Increase Contrast, the system's Reduce Motion, appearance | Unchanged: out of a JSFX's reach (see above). |
+
+### Not relevant
+
+Icons, SF Symbols, Images, App icons, Materials, Spatial layout, Immersive
+experiences, games, right-to-left, localisation, a light page, zebra rows.
+
+### Checked by
+
+`tools/hig_check.py` grew from 139 to 193 checks: every button, tile, cell
+and More with an edge 3:1 on the window (at 100%, hovered and 200%); a
+track at its lowest and Play Mode's unchosen half 3:1 on the cell, hovered
+and not; the arrows 3:1 and twice as thick at 200%; no ellipsis; every
+description whole in the close-up at four sizes; 200% drawn at what five
+windows hold, with contrast, overlaps and spacing checked at six more;
+Options' greyed line; and an undo point either side of a preset and of
+Surprise Me (`tools/build/hig` now prints each one), and none for one part.
+Each rule was broken on purpose in a copy (19 new cases in
+`tools/hig_bite.py`) and the suite watched to fail. Screenshots looked at:
+940 × 720 with More open, 200% in 940 × 720 (drawn at 118%) and in
+1880 × 1440, and Retina. **None of this has been run in REAPER.**

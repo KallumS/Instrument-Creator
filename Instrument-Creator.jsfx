@@ -1762,14 +1762,14 @@ function draw_wrapped(s, x, y, w, lh) local(n, k, ch, tw, th, cy)
     ch == 32 ? (
       strcpy(#wt, #wl); strlen(#wt) ? strcat(#wt, " "); strcat(#wt, #ww);
       gfx_measurestr(#wt, tw, th);
-      (tw > w && strlen(#wl)) ? ( cy + lh <= wrap_ymax ? ( gfx_x = x; gfx_y = cy; say(#wl); ); cy += lh; strcpy(#wl, #ww); ) : strcpy(#wl, #wt);
+      (tw > w && strlen(#wl)) ? ( cy + lh <= wrap_ymax ? ( gfx_x = x; gfx_y = cy; say(#wl); ) : wrap_ymax >= 0 ? wrap_cut += 1; cy += lh; strcpy(#wl, #ww); ) : strcpy(#wl, #wt);
       strcpy(#ww, "");
     ) : (
       strcpy_substr(#wc, s, k, 1); strcat(#ww, #wc);
     );
     k += 1;
   );
-  (strlen(#wl) && cy + lh <= wrap_ymax) ? ( gfx_x = x; gfx_y = cy; say(#wl); );
+  strlen(#wl) ? ( cy + lh <= wrap_ymax ? ( gfx_x = x; gfx_y = cy; say(#wl); ) : wrap_ymax >= 0 ? wrap_cut += 1; );
   strlen(#wl) ? cy += lh;
   cy;
 );
@@ -1975,7 +1975,13 @@ calm = calm > 0.5;
 // ---- one scale for every size in the window: Retina (ADR 0021) times the
 // interface size chosen under Options (ADR 0023)
 ui_zoom < 1 ? ui_zoom = 1;
-gsc = max(1, gfx_ext_retina)*ui_zoom;
+// A size the window cannot hold is drawn as large as the window allows (the
+// layout needs 800 x 480 points at 100%), never below 100%: nothing is pushed
+// off the window, which cannot scroll. Options still ticks the size chosen,
+// and it comes back when the window is made larger (final sweep, ADR 0023).
+ret_ = max(1, gfx_ext_retina);
+zoom_fit = max(1, min(ui_zoom, min(gfx_w/(800*ret_), gfx_h/(480*ret_))));
+gsc = ret_*zoom_fit;
 // Reduce Motion stills the drawings' wobble and the element's shake
 calm ? anim_ph = 0 : ( anim_ph += 0.3; anim_ph > 628.3 ? anim_ph -= 628.3; );
 gw = gfx_w; gh = gfx_h;
@@ -1983,7 +1989,7 @@ gw = gfx_w; gh = gfx_h;
 // ---- colours (0xRRGGBB). Every word is at least 7:1 on what it sits on
 // (ADR 0023); tools/hig_check.py measures each one on the real pixels.
 C_WIN = 0x1B1C20; C_TILE = 0x25262D; C_TILE_HOV = 0x30333D; C_PREV = 0x212228; C_SUNK = 0x17181C;
-C_BTN = 0x2E303B; C_BTN_HOV = 0x404552; C_ON = 0x2B4C80; C_EDGE = 0x4D5261; C_SEG = 0x1C1D21; C_MAT_HOV = 0x3D424F;
+C_BTN = 0x2E303B; C_BTN_HOV = 0x404552; C_ON = 0x2B4C80; C_EDGE = 0x6D7581; C_SEG = 0x1C1D21; C_MAT_HOV = 0x3D424F;
 T_MAIN = 0xF2F2F7;   // names, values, button labels: 11:1 or more
 T_BODY = 0xCCD1DE;   // descriptions and messages: 10:1 on the preview
 T_DIM = 0xB0B6C0;    // secondary words on the window and the preview: 7.8:1 or more
@@ -1992,7 +1998,17 @@ T_HINT = 0x8CD999;   // the hint and a control's value in the preview: 9.4:1
 T_AGE = 0xF5B48A;    // the age note: 9.5:1
 T_ELEM = 0x7FD8F5; T_RES = 0x8EE29A;  // a material's name, in its group's hue: 7.8:1 hovered
 C_RING = 0xF2F4F7;   // the keyboard focus ring
+// edges (final sweep): C_EDGE outlines every button, part tile and control
+// cell, 3.7:1 on the window; C_TRACK outlines what sits inside a cell (a
+// slider's track, Play Mode's two halves), 3.5:1 on the cell even hovered
+C_TRACK = 0x80879A;
 function col(c) ( gfx_set(((c >> 16) & 255)/255, ((c >> 8) & 255)/255, (c & 255)/255, 1); );
+// an outline in colour c, inside (x, y, w, h), thicker at larger sizes
+function edge(c, x, y, w, h) local(k)
+(
+  col(c); k = 0;
+  loop(max(1, floor(gsc + 0.5)), gfx_rect(x + k, y + k, w - 2*k, h - 2*k, 0); k += 1;);
+);
 col(C_WIN); gfx_rect(0, 0, gw, gh, 1);
 
 // ---- the system's own typeface: Segoe UI on Windows, San Francisco on a
@@ -2022,8 +2038,16 @@ hov = -1; hovc = -1; focc = -1;
 // one key a frame; Tab, Return, Space, the arrows, Delete and Esc are used
 key = gfx_getchar(); key < 0 ? key = 0;
 clicked ? focus_id = 0;     // pointing takes over from the keyboard
-fl_n = 0; fr_on = 0;
+fl_n = 0; fr_on = 0; wrap_cut = 0;   // lines of a wrapped text that did not fit (none should)
 hig_audit ? HIG_TXT[0] = 0;
+// A preset or Surprise Me replaces the whole instrument. The frame that asks
+// for it adds a REAPER undo point (sliderchange(-1) from @gfx); this one makes
+// the change and adds another, so Edit -> Undo puts back the instrument as it
+// was, controls included (final sweep, ADR 0023).
+want_preset || want_rand ? (
+  want_preset ? apply_preset(want_preset - 1) : randomise();
+  sliderchange(-1); want_preset = 0; want_rand = 0;
+);
 
 function inbox(x, y, w, h) ( mouse_x >= x && mouse_x < x + w && mouse_y >= y && mouse_y < y + h; );
 
@@ -2112,7 +2136,7 @@ function button(id, x, y, w, h, s, on) local(hv, tw, th, f)
   f = focusable(id, x, y, w, h);
   hv = inbox(x, y, w, h);
   col(on ? C_ON : hv ? C_BTN_HOV : C_BTN); gfx_rect(x, y, w, h, 1);
-  col(C_EDGE); gfx_rect(x, y, w, h, 0);
+  edge(C_EDGE, x, y, w, h);
   gfx_setfont(2); col(T_MAIN);
   gfx_measurestr(s, tw, th); gfx_x = x + 0.5*(w - tw); gfx_y = y + 0.5*(h - th) - (on ? gsc : 0); say(s);
   on ? gfx_rect(x + 0.5*(w - tw), y + h - 5*gsc, tw, max(1, 2*gsc), 1);
@@ -2166,8 +2190,9 @@ function tile(c, x, y, w, h) local(v, hv, tw, th, s, pw, ph, tx, tmax, mc, m, bh
   gfx_setfont(4); gfx_measurestr("A", tw, t4); gfx_setfont(2); gfx_measurestr("A", tw, t2); gfx_setfont(1); gfx_measurestr("A", tw, t1);
   // a short tile keeps the lines that fit: the option, then the material
   // (also in the part's menu), then the caption; none runs off the tile
-  bh = t2; mc >= 0 && bh + 5*gsc + t1 <= h - 6*gsc ? bh += 5*gsc + t1 : mc = -1;
-  cap = bh + t4 + 4*gsc <= h - 6*gsc; cap ? bh += t4 + 4*gsc;
+  // (5 px clear of the tile's edge and its coloured strip, top and bottom)
+  bh = t2; mc >= 0 && bh + 5*gsc + t1 <= h - 12*gsc ? bh += 5*gsc + t1 : mc = -1;
+  cap = bh + t4 + 4*gsc <= h - 12*gsc; cap ? bh += t4 + 4*gsc;
   ty = y + 0.5*(h - bh) + gsc;
   cap ? (
     gfx_setfont(4); col(T_LABEL);
@@ -2199,6 +2224,8 @@ function tile(c, x, y, w, h) local(v, hv, tw, th, s, pw, ph, tx, tmax, mc, m, bh
     ona2 ? col(T_MAIN) : gfx_set(0.5, 0.53, 0.6, 1);
     gfx_triangle(ax2 + 0.35*z, y + 4*gsc + 0.25*z, ax2 + 0.35*z, y + 4*gsc + 0.75*z, ax2 + 0.7*z, y + 4*gsc + 0.5*z);
   );
+  // the tile's edge, 3:1 on the window, drawn last so a picture's margin cannot cover it
+  edge(C_EDGE, x, y, w, h); group_col(c); gfx_rect(x, y, w, 2*gsc, 1);
   hv && clicked ? (
     ona1 ? set_part(c, (v + cat_count(c) - 1) % cat_count(c)) :
     ona2 ? set_part(c, (v + 1) % cat_count(c)) :
@@ -2214,11 +2241,12 @@ function tile(c, x, y, w, h) local(v, hv, tw, th, s, pw, ph, tx, tmax, mc, m, bh
     activated(10 + c) ? part_menu(c, x + 6*gsc, y + h);
   );
 );
-function arrow(x1, y1, x2, y2) local(dx, dy, l, ux, uy)
+function arrow(x1, y1, x2, y2) local(dx, dy, l, ux, uy, k)
 (
   gfx_set(0.45, 0.48, 0.55, 1);
-  gfx_line(x1, y1, x2, y2, 1); gfx_line(x1, y1 + 1, x2, y2 + 1, 1);
   dx = x2 - x1; dy = y2 - y1; l = max(1, sqrt(dx*dx + dy*dy)); ux = dx/l; uy = dy/l;
+  // two pixels at 100%, growing with the interface size
+  k = 0; loop(max(2, floor(2*gsc + 0.5)), gfx_line(x1 - k*uy, y1 + k*ux, x2 - k*uy, y2 + k*ux, 1); k += 1;);
   gfx_triangle(x2, y2, x2 - 7*gsc*ux + 4*gsc*uy, y2 - 7*gsc*uy - 4*gsc*ux, x2 - 7*gsc*ux - 4*gsc*uy, y2 - 7*gsc*uy + 4*gsc*ux);
 );
 
@@ -2314,6 +2342,7 @@ function control(k, x, y, w, h, vin) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1
   f = focusable(40 + k, x, y, w, h); f ? focc = 100 + k;
   hv = inbox(x, y, w, h) && drag_k < 0; hv ? hovc = k;
   col(hv || drag_k == k ? C_TILE_HOV : C_TILE); gfx_rect(x, y, w, h, 1);
+  edge(C_EDGE, x, y, w, h);
   ctl_col(k); gfx_rect(x, y, 3*gsc, h, 1);
   gfx_setfont(1);
   s = ctl_text(k); gfx_measurestr(s, tw, th); k == 6 ? tw = 0;
@@ -2336,10 +2365,12 @@ function control(k, x, y, w, h, vin) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1
     loop(2,
       d = x0 + z*0.5*(x1 - x0); on = (v >= 0.5) == z;
       col(on ? C_ON : C_SEG); gfx_rect(d, segy, sw_, segh, 1);
+      edge(C_TRACK, d, segy, sw_, segh);
       gfx_setfont(4); col(on ? T_MAIN : T_DIM);
       s = z ? "MONO" : "POLY"; gfx_measurestr(s, tw, th);
       gfx_x = d + 0.5*(sw_ - tw); gfx_y = segy + gsc; say(s);
-      on ? gfx_rect(d + 0.5*(sw_ - tw), segy + gsc + th + 0.5*gsc, tw, max(1, floor(1.5*gsc)), 1);
+      // (on whole pixels below the word's box, whatever the size)
+      on ? gfx_rect(d + 0.5*(sw_ - tw), ceil(segy + gsc + th) + floor(0.5*gsc), tw, max(1, floor(1.5*gsc)), 1);
       z += 1;
     );
     hv && clicked ? set_ctl(k, mouse_x >= x + 0.5*w);
@@ -2347,6 +2378,7 @@ function control(k, x, y, w, h, vin) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1
   ) : (
     p = ctl_pos(k, v); hx = x0 + p*(x1 - x0);
     col(C_SUNK); gfx_rect(x0, ty - 2*gsc, x1 - x0, 4*gsc, 1);
+    edge(C_TRACK, x0, ty - 2*gsc, x1 - x0, 4*gsc);
     ctl_col(k);
     // bipolar controls fill from the middle
     d = (k == 2 || k == 8) ? 0.5*(x0 + x1) : x0;
@@ -2379,6 +2411,7 @@ function more_button(x, y, w, h) local(hv, f, tw, th, s, tx, ty)
   f = focusable(60, x, y, w, h);
   hv = inbox(x, y, w, h) && drag_k < 0;
   col(hv ? C_TILE_HOV : C_TILE); gfx_rect(x, y, w, h, 1);
+  edge(C_EDGE, x, y, w, h);
   s = more_ctl ? "Less" : "More";
   gfx_setfont(1); col(T_BODY); gfx_measurestr(s, tw, th);
   gfx_x = x + 0.5*(w - tw) - 6*gsc; gfx_y = y + 0.5*(h - th); say(s);
@@ -2415,18 +2448,21 @@ age_ > 0 ? (
 button(1, bxx, byy, wP, bh_, "Presets", 0) ? (
   strcpy(#menu, ""); k = 0;
   loop(PRESET_N, k > 0 ? strcat(#menu, "|"); k == cur_preset ? strcat(#menu, "!"); strcat(#menu, preset_name(k)); k += 1;);
+  strcat(#menu, "||#Edit → Undo Puts Your Instrument Back");
   gfx_x = bxx; gfx_y = byy + bh_;
   r = gfx_showmenu(#menu);
-  r > 0 ? apply_preset(r - 1);
+  r > 0 && r <= PRESET_N ? ( sliderchange(-1); want_preset = r; );
 );
 bxx += wP + bgap;
-button(2, bxx, byy, wS, bh_, "Surprise Me", 0) ? randomise();
+button(2, bxx, byy, wS, bh_, "Surprise Me", 0) ? ( sliderchange(-1); want_rand = 1; );
 bxx += wS + bgap;
 button(3, bxx, byy, wA, bh_, aud_on ? "Playing…" : "Play C4", aud_on) ? ( aud_note = 60; aud_req = 1; );
 bxx += wA + bgap;
 button(4, bxx, byy, wO, bh_, "Options", 0) ? (
   sprintf(#menu, "%sInterface Size 100%%|%sInterface Size 125%%|%sInterface Size 150%%|%sInterface Size 200%%||%sReduce Motion",
           ui_zoom == 1 ? "!" : "", ui_zoom == 1.25 ? "!" : "", ui_zoom == 1.5 ? "!" : "", ui_zoom == 2 ? "!" : "", calm ? "!" : "");
+  // a size the window cannot hold says so, greyed, at the end (it takes no number)
+  zoom_fit < ui_zoom - 0.005 ? ( sprintf(#zf, "||#Shown at %d%% Until the Window Is Larger", floor(100*zoom_fit + 0.5)); strcat(#menu, #zf); );
   gfx_x = bxx; gfx_y = byy + bh_;
   r = gfx_showmenu(#menu);
   r >= 1 && r <= 4 ? ui_zoom = (r == 1 ? 1 : r == 2 ? 1.25 : r == 3 ? 1.5 : 2);
@@ -2573,7 +2609,7 @@ prev_on && ph_ > 40*gsc ? (
     gfx_set(0.45, 0.9, 0.6, 1); k = 0;
     loop(sw - 1,
       y0 = SCOPE_BUF[(st0 + floor(k*512/sw)) & (SCOPE_LEN - 1)]; y1 = SCOPE_BUF[(st0 + floor((k + 1)*512/sw)) & (SCOPE_LEN - 1)];
-      gfx_line(sx + k, sy + 0.5*sh - y0*sc_, sx + k + 1, sy + 0.5*sh - y1*sc_, 1);
+      j = 0; loop(max(1, floor(gsc + 0.5)), gfx_line(sx + k, sy + 0.5*sh - y0*sc_ + j, sx + k + 1, sy + 0.5*sh - y1*sc_ + j, 1); j += 1;);
       k += 1;
     );
   );

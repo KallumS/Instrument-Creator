@@ -105,3 +105,41 @@ element's shake.
   (Space is likely to start the transport); what `gfx_getfont` names on macOS
   and Windows; the layout at each interface size on the user's Retina screen;
   saving the preferences with a project.
+
+## Final sweep (21 October 2026)
+
+A last pass through every Foundations page, with AutoCC and Reese Basser
+(`docs/apple-hig-review.md`, *Final sweep*, has one verdict per guideline).
+Four rules were added; each is checked by `tools/hig_check.py` (now 193
+checks) and was broken on purpose in a copy to watch it fail (19 new cases
+in `tools/hig_bite.py`, all caught).
+
+- **Every control's boundary is 3:1.** Buttons, part tiles, control cells
+  and More are outlined in `#6D7581` (3.7:1 on the window; before, the
+  buttons' edge was 2.2:1 and the rest had none, their fills 1.1:1). What
+  sits inside a cell (a slider's track, Play Mode's halves) is outlined in
+  `#80879A`, 3.5:1 even on a hovered cell. Outlines, the diagram's arrows
+  and the scope's line grow with the interface size.
+- **The interface size fits the window.** The window cannot scroll, so a
+  size it cannot hold is drawn as large as it can (the layout needs
+  800 × 480 at 100%), never below 100%; Options keeps the chosen size and
+  says in a greyed line what it is shown at. This replaces "the layout
+  degrades in order" above for sizes over 100%.
+- **Replacing the whole instrument leaves an undo point either side.** A
+  preset or Surprise Me calls `sliderchange(-1)` in the frame that asks,
+  makes the change next frame and calls it again, so Edit → Undo in REAPER
+  puts back the old instrument. Nothing asks first, because browsing presets
+  is the main use. Single parameter changes are left to REAPER's own undo.
+- **Nothing is cut short.** No "…"; `draw_wrapped` counts lines it had to
+  leave out, and every description is checked whole at four sizes. A tile's
+  lines keep 5 px clear of its edge.
+
+Already met and unchanged: Esc lets go of focus first; menus are REAPER's
+own; nothing flashes (the wobble is about 1.4 swings a second, smooth);
+Reduce Motion stills all decoration; the system font is asked for and
+confirmed through `gfx_getfont`. Not possible in a JSFX: a minimum window
+size, and knowing whether the window is key.
+
+No sound code changed. Unverified in REAPER: whether `sliderchange(-1)`
+from `@gfx` makes the undo points as REAPER's documentation says, how the
+fitted sizes look on the user's Retina screen, and the font REAPER gives.

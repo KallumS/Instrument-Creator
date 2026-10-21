@@ -521,6 +521,41 @@ Not done, and why:
   starts the transport; Return does the same job), what `gfx_getfont`
   returns on macOS, and whether Esc closes REAPER's FX window.
 
+## 23. The final sweep of Apple's HIG Foundations (session 4, 21 October 2026)
+
+The user asked for a final sweep of the 19 Foundations pages, done alongside
+AutoCC and Reese Basser on `ccr-f2d9adc9-lanc9o`. One verdict per guideline
+is in `docs/apple-hig-review.md` (*Final sweep*); the rules are in ADR 0023's
+dated section. What changed, in the window only (no sound code):
+
+- **Edges.** Every button, part tile, control cell and More has an outline
+  3.7:1 on the window (`#6D7581`); before, the tiles and cells had none and
+  their fills were 1.1:1. Slider tracks and Play Mode's halves have one
+  3.5:1 on the cell even hovered (`#80879A`), so a control at its lowest no
+  longer shows only its knob. Outlines, the diagram's arrows and the scope's
+  line grow with the size.
+- **The size fits.** A size the window can't hold is drawn as large as it
+  can (never below 100%); Options says "Shown at 118% Until the Window Is
+  Larger". Before, 200% in the default window ran off the bottom.
+- **Undo.** A preset or Surprise Me adds an undo point before and after, a
+  frame apart, so Edit → Undo puts the old instrument back; the Presets menu
+  says so in a greyed line.
+- **Tidying found by the checks.** The new edges showed that a short tile's
+  lines came within 3 px of its edge (now 5 px, the caption gives way
+  first), and the fitted sizes showed Play Mode's bar touching its word at
+  in-between sizes (now on whole pixels below it).
+
+How it was checked: `tools/hig_check.py` 139 → 193 checks; `tools/hig.cpp`
+prints each undo point REAPER would be asked for (ysfx's
+`ysfx_fetch_want_undopoint`); `draw_wrapped` counts lines it drops
+(`wrap_cut`). 19 new sabotages in `tools/hig_bite.py`, run in three batches
+in parallel: all BIT, none missed. Screenshots: 940 × 720 (More open), 200%
+in 940 × 720 and 1880 × 1440, Retina; `docs/window.png` re-shot.
+`check.py` not run: the sound code is untouched.
+
+Not done: a minimum window size and knowing whether the window is key (a
+JSFX can't); frames round the pictures (content, not controls).
+
 ## Where things stand
 
 Sound (unchanged since session 1):
@@ -546,6 +581,9 @@ of its HIG Foundations (§22, ADR 0023): controls at the top, keyboard use,
 
 Open items:
 
+- **Nothing from session 4 has been seen in REAPER** (§23): ask whether
+  Edit → Undo after a preset or Surprise Me brings the old instrument back,
+  and how 200% looks in a window too small for it.
 - **Nothing from session 3 has been seen in REAPER** (§22): ask whether Tab,
   Return and the arrows reach the window, how 125% to 200% look on the Retina
   screen, whether the font is San Francisco, and whether Options' settings

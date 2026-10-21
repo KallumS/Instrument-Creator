@@ -76,15 +76,18 @@ looking at.
   usually set once: Play Mode (a switch: click Poly or Mono), Glide Time,
   Fine Tune and Output. Click **Less** to tuck them away again.
 - **Presets** has 19 ready-made instruments to start from. **Surprise Me**
-  picks every part at random. **Play C4** plays a note so you can hear a change
+  picks every part at random. Both replace your whole instrument, so each
+  leaves an undo point first: REAPER's **Edit → Undo** puts back the
+  instrument you had. **Play C4** plays a note so you can hear a change
   without touching your keyboard.
 - **Options** sets the **Interface Size** (100%, 125%, 150% or 200%: every
   word, control and picture grows together) and **Reduce Motion** (the
   pictures stay still while you play; the little waveform screen still shows
   the sound, because that is the sound itself). Both are saved with your
-  project. At a large size, make the window bigger by dragging its corner:
-  if it's too small, the close-up panel gives way first, then the smaller
-  words on the parts.
+  project. A large size needs a large window: if the window is too small
+  for it, everything is drawn as large as the window allows (never smaller
+  than 100%), and the Options menu says what size it is shown at. Make the
+  window bigger by dragging its corner and the size you chose comes back.
 
 ### Using it from the keyboard
 

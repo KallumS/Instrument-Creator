@@ -15,6 +15,7 @@
 //                       any pixel under it; the words' own pixels are left out)
 //   sliders             print the 23 sliders
 //   png=file.bgra       write the frame's pixels
+//   (after any frame that asked for one: "undo" and the 23 sliders as they were then)
 //   roundtrip           save the state, load it into a fresh instance, print its ui_zoom and calm
 #include "ysfx.h"
 #include <cmath>
@@ -49,7 +50,10 @@ int main(int argc,char**argv){
   ysfx_gfx_setup(fx,&gc);
   ysfx_gfx_set_window_state(fx,true,true,true);
   int mx=-1,my=-1,mb=0,mm=0; double mw=0;
-  auto frame=[&](){ ysfx_gfx_update_mouse(fx,mm,mx,my,mb,mw,0); mw=0; ysfx_gfx_run(fx); block(); };
+  auto frame=[&](){ ysfx_gfx_update_mouse(fx,mm,mx,my,mb,mw,0); mw=0; ysfx_gfx_run(fx);
+    // an undo point asked for by sliderchange(-1), with the sliders as they stand then
+    if(ysfx_fetch_want_undopoint(fx)){ printf("undo"); for(int s=1;s<=23;s++) printf(" %g", ysfx_slider_get_value(fx,s-1)); printf("\n"); }
+    block(); };
   auto var=[&](const char*n)->ysfx_real*{ ysfx_real*v=ysfx_find_var(fx,n); if(!v){fprintf(stderr,"no variable %s\n",n); exit(4);} return v; };
   for(int i=4;i<argc;i++){
     std::string a=argv[i], k=a.substr(0,a.find('=')), v=a.find('=')==std::string::npos?"":a.substr(a.find('=')+1);

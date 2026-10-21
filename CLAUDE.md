@@ -52,8 +52,8 @@ tools/shot.cpp            screenshot of @gfx (plays a note first); tools/shot.py
 tools/render_parts.py     Blender (pip install bpy): models every part, renders Instrument-Creator-images/
 tools/click.cpp           drive @gfx with a mouse script; prints sliders 1-23 and automation flags; CLICK_MENU=n picks menu item n
 tools/hig.cpp             drive @gfx with keys and the mouse; prints the focus list, variables, and each string's contrast on the pixels under it
-tools/hig_check.py        the window against Apple's HIG Foundations (ADR 0023): 139 checks, ~1 min; must say "all checks passed"
-tools/hig_bite.py         breaks each HIG rule in a temporary copy and checks hig_check.py fails (30 cases, ~30 min; all must say BIT)
+tools/hig_check.py        the window against Apple's HIG Foundations (ADR 0023): 193 checks, under a minute; must say "all checks passed"
+tools/hig_bite.py         breaks each HIG rule in a temporary copy and checks hig_check.py fails (49 cases, ~20 min; all must say BIT; give words to run some)
 tools/inspect.cpp         dump plugin memory after N blocks of a held note
 tools/analyse.py          render/measure helpers (LUFS, YIN pitch), the part and material name lists
 tools/sweep.py            every energy x exciter x element: level, pitch, flags
@@ -103,7 +103,7 @@ python3 tools/render_parts.py 2_0 && python3 tools/render_parts.py --blend 2_0  
 tools/build/click Instrument-Creator.jsfx - 940 720 55,83,0 55,83,1 30,83,1 30,83,0   # drag Force
 CLICK_MENU=12 tools/build/click Instrument-Creator.jsfx - 940 720 700,190,0 700,190,1 700,190,0   # element menu: Made of > Glass
 SHOT_CLICK=1 python3 tools/shot.py out.png 940 720 890 73   # click once (here: More) before the screenshot
-python3 tools/hig_check.py                    # ~1 min: contrast, sizes, keyboard, Reduce Motion, saving; must pass
+python3 tools/hig_check.py                    # under a minute: contrast, edges, sizes, keyboard, Reduce Motion, undo, saving; must pass
 tools/build/hig Instrument-Creator.jsfx 940 720 frame key=tab key=tab key=ret vars=focus_id png=o.bgra   # drive with keys
 ```
 
@@ -197,7 +197,22 @@ tools/build/hig Instrument-Creator.jsfx 940 720 frame key=tab key=tab key=ret va
   - **decorative motion stops with `calm`** (Reduce Motion); the scope is
     the sound itself and keeps moving;
   - names are never cut short: a tight row moves values to the track's end,
-    a tight tile shrinks its picture (or drops it), then drops lines.
+    a tight tile shrinks its picture (or drops it), then drops lines; no
+    "…" anywhere, and `draw_wrapped` counts any line it had to leave out
+    in `wrap_cut`, which the checks hold at 0;
+  - **every control's boundary is 3:1** (final sweep): outlines go through
+    `edge(colour, x, y, w, h)` (thicker at larger sizes): `C_EDGE` #6D7581
+    round a button, tile or cell (3.7:1 on the window), `C_TRACK` #80879A
+    round what sits inside a cell (a track, a switch's halves; 3.5:1 on a
+    hovered cell). Marks that carry meaning (arrows, the scope's line) grow
+    with `gsc` too;
+  - **the size fits the window**: `gsc` uses `zoom_fit`, the interface size
+    cut to what the window holds (the layout needs 800 x 480 at 100%), never
+    below 100%; the window has no scroll, so nothing may be pushed off it;
+  - **anything that replaces the whole instrument** (a preset, Surprise Me)
+    calls `sliderchange(-1)` in the frame that asks and again after the
+    change, made next frame (`want_preset`, `want_rand`), so REAPER's Undo
+    puts the old instrument back. `tools/build/hig` prints each undo point.
 - **The window's preferences are in `@serialize`** (`ui_zoom`, `calm`):
   saved with the project, never slider values, so presets and automation
   never touch them. Only the window writes them; append new ones at the end.
@@ -259,6 +274,9 @@ line A.
   REAPER draws any visible slider above `@gfx` and takes that height from the
   window, which is why every slider is now hidden (ADR 0019). The layout
   still fits any height (it reserves the preview panel first).
+- **Nothing from the final HIG sweep has been seen in REAPER** (ADR 0023,
+  21 October): the undo points either side of a preset or Surprise Me, the
+  sizes fitted to a small window, the new edges on a Retina screen.
 - **Nothing from session 3's HIG work has been seen in REAPER** (ADR 0023):
   whether REAPER passes Tab, Return and the arrows to the window, whether
   `gfx_getfont` names San Francisco or Segoe UI, the interface sizes, the
