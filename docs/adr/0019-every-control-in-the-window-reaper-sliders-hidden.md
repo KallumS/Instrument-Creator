@@ -1,6 +1,6 @@
 # 0019. Every control in the window, REAPER's slider list hidden
 
-- Status: Accepted; amended by [0021](0021-one-diagram-materials-in-menus-four-controls-und.md) (one row of seven controls; play mode, glide, fine tune and output under More)
+- Status: Accepted; amended by [0021](0021-one-diagram-materials-in-menus-four-controls-und.md) (one row of seven controls; play mode, glide, fine tune and output under More) and [0023](0023-apples-hig-foundations.md) (the controls at the top, 44 px tall, 12 apart)
 - Date: 2026-10-01
 
 ## Context

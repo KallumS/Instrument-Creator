@@ -446,6 +446,116 @@ still picks Glass (`CLICK_MENU=12`); `range.py` on the default instrument
 plays in tune as before. `check.py` was not run: nothing the sound reads
 changed.
 
+## 22. The rest of Apple's HIG Foundations (session 3, 15 October 2026)
+
+The user asked for the window to meet the rest of Apple's Human Interface
+Guidelines "Foundations", the standard Transient Shuffler already meets
+(ADR 0023, `docs/apple-hig-review.md`). Window only: no slider, option or
+sound changed. Four instruments (the default, a bowed steel string, an aged
+glass plate struck with a mallet, mono brass lips) render sample-identical to
+the version before.
+
+What the musician sees:
+
+- **Everything you use is at the top**: the instrument's name (in place of
+  the plugin's title, which REAPER's title bar already shows) and the
+  buttons, then the controls and More, then the diagram, then the close-up.
+- **Options** (a new button): Interface Size 100/125/150/200% and Reduce
+  Motion, saved with the project (`@serialize`, window-only variables).
+- **The keyboard**: Tab and Shift+Tab with a near-white ring; Return/Space;
+  arrows (Shift finer); Delete; Esc. The close-up follows the focus.
+- **Contrast**: every word at least 7:1 on what is under it (lowest 7.6:1).
+  Captions, control names, material names, the age note and the chosen blue
+  were lifted; the window keeps its own palette.
+- **The system font** (San Francisco, Segoe UI, else Arial).
+- **Sizes**: buttons 28 px and as wide as their labels, control cells 44 px,
+  everything 12 apart; Play Mode and Playing… carry a bar, not only blue.
+- **No abbreviations**: "Pos.", "Res." and the like are gone. A tight row of
+  controls shows its values at the end of the sliders instead. At the
+  default 940 px that is the main row; the More row has room beside the names.
+  The drag stays as fine as before (it is scaled to the cell, not the shorter
+  track).
+- **A message when the pictures are missing**, at the top, until *Dismiss*.
+
+How it was checked:
+
+- `tools/hig.cpp`, a new host: keys (`ysfx_gfx_add_key`), variables
+  (`ysfx_find_var`) and the focus list (`ysfx_read_vmem`). For contrast the
+  plugin's `say()` writes down each string's colour and box when the host
+  sets `hig_audit`, and leaves the words out with `hig_notext`, so the host
+  measures every string against the pixels really under it.
+- `tools/hig_check.py`: 139 checks in about a minute (listed in the review).
+- **Two ysfx bugs stood between the host and REAPER**, both patched in the
+  clone by `tools/build_host.sh`: named keys were packed little-endian
+  (`'l' | 'e'<<8 ...`) where EEL's `'left'` is big-endian, so no arrow key
+  ever matched; and Shift was reported only with a mouse button down, so
+  Shift+Tab went forward.
+- **Sabotage**: 30 breakages in scratch copies (`tools/hig_bite.py`; first written in the session
+  scratchpad: colours, sizes, gaps, the scale, focus, Shift+Tab, Esc, arrows,
+  Delete, the ring's colour and thickness, the bars, a timed message, Reduce
+  Motion, saving, a word bypassing `say()`, a 9 px font, Arial, the controls
+  at the bottom, the picture not giving way, short tiles, values beside
+  names, More not reachable). Two missed at first: moving the controls to the
+  bottom passed because the diagram moved down with them (the check is now
+  absolute too: the top quarter), and a value beside a name too long for it
+  passed because no state had extreme values at in-between widths (now:
+  every control at its widest value, at every width from 960 to 1600, and a
+  check that no two strings overlap). One crashed the suite instead of
+  failing a check; the suite now fails cleanly.
+- `click` still drives the mouse as before (menus, Made of, arrows, wheel,
+  More, Play Mode, drag) at the new positions; the commands in CLAUDE.md and
+  the README are updated.
+- Screenshots looked at: 940×720 (plain, More open, keyboard focus on a
+  part and on Play Mode), 800×480, 200% in 940×720 (runs off the bottom, as
+  expected) and in 1880×1440, Retina 2×, and without the pictures.
+  `docs/window.png` re-rendered.
+
+Not done, and why:
+
+- VoiceOver and the system's accessibility settings: a JSFX can't (review).
+- 200% does not fit the default window; it needs about 1880 × 1440. The
+  layout degrades in order (the preview, then tile captions, then materials,
+  then pictures) and never overlaps.
+- **Nothing here has been run in REAPER.** Most uncertain: whether REAPER
+  hands Tab, Return, Space and the arrows to the window (Space probably
+  starts the transport; Return does the same job), what `gfx_getfont`
+  returns on macOS, and whether Esc closes REAPER's FX window.
+
+## 23. The final sweep of Apple's HIG Foundations (session 4, 21 October 2026)
+
+The user asked for a final sweep of the 19 Foundations pages, done alongside
+AutoCC and Reese Basser on `ccr-f2d9adc9-lanc9o`. One verdict per guideline
+is in `docs/apple-hig-review.md` (*Final sweep*); the rules are in ADR 0023's
+dated section. What changed, in the window only (no sound code):
+
+- **Edges.** Every button, part tile, control cell and More has an outline
+  3.7:1 on the window (`#6D7581`); before, the tiles and cells had none and
+  their fills were 1.1:1. Slider tracks and Play Mode's halves have one
+  3.5:1 on the cell even hovered (`#80879A`), so a control at its lowest no
+  longer shows only its knob. Outlines, the diagram's arrows and the scope's
+  line grow with the size.
+- **The size fits.** A size the window can't hold is drawn as large as it
+  can (never below 100%); Options says "Shown at 118% Until the Window Is
+  Larger". Before, 200% in the default window ran off the bottom.
+- **Undo.** A preset or Surprise Me adds an undo point before and after, a
+  frame apart, so Edit → Undo puts the old instrument back; the Presets menu
+  says so in a greyed line.
+- **Tidying found by the checks.** The new edges showed that a short tile's
+  lines came within 3 px of its edge (now 5 px, the caption gives way
+  first), and the fitted sizes showed Play Mode's bar touching its word at
+  in-between sizes (now on whole pixels below it).
+
+How it was checked: `tools/hig_check.py` 139 → 193 checks; `tools/hig.cpp`
+prints each undo point REAPER would be asked for (ysfx's
+`ysfx_fetch_want_undopoint`); `draw_wrapped` counts lines it drops
+(`wrap_cut`). 19 new sabotages in `tools/hig_bite.py`, run in three batches
+in parallel: all BIT, none missed. Screenshots: 940 × 720 (More open), 200%
+in 940 × 720 and 1880 × 1440, Retina; `docs/window.png` re-shot.
+`check.py` not run: the sound code is untouched.
+
+Not done: a minimum window size and knowing whether the window is key (a
+JSFX can't); frames round the pictures (content, not controls).
+
 ## Where things stand
 
 Sound (unchanged since session 1):
@@ -464,8 +574,20 @@ materials chosen from menus, seven controls plus More (§19); Retina drawing
 on. All checked in ysfx (screenshots at 800×480, 940×720, 2× Retina, with and
 without the picture folder; menus, arrows, wheel and drag with `click`).
 
+Window (session 3): Apple's writing guidelines (§21, ADR 0022) and the rest
+of its HIG Foundations (§22, ADR 0023): controls at the top, keyboard use,
+7:1 text, Interface Size, Reduce Motion, the system font. Checked by
+`tools/hig_check.py` (139 checks, every rule sabotaged and caught).
+
 Open items:
 
+- **Nothing from session 4 has been seen in REAPER** (§23): ask whether
+  Edit → Undo after a preset or Surprise Me brings the old instrument back,
+  and how 200% looks in a window too small for it.
+- **Nothing from session 3 has been seen in REAPER** (§22): ask whether Tab,
+  Return and the arrows reach the window, how 125% to 200% look on the Retina
+  screen, whether the font is San Francisco, and whether Options' settings
+  come back when the project is reopened.
 - **Nothing from session 2 has been seen in REAPER.** The user's only REAPER
   screenshot (§16) predates the control strip, the pictures, the new layout
   and Retina mode. Confirm: the pictures load from the folder beside the
@@ -481,6 +603,10 @@ Open items:
 - Plugin formats (VST3, CLAP, AU): set aside by the user (§20).
 
 ## Handover to the next session
+
+Session 3 (14-15 October 2026) worked on `ccr-f2d9adc9-lanc9o`: the writing
+guidelines (§21) and the HIG Foundations (§22), committed and pushed, no
+pull request.
 
 State at the end of session 2 (10 October 2026): everything is committed and
 pushed on `claude/reaper-custom-instrument-creator-xz08x6`; no pull request
@@ -511,6 +637,6 @@ Candidate next steps, roughly in order of value:
 5. Anything new. Before changing a design rule, read its ADR; after any
    sound change, re-run `trims.py` / `apply_trims.py` and `check.py`; after a
    window change, screenshot it at 940×720, 800×480 and with `SHOT_SCALE=2`,
-   and test it with `tools/build/click`; after adding an option or material,
+   test it with `tools/build/click`, and run `tools/hig_check.py`; after adding an option or material,
    render its pictures and add its drawing (ADR 0020); then update
    PARTS-AND-MATERIALS.md, the README, CLAUDE.md and this log.
