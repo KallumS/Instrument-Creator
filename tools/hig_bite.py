@@ -58,7 +58,7 @@ cases = [
  ("F: a description cut short", "  wrap_ymax = py_ + ph_ - 6*gsc;", "  wrap_ymax = py_ + 60*gsc;"),
  ("F: a caption cut with an ellipsis", "say(lv == 0 ? cat_title(c) : cat_short(c)); ty += t4 + gsc;", "say(lv == 0 ? cat_title(c) : \"Exci…\"); ty += t4 + gsc;"),
  ("F: label words on its edge", "tx = x + 12*gsc; ty = y + 9*gsc + 0.5*(h - 14*gsc - bh);", "tx = x + 12*gsc; ty = y + 0.5*gsc;"),
- ("F: Poly's bar on its word", "ceil(wy_ + th) + floor(0.5*gsc)", "wy_ + th + 0.5*gsc"),
+ ("F: Poly's bar on its word", "ceil(wy_ + th) + floor(0.5*gsc)", "wy_ + th - 2*gsc"),
  ("F: Poly's word on its edge", "wy_ = floor(segy + 0.5) + max(1, floor(gsc + 0.5)) + 0.5*gsc;", "wy_ = segy + 0.5*gsc;"),
  # the drawing and the picker (24 October 2026, ADR 0024)
  ("W: drawing lines one pixel at any size", "t = (c == hl ? 2.4 : 1.4)*gsc;", "t = 1;"),
