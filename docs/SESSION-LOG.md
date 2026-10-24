@@ -26,6 +26,14 @@ after pull request 3 merged session 1), in five requests:
 | 4 | "Can you port Instrument Creator to VST3, CLAP and Audio Unit?" | investigated, then set aside by the user (§20) | none |
 | 5 | "Update all of the docs so I can start a new chat" | this table, §20, "Where things stand" and the handover | `7bb5677` |
 
+**Session 5, 24 October 2026**, on `ccr-5a94d958-g3a3t7` (from `main` after
+pull request 6), in two requests:
+
+| # | Request | Result |
+|---|---|---|
+| 1 | "The layout is cluttered and confusing … show the instrument in its entirety, and then swap out pieces of it … with the labels for each part being around the whole instrument. Could you do a mock-up?" Then, after a first mock-up with the 3D renders: "I think the 3D renders are the issue … could the full instrument be shown as a drawn wireframe that changes depending on which parts are selected?" | two mock-ups as claude.ai canvases (§24); the second approved: "far better than the original" |
+| 2 | "Let's ditch the 3D renders for now … ensure it looks modern and polished. Follow the Apple GUI guidelines found in the Good Idea repo and please check all docs" | the window rebuilt round one line drawing, labels and a picker; the pictures removed; ADR 0024; every doc checked and updated (§24) |
+
 The user's original brief (session 1) is `docs/Instrument Creator 011026.odt`
 (an OpenDocument file they uploaded): the ten categories and their options,
 "weird and wacky instruments", a preview of each part.
@@ -556,6 +564,88 @@ in 940 × 720 and 1880 × 1440, Retina; `docs/window.png` re-shot.
 Not done: a minimum window size and knowing whether the window is key (a
 JSFX can't); frames round the pictures (content, not controls).
 
+## 24. The whole instrument as one line drawing (session 5, 24 October 2026)
+
+The user found the window cluttered and confusing and asked for the whole
+instrument to be shown, its pieces swapped in place, labels round it, as a
+mock-up first. ADR 0024.
+
+**Mock-ups.** Both were Design canvases on claude.ai (private to the user).
+The first laid the 3D renders out along the signal chain as an exploded
+view (composited with PIL to judge it first): the wind instruments read
+well, but each render had been framed by its own camera, so the strings and
+bodies read as a collage. The user then asked for a drawn wireframe. The
+second mock-up drew the instrument from code: a small JavaScript library
+(`build(parts)` → polylines per part) prototyped in node and checked on 12
+presets with Playwright screenshots, then built into an interactive canvas
+(labels with leader lines, a picker with each option drawn on the
+instrument, presets, Surprise Me). Things learnt there and kept: **the
+coupler decides the build** (a mouthpiece or windway puts every part on one
+axis; a bridge or soundpost stacks the element over the body), which makes
+saxophones, trumpets, violins, marimbas and music boxes read as themselves;
+labels placed in order of their anchors (else lines cross); each line ends
+on the part's own nearest point, not its box (a bell's box centre is empty
+air); the energy source comes in mirrored from the upper right in the
+layered build, clear of the exciter; a keyboard sits in front of the body.
+
+**In the plugin.** The JS geometry ported to EEL2 line for line
+(`wf_build` and its part functions, before `@slider`): an affine pen with a
+transform stack, Chaikin smoothing in a scratch buffer, about 1,000-2,000
+segments per instrument kept in window-only memory at 700000 and rebuilt
+only when a part changes. `@gfx` keeps the header and the control strip
+(now with round corners), and replaces the tiles, arrows, pictures and
+message with: the drawing between two rows of labels, each label's line to
+its part, the close-up (no picture now: the kind with a coloured dot, the
+name and material, description, how to use it, the build for a coupler, the
+hint, the scope), and the picker over everything. The palette is unchanged;
+the picker adds `C_POP` #30323C (raised, lighter) and `C_CTX` #5C626E (the
+rest of the instrument behind a part in a cell). Age now rusts the
+drawing's material parts (`part_col`), standing in for the rust layer.
+
+**Measured and fixed on the way:**
+
+- **The dashed lines could stall a frame.** `wdash` walked its dash pattern
+  by floating-point steps; at 117.5% a step of about 10⁻¹⁵ px stopped
+  advancing and the loop ran to EEL's million-iteration limit every frame
+  (the hig suite crawled to a stop at 200% in 940 × 720). Every step is now
+  at least 0.01 px and the walk is capped at 1,000.
+- **Edges inside a raised surface.** `#6D7581` is 3.7:1 on the window but
+  2.8:1 on the picker's `#30323C`; the picker's cells, Done and Made of use
+  `C_TRACK` #80879A (3.5:1).
+- **Round corners moved the switch's edge by half a pixel**, under
+  Poly/Mono's words at 162.5% and 187.5% (contrast 1.76); the word now sits
+  below the edge's whole pixels.
+- **Labels sized by their words** are a few pixels off at 200%, as buttons
+  always were; their height is now 62·gsc (enough for every font measured),
+  so 200% is 100% doubled vertically, and their words are checked against
+  their own label.
+- Frame time in ysfx (with audio): 3.3 ms at 940 × 720, 4.5 ms at
+  1880 × 1440, 5.2 ms with the picker open; the old window took 2.1 ms.
+- Four instruments render sample-identical to before (`cmp` on the raw
+  output): no sound code changed, so `check.py` and the trims were not run.
+
+**Checked:** `tools/hig_check.py` 193 → 361 checks (the picker for every
+part in both builds, at 800 × 480 and 200%; its keys and mouse; modality;
+lighter than the window; the drawing's lines 3:1 and growing; labels; the
+tremble and Reduce Motion), all passing in about 15 s; `tools/hig_bite.py`
+60 sabotages (14 new for the drawing and picker), all BIT after two first
+MISSED: text in a label not scaled (the loosened 200% check had stopped
+looking at words in labels; it now compares them with their label), and
+labels never shortening (no state needed them to; now a layered instrument
+at 600-700 px wide does).
+`click`: dragging Force, the element's label then Membrane, Made of then
+Glass. Screenshots: all 19 presets, both builds, every picker, More open,
+keyboard focus, Age 100%, 800 × 480, 200% fitted. **None of it seen in
+REAPER yet.**
+
+**Docs checked and updated:** README (one file to install; using the
+window; the keyboard; Age), CLAUDE.md (layout, commands, the drawing rule,
+the picker rule, memory map, Good Idea's review as the family reference),
+PARTS-AND-MATERIALS §1.2 and §10 (the drawing's geometry and the labels),
+ADR 0024 and the status lines of 0001, 0012, 0018, 0020 (superseded), 0021
+and 0023, `docs/apple-hig-review.md` (a section for the new parts),
+`blender/README.md` (set aside), `docs/window.png`.
+
 ## Where things stand
 
 Sound (unchanged since session 1):
@@ -568,11 +658,17 @@ Sound (unchanged since session 1):
 - Worst CPU: a bowed-plate chord at 14 % of a core at 48 kHz; 27.5 % for a
   three-note chord at 96 kHz.
 
-Window (session 2): 3D pictures of every part in every material, with a rust
+Window (session 2, since replaced): 3D pictures of every part in every material, with a rust
 layer for Age and the drawings as a fallback (§18); one diagram of tiles,
 materials chosen from menus, seven controls plus More (§19); Retina drawing
 on. All checked in ysfx (screenshots at 800×480, 940×720, 2× Retina, with and
 without the picture folder; menus, arrows, wheel and drag with `click`).
+
+Window (session 5): the whole instrument as one line drawing, built from
+the parts (in a line or in layers, by the coupler), labelled round it, with
+a picker for each part showing every choice on the instrument; round
+corners; the 3D pictures set aside and removed (§24, ADR 0024). Checked by
+`tools/hig_check.py` (361 checks, 60 sabotages caught).
 
 Window (session 3): Apple's writing guidelines (§21, ADR 0022) and the rest
 of its HIG Foundations (§22, ADR 0023): controls at the top, keyboard use,
@@ -581,6 +677,12 @@ of its HIG Foundations (§22, ADR 0023): controls at the top, keyboard use,
 
 Open items:
 
+- **Nothing from session 5 has been seen in REAPER** (§24): ask for a
+  screenshot of the window, of a picker open, and of a layered instrument
+  (Ice Violin); whether clicking a label or a part opens the picker and a
+  choice applies; whether the drawing keeps up (it is a few thousand
+  antialiased lines a frame); how the round corners and 1.4 px lines look on
+  the Retina screen.
 - **Nothing from session 4 has been seen in REAPER** (§23): ask whether
   Edit → Undo after a preset or Surprise Me brings the old instrument back,
   and how 200% looks in a window too small for it.
@@ -589,10 +691,9 @@ Open items:
   screen, whether the font is San Francisco, and whether Options' settings
   come back when the project is reopened.
 - **Nothing from session 2 has been seen in REAPER.** The user's only REAPER
-  screenshot (§16) predates the control strip, the pictures, the new layout
-  and Retina mode. Confirm: the pictures load from the folder beside the
-  plugin; menus (including the "Made of" submenu), arrows, wheel, dragging,
-  More; automation of the hidden sliders; that Retina mode looks as in the
+  screenshot (§16) predates the control strip, the new layout and Retina
+  mode. Confirm: menus (Presets, Options, Made of), wheel, dragging, More;
+  automation of the hidden sliders; that Retina mode looks as in the
   `SHOT_SCALE=2` screenshots and the window is the right size.
 - The most lossless steels bowed at exactly 1/5 or 1/3 of the string can
   flip to the octave.
@@ -603,6 +704,12 @@ Open items:
 - Plugin formats (VST3, CLAP, AU): set aside by the user (§20).
 
 ## Handover to the next session
+
+Session 5 (24 October 2026) worked on `ccr-5a94d958-g3a3t7`: the line
+drawing, labels and picker (§24), committed and pushed, no pull request.
+The user approved the mock-up and asked for the renders to be set aside
+"for now": the models are in `blender/`, `tools/render_parts.py` still
+works, and the pictures are in the history (`git show b1798d7:Instrument-Creator-images/...`).
 
 Session 3 (14-15 October 2026) worked on `ccr-f2d9adc9-lanc9o`: the writing
 guidelines (§21) and the HIG Foundations (§22), committed and pushed, no
@@ -615,28 +722,29 @@ request 3). The GitHub repository is `KallumS/Instrument-Creator`.
 
 A fresh container has no `tools/build/` and no Python packages. Run
 `pip install numpy scipy matplotlib` and `tools/build_host.sh` first; for
-the pictures also `pip install bpy imagequant` (bpy is ~400 MB, Python 3.13).
+the 3D renders (set aside) also `pip install bpy imagequant` (bpy is ~400 MB,
+Python 3.13).
 
 The user is not a programmer, tests in REAPER on macOS (Retina) and reports
 back with screenshots. They liked the 3D pictures ("brilliant") and the
-calmer window ("much better").
+calmer window ("much better"), then found it cluttered and preferred the
+line drawing ("far better than the original"); they want it modern and
+polished, to Apple's guidelines as the Good Idea repo applies them.
 
 Candidate next steps, roughly in order of value:
 
-1. **Feedback from REAPER on everything in session 2** (open items above).
-   Ask for a screenshot of the window and of a part menu. If the pictures
-   don't appear, check the folder is beside the .jsfx in the same Effects
-   subfolder; the window falls back to drawings without it.
-2. Changes to individual models if the user asks: each is one `p_*`
-   function in `tools/render_parts.py`; draft with `--out /tmp/x --samples
-   16 --mats 12 4_2`, then render for real (`python3 tools/render_parts.py
-   4_2`, compressed automatically) and re-save its `.blend` (`--blend 4_2`).
+1. **Feedback from REAPER on the new window** (open items above). Ask for
+   a screenshot of the window, a picker open, and Ice Violin.
+2. Changes to the drawing if the user asks: each part is one `wf_*`
+   function (both builds); look at it with `tools/build/hig ... png=` (see
+   CLAUDE.md), in the picker too, then run `tools/hig_check.py`.
 3. The sound open items above, then the vestigial code (render, run
    `check.py`, commit).
 4. Plugin formats, if the user brings them back (§20).
 5. Anything new. Before changing a design rule, read its ADR; after any
    sound change, re-run `trims.py` / `apply_trims.py` and `check.py`; after a
    window change, screenshot it at 940×720, 800×480 and with `SHOT_SCALE=2`,
-   test it with `tools/build/click`, and run `tools/hig_check.py`; after adding an option or material,
-   render its pictures and add its drawing (ADR 0020); then update
+   test it with `tools/build/click`, and run `tools/hig_check.py` (and
+   `tools/hig_bite.py` for a new rule); after adding an option, draw it in
+   its `wf_*` function for both builds (ADR 0024); then update
    PARTS-AND-MATERIALS.md, the README, CLAUDE.md and this log.

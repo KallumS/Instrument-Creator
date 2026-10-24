@@ -14,6 +14,8 @@
 //                       "text r g b x y w h worst" (worst = lowest contrast with
 //                       any pixel under it; the words' own pixels are left out)
 //   sliders             print the 23 sliders
+//   cats                print each part's row in the drawing: "cat c x0 y0 x1 y1 ax ay row lx lw ly lh"
+//                       (its box in the drawing's space, its anchor and its label on screen)
 //   png=file.bgra       write the frame's pixels
 //   (after any frame that asked for one: "undo" and the 23 sliders as they were then)
 //   roundtrip           save the state, load it into a fresh instance, print its ui_zoom and calm
@@ -73,6 +75,11 @@ int main(int argc,char**argv){
     else if(k=="slider"){ int s; double x; sscanf(v.c_str(),"%d,%lf",&s,&x); ysfx_slider_set_value(fx,s-1,x,true); block(); }
     else if(k=="note"){ uint8_t on[3]={0x90,60,100}; ysfx_midi_event_t me; me.bus=0; me.offset=0; me.size=3; me.data=on; ysfx_send_midi(fx,&me); for(int b=0;b<190;b++) block(); }
     else if(k=="vars"){ size_t p=0; while(p<=v.size()){ size_t q=v.find(',',p); if(q==std::string::npos) q=v.size(); std::string n=v.substr(p,q-p); printf("var %s %g\n", n.c_str(), *var(n.c_str())); p=q+1; } }
+    else if(k=="cats"){
+      double base=*var("CAT_TAB"), st=*var("CAT_STRIDE");
+      for(int c=0;c<12;c++){ ysfx_real e[11]; ysfx_read_vmem(fx,(uint32_t)(base+c*st),e,11);
+        printf("cat %d",c); for(int j=0;j<11;j++) printf(" %g",e[j]); printf("\n"); }
+    }
     else if(k=="sliders"){ printf("sliders"); for(int s=1;s<=23;s++) printf(" %g", ysfx_slider_get_value(fx,s-1)); printf("\n"); }
     else if(k=="focus"){
       int n=(int)*var("fl_n"); double base=*var("FOCUS_TAB");

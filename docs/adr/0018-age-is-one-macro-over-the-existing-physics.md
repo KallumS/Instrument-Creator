@@ -17,7 +17,7 @@ shorter maximum ring; irregularity + 0.015a (split modes on every material);
 ±25a cents per note plus a slow wander; rattle and grit through the ADR 0016
 gap; drive noise and hiss for sustaining exciters; a rougher bore. Make-up
 gain +6a dB for strikes, plucks and bows only, because reeds and lips keep
-themselves going. The pictures rust with it. Presets leave it alone.
+themselves going. The window shows it: the pictures rusted with it, and since ADR 0024 the drawing does. Presets leave it alone.
 
 ## Consequences
 

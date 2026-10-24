@@ -54,7 +54,7 @@ gfx_ext_retina = 1;   // draw at full resolution on Retina/HiDPI screens (gsc in
 VOICE_BASE = 0; VOICE_STRIDE = 512; VOICES_MAX = 8;
 MODE_OFF = 160; MODE_STRIDE = 8; MODES_MAX = 24;
 MAT_TAB = 13600; MAT_STRIDE = 16; MAT_N = 31;
-IMG_TAB = 14200; IMG_SLOT = 10;     // picture cache: 12 categories x 8 (window only)
+// 14200: CAT_TAB, each part's box, anchor and label in the drawing (12 x 16, window only; set with the drawing below)
 FOCUS_TAB = 14400; FOCUS_MAX = 64;  // keyboard focus list: id, x, y, w, h per control (window only)
 HIG_TXT = 14800; HIG_TXT_MAX = 180; // text audit for the tests: count, then r, g, b, x, y, w, h, - per string (window only)
 BESSEL_TAB = 4600; BAR_TAB = 4700; CANT_TAB = 4720; PLATE_TAB = 4750;
@@ -1217,7 +1217,7 @@ all_off();
 update_globals();
 
 // ===========================================================================
-// GUI: part names, descriptions, pictures and presets
+// GUI: part names, descriptions and presets
 // ===========================================================================
 function cat_count(c) ( c==0?6 : c==1?6 : c==2?6 : c==3?MAT_N : c==4?5 : c==5?MAT_N : c==6?4 : c==7?4 : c==8?5 : c==9?4 : 5; );
 function cat_short(c)
@@ -1361,379 +1361,534 @@ function combo_hint()
                          "Each note is struck once and rings.";
 );
 
-// ---- drawing helpers: coordinates are 0..1 inside the current box
-function gbox(x, y, w, h) ( bx = x; by = y; bw = w; bh = h; bs = min(w, h); );
-function gx(u) ( bx + u*bw; );
-function gy(v) ( by + v*bh; );
-function gln(u1, v1, u2, v2) ( gfx_line(gx(u1), gy(v1), gx(u2), gy(v2), 1); );
-function glnw(u1, v1, u2, v2, t) local(dx, dy, l, nx, ny, k)
+// ===========================================================================
+// The instrument as one line drawing (ADR 0024). Every part is a few
+// polylines in a drawing space 900 wide and 360 tall (y down); the twelve
+// choices decide which. The coupler decides the build: a mouthpiece or a
+// windway joins the parts end to end, like a wind instrument ("in a line");
+// a bridge or a soundpost holds the element over the body, like a guitar or a
+// marimba ("in layers"). The other parts sit where they act: tone holes and
+// frets on the element, the tuning at its end, a mute or a hand in the bell,
+// pedals and electronics underneath. Window only: built into a list of
+// segments when a part changes, then drawn by @gfx each frame.
+// ===========================================================================
+WF_AUX = 690000;                  // window only: transform stack, smoothing buffers, the parts being drawn
+WF_STK = WF_AUX; WF_CHA = WF_AUX + 100; WF_CHB = WF_AUX + 1200; WF_P = WF_AUX + 2400;
+WF_LAST = WF_AUX + 2420;          // the twelve choices the drawing was built from
+WF_OBB = WF_AUX + 2440;           // the picker: each option's part, bounding box (6 x 4)
+WF_GEO = 700000; WF_GEO_MAX = 4000;          // the instrument: count, then x1 y1 x2 y2 part hidden
+WF_OPT = 725000; WF_OPT_STRIDE = 25000;      // the picker's six versions of it, one per option
+CAT_TAB = 14200; CAT_STRIDE = 16;            // per part: box, anchor, label (12 x 16)
+
+// ---- the pen: an affine transform (a stack of eight) and the current point
+function wf_reset() ( tf_a = 1; tf_b = 0; tf_c = 0; tf_d = 1; tf_e = 0; tf_f = 0; tf_sp = 0; wfhid = 0; );
+// draw what follows translated to (ox, oy), turned by ang, mirrored if sx = -1
+function wf_push(ox, oy, ang, sx) local(p, ca, sa, a, b, c, d, ta, tb, tc, td)
 (
-  dx = (u2 - u1)*bw; dy = (v2 - v1)*bh; l = max(0.001, sqrt(dx*dx + dy*dy));
-  nx = -dy/l; ny = dx/l; t = max(1, t*gsc); k = -0.5*(t - 1);
-  loop(ceil(t), gfx_line(gx(u1) + nx*k, gy(v1) + ny*k, gx(u2) + nx*k, gy(v2) + ny*k, 1); k += 1;);
+  p = WF_STK + tf_sp*6; p[0] = tf_a; p[1] = tf_b; p[2] = tf_c; p[3] = tf_d; p[4] = tf_e; p[5] = tf_f; tf_sp += 1;
+  ca = cos(ang); sa = sin(ang); a = sx*ca; b = sx*sa; c = -sa; d = ca;
+  tf_e += tf_a*ox + tf_c*oy; tf_f += tf_b*ox + tf_d*oy;
+  ta = tf_a; tb = tf_b; tc = tf_c; td = tf_d;
+  tf_a = ta*a + tc*b; tf_b = tb*a + td*b; tf_c = ta*c + tc*d; tf_d = tb*c + td*d;
 );
-function grc(u, v, w, h) ( gfx_rect(gx(u), gy(v), max(1, w*bw), max(1, h*bh), 1); );
-function grco(u, v, w, h) ( gfx_rect(gx(u), gy(v), max(1, w*bw), max(1, h*bh), 0); );
-function gci(u, v, r, f) ( gfx_circle(gx(u), gy(v), max(1, r*bs), f, 1); );
-function gtri(u1, v1, u2, v2, u3, v3) ( gfx_triangle(gx(u1), gy(v1), gx(u2), gy(v2), gx(u3), gy(v3)); );
-function gquad(u1, v1, u2, v2, u3, v3, u4, v4) ( gfx_triangle(gx(u1), gy(v1), gx(u2), gy(v2), gx(u3), gy(v3), gx(u4), gy(v4)); );
-function grrf(u, v, w, h, r) local(x, y, ww, hh, rr)
+function wf_pop() local(p)
 (
-  x = gx(u); y = gy(v); ww = w*bw; hh = h*bh; rr = min(r*bs, 0.5*min(ww, hh));
-  gfx_rect(x + rr, y, ww - 2*rr, hh, 1); gfx_rect(x, y + rr, ww, hh - 2*rr, 1);
-  gfx_circle(x + rr, y + rr, rr, 1, 1); gfx_circle(x + ww - rr - 1, y + rr, rr, 1, 1);
-  gfx_circle(x + rr, y + hh - rr - 1, rr, 1, 1); gfx_circle(x + ww - rr - 1, y + hh - rr - 1, rr, 1, 1);
+  tf_sp -= 1; p = WF_STK + tf_sp*6;
+  tf_a = p[0]; tf_b = p[1]; tf_c = p[2]; tf_d = p[3]; tf_e = p[4]; tf_f = p[5];
 );
-// ellipse: filled (fan of triangles) or outline
-function gell(u, v, rx, ry, f) local(k, a0, a1, cx, cy, x0, y0, x1, y1)
+function wf_seg(x1, y1, x2, y2) local(p)
 (
-  cx = gx(u); cy = gy(v); k = 0;
-  loop(28,
-    a0 = 2*$pi*k/28; a1 = 2*$pi*(k + 1)/28;
-    x0 = cx + rx*bw*cos(a0); y0 = cy + ry*bh*sin(a0); x1 = cx + rx*bw*cos(a1); y1 = cy + ry*bh*sin(a1);
-    f ? gfx_triangle(cx, cy, x0, y0, x1, y1) : gfx_line(x0, y0, x1, y1, 1);
-    k += 1;
+  wfn < WF_GEO_MAX ? ( p = wfbuf + 1 + wfn*6; p[0] = x1; p[1] = y1; p[2] = x2; p[3] = y2; p[4] = wfcat; p[5] = wfhid; wfn += 1; );
+);
+function wf_mv(x, y) ( wflx = tf_a*x + tf_c*y + tf_e; wfly = tf_b*x + tf_d*y + tf_f; wffx = wflx; wffy = wfly; );
+function wf_to(x, y) local(nx, ny)
+(
+  nx = tf_a*x + tf_c*y + tf_e; ny = tf_b*x + tf_d*y + tf_f;
+  wf_seg(wflx, wfly, nx, ny); wflx = nx; wfly = ny;
+);
+function wf_close() ( wf_seg(wflx, wfly, wffx, wffy); wflx = wffx; wfly = wffy; );
+function wf_line(x1, y1, x2, y2) ( wf_mv(x1, y1); wf_to(x2, y2); );
+// a hidden edge (drawn dashed)
+function wf_lineh(x1, y1, x2, y2) ( wfhid = 1; wf_mv(x1, y1); wf_to(x2, y2); wfhid = 0; );
+function wf_rect(x, y, w, h) ( wf_mv(x, y); wf_to(x + w, y); wf_to(x + w, y + h); wf_to(x, y + h); wf_close(); );
+function wf_arc(cx, cy, rx, ry, a0, a1) local(n, i, a)
+(
+  n = max(6, ceil(abs(a1 - a0)/(2*$pi)*32)); i = 0;
+  loop(n + 1,
+    a = a0 + (a1 - a0)*i/n;
+    i == 0 ? wf_mv(cx + rx*cos(a), cy + ry*sin(a)) : wf_to(cx + rx*cos(a), cy + ry*sin(a));
+    i += 1;
   );
 );
-function gcol(r, g, b) ( gfx_set(r, g, b, 1); );
-function gcola(r, g, b, a) ( gfx_set(r, g, b, a); );
-// material colour; with age, metals rust and everything else gets grimy
-function is_metal(m) ( m <= 4 || m == 25 || m >= 27; );
-function gmat(m, k) local(a)
+function wf_arch(cx, cy, rx, ry, a0, a1) ( wfhid = 1; wf_arc(cx, cy, rx, ry, a0, a1); wfhid = 0; );
+function wf_ell(cx, cy, rx, ry) ( wf_arc(cx, cy, rx, ry, 0, 2*$pi); );
+// a box seen from the front, a little from above and the right
+function wf_box(x, y, w, h, dep) local(dx, dy)
 (
-  a = age_*(is_metal(m) ? 0.65 : 0.35);
-  gfx_set(min(1, (mat(m, M_CR) + a*(0.55 - mat(m, M_CR)))*k), min(1, (mat(m, M_CG) + a*(0.28 - mat(m, M_CG)))*k),
-          min(1, (mat(m, M_CB) + a*(0.13 - mat(m, M_CB)))*k), 1);
+  dx = dep*0.55; dy = -dep*0.45;
+  wf_rect(x, y, w, h);
+  wf_mv(x, y); wf_to(x + dx, y + dy); wf_to(x + w + dx, y + dy); wf_to(x + w, y);
+  wf_mv(x + w + dx, y + dy); wf_to(x + w + dx, y + h + dy); wf_to(x + w, y + h);
+  wfhid = 1;
+  wf_mv(x + dx, y + dy); wf_to(x + dx, y + h + dy); wf_to(x + w + dx, y + h + dy);
+  wf_mv(x, y + h); wf_to(x + dx, y + h + dy);
+  wfhid = 0;
 );
-// a sine-ish wobble for animated parts
-function gwob(u, amp) ( amp*sin($pi*u)*sin(anim_ph); );
-
-function garc_(u, v, r) local(k, a0, a1)
+// a tube lying along x, radius r0 at x0 to r1 at x1; capl/capr: draw its ends
+function wf_tube(x0, x1, cy, r0, r1, capl, capr)
 (
-  k = 0; loop(12, a0 = -0.5*$pi + $pi*k/12; a1 = -0.5*$pi + $pi*(k + 1)/12;
-    gfx_line(gx(u) + r*bs*cos(a0), gy(v) + r*bs*sin(a0), gx(u) + r*bs*cos(a1), gy(v) + r*bs*sin(a1), 1); k += 1;);
+  wf_line(x0, cy - r0, x1, cy - r1); wf_line(x0, cy + r0, x1, cy + r1);
+  capl ? ( wf_arc(x0, cy, r0*0.3, r0, 0.5*$pi, 1.5*$pi); wf_arch(x0, cy, r0*0.3, r0, -0.5*$pi, 0.5*$pi); );
+  capr ? wf_ell(x1, cy, r1*0.3, r1) : ( wf_arc(x1, cy, r1*0.3, r1, -0.5*$pi, 0.5*$pi); wf_arch(x1, cy, r1*0.3, r1, 0.5*$pi, 1.5*$pi); );
 );
-
-// ---- material swatch with a texture that says what it is
-function draw_mat(m) local(k, u, v)
+// a tube standing upright
+function wf_vtube(cx, y0, y1, r, captop)
 (
-  gmat(m, 1); grrf(0.06, 0.12, 0.88, 0.76, 0.12);
-  m >= 20 ? (
-    m == 20 ? (                                 // plastic: a glossy streak and a mould seam
-      gcol(1, 1, 1); glnw(0.2, 0.3, 0.55, 0.26, 3); gmat(m, 0.75); gln(0.06, 0.62, 0.94, 0.62);
-    ) : m == 21 ? (                             // PVC: a printed pipe marking
-      gcol(0.35, 0.35, 0.38); grc(0.06, 0.44, 0.88, 0.1);
-      gcol(0.9, 0.9, 0.86); k = 0; loop(6, grc(0.12 + 0.13*k, 0.47, 0.07, 0.04); k += 1;);
-    ) : m == 22 ? (                             // wood: grain and a knot
-      gmat(m, 0.72); k = 0;
-      loop(5, v = 0.22 + 0.14*k; u = 0.08; loop(14, gln(u, v + 0.03*sin(u*11 + k), u + 0.06, v + 0.03*sin((u + 0.06)*11 + k)); u += 0.06;); k += 1;);
-      gmat(m, 0.5); gell(0.66, 0.5, 0.07, 0.05, 1);
-    ) : m == 23 ? (                             // leather: stitching and pores
-      gmat(m, 1.4); u = 0.12; loop(12, gln(u, 0.2, u + 0.04, 0.2); gln(u, 0.8, u + 0.04, 0.8); u += 0.065;);
-      gmat(m, 0.75); k = 0; loop(12, gci(0.15 + 0.7*(0.5 + 0.5*hash1(k + 3)), 0.3 + 0.4*(0.5 + 0.5*hash1(k + 33)), 0.015, 1); k += 1;);
-    ) : m == 24 ? (                             // cardboard: corrugated flutes
-      gmat(m, 0.75); u = 0.1; loop(13, glnw(u, 0.16, u, 0.84, 1.5); u += 0.065;);
-      gmat(m, 1.2); glnw(0.06, 0.5, 0.94, 0.5, 2);
-    ) : m == 25 ? (                             // foil: crinkled facets
-      k = 0; loop(9, gmat(m, 0.75 + 0.5*(0.5 + 0.5*hash1(k + 9)));
-        u = 0.1 + 0.27*(k % 3); v = 0.16 + 0.23*floor(k/3); gtri(u, v, u + 0.26, v + 0.05 + 0.1*hash1(k), u + 0.08, v + 0.22); k += 1;);
-      gcol(1, 1, 1); gln(0.3, 0.3, 0.5, 0.45); gln(0.6, 0.25, 0.75, 0.6);
-    ) : m == 26 ? (                             // cling film: wrinkles and a sheen
-      gcol(0.65, 0.78, 0.86); u = 0.1; loop(16, gln(u, 0.4 + 0.1*sin(u*14), u + 0.05, 0.4 + 0.1*sin((u + 0.05)*14)); gln(u, 0.66 + 0.06*sin(u*20 + 1), u + 0.05, 0.66 + 0.06*sin((u + 0.05)*20 + 1)); u += 0.05;);
-      gcol(1, 1, 1); glnw(0.18, 0.26, 0.4, 0.22, 2);
-    ) : m == 27 ? (                             // tin roof: corrugations and a screw
-      k = 0; loop(6, gmat(m, 1.3); glnw(0.08, 0.2 + 0.12*k, 0.92, 0.2 + 0.12*k, 2); gmat(m, 0.7); glnw(0.08, 0.26 + 0.12*k, 0.92, 0.26 + 0.12*k, 2); k += 1;);
-      gcol(0.3, 0.3, 0.32); gci(0.8, 0.5, 0.035, 1);
-    ) : m == 28 ? (                             // car panel: glossy paint with a reflection
-      gcol(1, 0.8, 0.8); u = 0.12; loop(15, gln(u, 0.3 + 0.12*sin(u*4), u + 0.05, 0.3 + 0.12*sin((u + 0.05)*4)); u += 0.05;);
-      gmat(m, 0.6); gln(0.5, 0.12, 0.5, 0.88);
-    ) : m == 29 ? (                             // chain link: diamond mesh
-      gmat(m, 0.55); grrf(0.06, 0.12, 0.88, 0.76, 0.12);
-      gmat(m, 1.4); k = 0; loop(5, gln(0.08 + 0.14*k, 0.12, 0.36 + 0.14*k, 0.88); gln(0.36 + 0.14*k, 0.12, 0.08 + 0.14*k, 0.88); k += 1;);
-    ) : (                                       // handpan: a tone field and hammer dimples
-      gmat(m, 1.5); gell(0.5, 0.5, 0.26, 0.24, 0); gell(0.5, 0.5, 0.12, 0.11, 0);
-      gmat(m, 1.25); k = 0; loop(10, gci(0.15 + 0.7*(0.5 + 0.5*hash1(k + 5)), 0.2 + 0.6*(0.5 + 0.5*hash1(k + 50)), 0.012, 1); k += 1;);
+  wf_line(cx - r, y0, cx - r, y1); wf_line(cx + r, y0, cx + r, y1);
+  captop ? wf_ell(cx, y0, r, r*0.32);
+  wf_arc(cx, y1, r, r*0.32, 0, $pi); wf_arch(cx, y1, r, r*0.32, $pi, 2*$pi);
+);
+function wf_ring(cx, cy, r) ( wf_arc(cx, cy, r*0.3, r, -0.5*$pi, 0.5*$pi); wf_arch(cx, cy, r*0.3, r, 0.5*$pi, 1.5*$pi); );
+function wf_arrow(x, y, a, s)
+(
+  wf_mv(x - s*cos(a - 0.45), y - s*sin(a - 0.45)); wf_to(x, y); wf_to(x - s*cos(a + 0.45), y - s*sin(a + 0.45));
+);
+// smooth outlines (Chaikin's corner cutting): add points, run, draw
+function wf_chs() ( wf_chn = 0; );
+function wf_ch(x, y) ( WF_CHA[wf_chn*2] = x; WF_CHA[wf_chn*2 + 1] = y; wf_chn += 1; );
+function wf_chrun(n, closed) local(m, o, i, j, ax, ay, bx, by)
+(
+  loop(n,
+    m = wf_chn; o = 0;
+    !closed ? ( WF_CHB[0] = WF_CHA[0]; WF_CHB[1] = WF_CHA[1]; o = 1; );
+    i = 0;
+    loop(closed ? m : m - 1,
+      j = (i + 1) % m; ax = WF_CHA[i*2]; ay = WF_CHA[i*2 + 1]; bx = WF_CHA[j*2]; by = WF_CHA[j*2 + 1];
+      WF_CHB[o*2] = 0.75*ax + 0.25*bx; WF_CHB[o*2 + 1] = 0.75*ay + 0.25*by; o += 1;
+      WF_CHB[o*2] = 0.25*ax + 0.75*bx; WF_CHB[o*2 + 1] = 0.25*ay + 0.75*by; o += 1;
+      i += 1;
     );
-  ) : m <= 4 ? (                                    // metals: a sheen
-    gmat(m, 1.35); k = 0; loop(3, glnw(0.2 + 0.18*k, 0.82, 0.42 + 0.18*k, 0.18, 2); k += 1;);
-  ) : m <= 6 ? (                                // glass, crystal: facets and a glint
-    gmat(m, 1.25); gtri(0.12, 0.2, 0.5, 0.2, 0.3, 0.55); gtri(0.55, 0.8, 0.9, 0.8, 0.9, 0.45);
-    gcol(1, 1, 1); gln(0.66, 0.3, 0.74, 0.3); gln(0.7, 0.26, 0.7, 0.34);
-  ) : m == 7 ? (                                // ice: cracks and bubbles
-    gcol(1, 1, 1); gln(0.2, 0.25, 0.45, 0.5); gln(0.45, 0.5, 0.4, 0.8); gln(0.45, 0.5, 0.8, 0.42); gln(0.8, 0.42, 0.88, 0.2);
-    gci(0.7, 0.68, 0.04, 0); gci(0.25, 0.62, 0.03, 0);
-  ) : m == 8 ? (                                // marble: veins
-    gcol(0.55, 0.55, 0.58); u = 0.08;
-    loop(15, gln(u, 0.3 + 0.12*sin(u*9), u + 0.055, 0.3 + 0.12*sin((u + 0.055)*9)); gln(u, 0.65 + 0.08*sin(u*13 + 1), u + 0.055, 0.65 + 0.08*sin((u + 0.055)*13 + 1)); u += 0.055;);
-  ) : m == 9 ? (                                // clay: grit
-    gmat(m, 0.7); k = 0; loop(14, gci(0.12 + 0.76*(0.5 + 0.5*hash1(k)), 0.2 + 0.6*(0.5 + 0.5*hash1(k + 40)), 0.02, 1); k += 1;);
-  ) : m <= 12 ? (                               // woods: grain (bamboo: nodes)
-    gmat(m, 0.72); k = 0;
-    loop(5, v = 0.22 + 0.14*k; u = 0.08; loop(14, gln(u, v + 0.03*sin(u*11 + k), u + 0.06, v + 0.03*sin((u + 0.06)*11 + k)); u += 0.06;); k += 1;);
-    m == 12 ? ( gmat(m, 0.55); glnw(0.35, 0.12, 0.35, 0.88, 2); glnw(0.7, 0.12, 0.7, 0.88, 2); );
-  ) : m == 13 ? (                               // bone: pores
-    gmat(m, 0.8); k = 0; loop(10, gell(0.15 + 0.7*(0.5 + 0.5*hash1(k + 7)), 0.2 + 0.6*(0.5 + 0.5*hash1(k + 70)), 0.03, 0.02, 1); k += 1;);
-  ) : m <= 15 ? (                               // gut, nylon: fibres
-    gmat(m, 0.78); k = 0; loop(7, gln(0.1, 0.2 + 0.1*k, 0.9, 0.24 + 0.1*k); k += 1;);
-  ) : m == 16 ? (                               // carbon fibre: weave
-    gcol(0.45, 0.46, 0.52); k = 0; loop(8, j = 0; loop(5, ((k + j) & 1) ? grc(0.1 + 0.1*k, 0.18 + 0.13*j, 0.09, 0.12); j += 1;); k += 1;);
-  ) : m == 17 ? (                               // rubber: matte, with a sag
-    gmat(m, 0.7); gell(0.5, 0.55, 0.3, 0.12, 0); gell(0.5, 0.55, 0.2, 0.07, 0);
-  ) : m == 18 ? (                               // paper: ruled
-    gcol(0.6, 0.7, 0.9); k = 0; loop(5, gln(0.1, 0.25 + 0.12*k, 0.9, 0.25 + 0.12*k); k += 1;);
-    gcol(0.9, 0.5, 0.5); gln(0.24, 0.14, 0.24, 0.86);
-  ) : (                                         // jelly: gloss and wobble
-    gmat(m, 1.25); gell(0.35, 0.35, 0.14, 0.09, 1); gcol(1, 1, 1); gell(0.33, 0.33, 0.05, 0.03, 1);
-    gmat(m, 0.7); u = 0.1; loop(16, gln(u, 0.78 + 0.04*sin(u*20 + anim_ph), u + 0.05, 0.78 + 0.04*sin((u + 0.05)*20 + anim_ph)); u += 0.05;);
-  );
-  // rust spots and grime
-  age_ > 0.05 ? (
-    k = 0;
-    loop(floor(24*age_),
-      gfx_set(0.45 + 0.1*hash1(k + 90), 0.22, 0.1, 0.5 + 0.4*age_);
-      gci(0.12 + 0.76*(0.5 + 0.5*hash1(k + 17)), 0.18 + 0.64*(0.5 + 0.5*hash1(k + 61)), 0.015 + 0.03*(0.5 + 0.5*hash1(k + 5))*age_, 1);
-      k += 1;
-    );
+    !closed ? ( WF_CHB[o*2] = WF_CHA[(m - 1)*2]; WF_CHB[o*2 + 1] = WF_CHA[(m - 1)*2 + 1]; o += 1; );
+    i = 0; loop(o*2, WF_CHA[i] = WF_CHB[i]; i += 1;);
+    wf_chn = o;
   );
 );
-
-// ---- one picture per part. c: category, i: option, big: animate
-function draw_part(c, i, x, y, w, h, big) local(m, k, u, a, v, r0, u2)
+function wf_chdraw(closed, s) local(i)
 (
-  gbox(x, y, w, h);
-  a = big ? min(0.12, 0.6*vis_lvl) : 0.05;
-  c == 0 ? (
-    i == 0 ? (                                  // breath
-      gcol(0.62, 0.82, 1); k = 0;
-      loop(3, v = 0.3 + 0.2*k; u = 0.08; loop(14, gln(u, v + 0.05*sin(u*14 + anim_ph + k), u + 0.05, v + 0.05*sin((u + 0.05)*14 + anim_ph + k)); u += 0.05;); k += 1;);
-      gci(0.86, 0.34, 0.05, 0); gci(0.9, 0.56, 0.07, 0); gci(0.84, 0.74, 0.04, 0);
-    ) : i == 1 ? (                              // bow
-      gcol(0.58, 0.34, 0.16); u = 0.08;
-      loop(17, glnw(u, 0.3 - 0.1*sin($pi*u), u + 0.05, 0.3 - 0.1*sin($pi*(u + 0.05)), 3); u += 0.05;);
-      gcol(0.95, 0.93, 0.85); gln(0.12, 0.46, 0.93, 0.34);
-      gcol(0.2, 0.18, 0.18); grc(0.08, 0.34, 0.1, 0.16);
-    ) : i == 2 ? (                              // finger
-      gcol(0.95, 0.77, 0.64); grrf(0.36, 0.08, 0.28, 0.84, 0.13);
-      gcol(1, 0.9, 0.88); grrf(0.41, 0.13, 0.18, 0.2, 0.07);
-      gcol(0.8, 0.6, 0.5); gln(0.4, 0.55, 0.6, 0.55); gln(0.41, 0.7, 0.59, 0.7);
-    ) : i == 3 ? (                              // plectrum
-      gcol(0.92, 0.45, 0.18); gtri(0.22, 0.2, 0.78, 0.2, 0.5, 0.86);
-      gci(0.3, 0.26, 0.09, 1); gci(0.7, 0.26, 0.09, 1); grc(0.3, 0.17, 0.4, 0.12);
-      gcol(1, 0.65, 0.4); gell(0.44, 0.34, 0.08, 0.05, 1);
-    ) : i == 4 ? (                              // hammer
-      gcol(0.62, 0.42, 0.2); glnw(0.3, 0.92, 0.56, 0.38, 4);
-      gcol(0.62, 0.64, 0.68); gquad(0.3, 0.3, 0.72, 0.12, 0.84, 0.36, 0.42, 0.54);
-      gcol(0.8, 0.82, 0.86); gquad(0.3, 0.3, 0.72, 0.12, 0.75, 0.18, 0.33, 0.36);
-    ) : (                                       // electricity
-      gcol(1, 0.88, 0.2); gtri(0.62, 0.04, 0.24, 0.56, 0.56, 0.5); gtri(0.44, 0.44, 0.78, 0.44, 0.34, 0.96);
-      gcol(1, 1, 0.7); gln(0.58, 0.1, 0.34, 0.5);
+  i = 0;
+  loop(wf_chn, i == 0 ? wf_mv(s*WF_CHA[0], s*WF_CHA[1]) : wf_to(s*WF_CHA[i*2], s*WF_CHA[i*2 + 1]); i += 1;);
+  closed ? wf_close();
+);
+// a flat hand, fingers pointing along +x
+function wf_hand(x, y, s, a) local(i, fy, l)
+(
+  wf_push(x, y, a, 1);
+  wf_chs(); wf_ch(-30, -14); wf_ch(-4, -16); wf_ch(0, -12); wf_ch(0, 12); wf_ch(-4, 18); wf_ch(-30, 16); wf_ch(-38, 2);
+  wf_chrun(2, 1); wf_chdraw(1, s);
+  i = 0;
+  loop(4,
+    fy = (-11 + i*7.3)*s; l = (i == 0 ? 22 : i == 1 ? 26 : i == 2 ? 25 : 20)*s;
+    wf_chs(); wf_ch(0, fy - 3*s); wf_ch(l, fy - 2.6*s); wf_ch(l + 3*s, fy); wf_ch(l, fy + 2.6*s); wf_ch(0, fy + 3*s);
+    wf_chrun(2, 0); wf_chdraw(0, 1);
+    i += 1;
+  );
+  wf_chs(); wf_ch(-14*s, -15*s); wf_ch(-2*s, -26*s); wf_ch(8*s, -30*s); wf_ch(10*s, -26*s); wf_ch(0, -14*s);
+  wf_chrun(2, 0); wf_chdraw(0, 1);
+  wf_pop();
+);
+// a guitar's outline: half its width at x (0 to 1 along it)
+function wf_gh(x) local(a, b, h)
+(
+  a = max(0, 0.09 - (x - 0.68)*(x - 0.68)); b = max(0, 0.0529 - (x - 0.24)*(x - 0.24));
+  h = max(sqrt(a), 0.92*sqrt(b));
+  max(h, (x > 0.3 && x < 0.55) ? 0.16 : 0);
+);
+
+// ---- the parts. md: 0 in a line, 1 in layers. The element leaves where it
+// lies (el_*), the resonator where a radiator can join it (rz_*).
+function wf_element(opt, md) local(x0, x1, y, r, n, i, dx, dy, cx, rx, ry, yt, hg, a, lx, n1, n2, dep, w, xs, yf, bl, lt, xa, ya)
+(
+  x0 = lay_ex0; x1 = lay_ex1; y = lay_ey; el_x0 = x0; el_x1 = x1; el_y = y;
+  r = md == 0 ? 22 : 16;
+  opt == 0 ? (
+    // strings between a nut and a saddle (on a neck when in a line)
+    n = md == 0 ? 3 : 4;
+    md == 0 ? wf_box(x0, y + 6, x1 - x0, 9, 26);
+    wf_box(x0 + 4, y - 6, 8, 12, 14); wf_box(x1 - 14, y - 6, 8, 12, 14);
+    i = 0; loop(n, dx = i*6*0.55*1.4; dy = -i*6*0.45*1.4; wf_line(x0 + 8 + dx, y - 5 + dy, x1 - 10 + dx, y - 5 + dy); i += 1;);
+    el_top = y - 12; el_bot = md == 0 ? y + 15 : y; el_r = 6;
+  ) : opt == 1 ? (
+    // a skin: a drum in a line, a head over the body in layers
+    cx = 0.5*(x0 + x1); rx = min(130, 0.5*(x1 - x0)); ry = rx*0.26;
+    md == 0 ? (
+      yt = y - 22; hg = 50;
+      wf_ell(cx, yt, rx, ry); wf_ell(cx, yt, rx*0.95, ry*0.92);
+      wf_line(cx - rx, yt, cx - rx, yt + hg); wf_line(cx + rx, yt, cx + rx, yt + hg);
+      wf_arc(cx, yt + hg, rx, ry, 0, $pi); wf_arch(cx, yt + hg, rx, ry, $pi, 2*$pi);
+      i = 1; loop(5, a = $pi*i/6; lx = cx - rx*cos(a); wf_line(lx, yt + ry*sin(a), lx, yt + ry*sin(a) + 0.5*hg); i += 1;);
+      el_top = yt - ry; el_bot = yt + hg + ry;
+    ) : (
+      wf_ell(cx, y + 12, rx, ry); wf_ell(cx, y + 12, rx*1.04, ry*1.1);
+      i = 0; loop(10, a = 2*$pi*i/10; wf_line(cx + rx*1.04*cos(a), y + 12 + ry*1.1*sin(a), cx + rx*1.1*cos(a), y + 12 + ry*1.2*sin(a)); i += 1;);
+      el_top = y + 12 - ry; el_bot = y + 12 + ry;
     );
-  ) : c == 1 ? (
-    i == 0 ? (                                  // reed
-      gcol(0.14, 0.14, 0.17); gquad(0.08, 0.28, 0.72, 0.4, 0.72, 0.56, 0.08, 0.66);
-      gcol(0.92, 0.8, 0.44); gquad(0.14, 0.62, 0.9, 0.55, 0.9, 0.6, 0.14, 0.72);
-      gcol(0.6, 0.6, 0.65); grc(0.2, 0.6, 0.1, 0.16); grc(0.36, 0.58, 0.1, 0.16);
-      gcol(0.62, 0.82, 1); gln(0.76, 0.46, 0.95, 0.44); gln(0.76, 0.5, 0.95, 0.52);
-    ) : i == 1 ? (                              // lips
-      gcol(0.86, 0.38, 0.44); gell(0.46, 0.42, 0.3, 0.12, 1); gell(0.46, 0.6, 0.28, 0.13, 1);
-      gcol(0.4, 0.1, 0.14); gln(0.2, 0.51, 0.72, 0.51);
-      gcol(0.95, 0.6, 0.65); gell(0.42, 0.37, 0.1, 0.03, 1);
-      gcol(0.62, 0.82, 1); k = 0; loop(3, gln(0.8 + 0.05*k, 0.4, 0.8 + 0.05*k, 0.62); k += 1;);
-    ) : i == 2 ? (                              // hammer (piano)
-      gcol(0.72, 0.56, 0.34); glnw(0.12, 0.86, 0.52, 0.5, 3);
-      gcol(0.92, 0.92, 0.86); gell(0.62, 0.4, 0.14, 0.2, 1);
-      gcol(0.75, 0.2, 0.2); gell(0.62, 0.4, 0.07, 0.1, 1);
-      gcol(0.8, 0.8, 0.82); glnw(0.05, 0.14, 0.95, 0.14, 2);
-    ) : i == 3 ? (                              // bow on a string
-      gcol(0.8, 0.8, 0.82); gln(0.5, 0.04, 0.5, 0.96);
-      gcol(0.58, 0.34, 0.16); glnw(0.04, 0.3, 0.96, 0.52, 3);
-      gcol(0.95, 0.93, 0.85); gln(0.04, 0.4, 0.96, 0.62);
-    ) : i == 4 ? (                              // pick on a string
-      gcol(0.8, 0.8, 0.82); gln(0.05, 0.64, 0.5, 0.54); gln(0.5, 0.54, 0.95, 0.64);
-      gcol(0.92, 0.45, 0.18); gtri(0.36, 0.2, 0.64, 0.2, 0.5, 0.54); gci(0.4, 0.23, 0.05, 1); gci(0.6, 0.23, 0.05, 1);
-    ) : (                                       // mallet
-      gcol(0.72, 0.56, 0.34); glnw(0.22, 0.92, 0.56, 0.44, 3);
-      gcol(0.96, 0.85, 0.55); gci(0.62, 0.34, 0.17, 1);
-      gcol(0.8, 0.68, 0.4); garc_(0.62, 0.34, 0.11); garc_(0.62, 0.34, 0.06);
+    el_x0 = cx - rx; el_x1 = cx + rx; el_r = ry;
+  ) : opt == 2 ? (
+    // a bar on two supports at its nodes
+    wf_box(x0 + 8, y - 7, x1 - x0 - 16, 14, md == 0 ? 30 : 34);
+    n1 = x0 + 8 + 0.224*(x1 - x0 - 16); n2 = x0 + 8 + 0.776*(x1 - x0 - 16);
+    md == 0 ? (
+      wf_mv(n1 - 8, y + 22); wf_to(n1, y + 7); wf_to(n1 + 8, y + 22); wf_close();
+      wf_mv(n2 - 8, y + 22); wf_to(n2, y + 7); wf_to(n2 + 8, y + 22); wf_close();
+    ) : (
+      wf_lineh(n1, y + 7, n1 + 12, y - 4); wf_ell(n1 + 6, y - 13, 2.5, 1.5);
+      wf_lineh(n2, y + 7, n2 + 12, y - 4); wf_ell(n2 + 6, y - 13, 2.5, 1.5);
     );
-  ) : c == 2 ? (
-    m = elm;
-    i == 0 ? (                                  // string
-      gcol(0.25, 0.2, 0.18); grc(0.02, 0.36, 0.06, 0.28); grc(0.92, 0.36, 0.06, 0.28);
-      gmat(m, 1); u = 0.08;
-      loop(21, glnw(u, 0.5 + gwob((u - 0.08)/0.84, a*2.2), u + 0.04, 0.5 + gwob((u + 0.04 - 0.08)/0.84, a*2.2), 2); u += 0.04;);
-    ) : i == 1 ? (                              // membrane
-      gcol(0.35, 0.28, 0.24); gquad(0.08, 0.42, 0.92, 0.42, 0.92, 0.74, 0.08, 0.74); gell(0.5, 0.74, 0.42, 0.14, 1);
-      gmat(m, 1); gell(0.5, 0.42, 0.42, 0.14 + a*0.3, 1);
-      gmat(m, 0.7); gell(0.5, 0.42, 0.42, 0.14, 0); gell(0.5, 0.42, 0.2, 0.06, 0);
-    ) : i == 2 ? (                              // bar
-      gmat(m, 1); u = 0.06;
-      loop(22, v = a*1.5*cos(2*$pi*(u - 0.5))*sin(anim_ph); gquad(u, 0.4 + v, u + 0.042, 0.4 + v, u + 0.042, 0.6 + v, u, 0.6 + v); u += 0.04;);
-      gmat(m, 1.3); gln(0.06, 0.41, 0.94, 0.41);
-      gcol(0.2, 0.2, 0.2); gci(0.244, 0.66, 0.025, 1); gci(0.756, 0.66, 0.025, 1);
-      gcol(0.6, 0.5, 0.4); gln(0.244, 0.66, 0.244, 0.9); gln(0.756, 0.66, 0.756, 0.9);
-    ) : i == 3 ? (                              // plate
-      gmat(m, 1); gquad(0.14, 0.2 - a, 0.96, 0.28, 0.86, 0.8 + a, 0.04, 0.72);
-      gmat(m, 0.72); gln(0.55, 0.24, 0.45, 0.76); gln(0.09, 0.46, 0.91, 0.54);
-      gmat(m, 1.3); gln(0.14, 0.2 - a, 0.96, 0.28);
-    ) : i == 4 ? (                              // reed / tine
-      gcol(0.25, 0.22, 0.2); grc(0.04, 0.3, 0.16, 0.4);
-      gmat(m, 1); u = 0.2;
-      loop(18, v = 3*a*((u - 0.2)/0.74)^2*sin(anim_ph); glnw(u, 0.5 + v, u + 0.04, 0.5 + 3*a*((u + 0.04 - 0.2)/0.74)^2*sin(anim_ph), 4); u += 0.04;);
-    ) : (                                       // air column
-      gmat(m, 1); glnw(0.04, 0.32, 0.96, 0.32, 3); glnw(0.04, 0.68, 0.96, 0.68, 3);
-      gcol(0.25, 0.22, 0.2); grc(0.02, 0.3, 0.03, 0.4);
-      gcol(0.62, 0.82, 1); u = 0.06;
-      loop(22, gln(u, 0.5 + (0.1 + a)*cos($pi*u*1.2)*sin(anim_ph), u + 0.04, 0.5 + (0.1 + a)*cos($pi*(u + 0.04)*1.2)*sin(anim_ph));
-               gln(u, 0.5 - (0.1 + a)*cos($pi*u*1.2)*sin(anim_ph), u + 0.04, 0.5 - (0.1 + a)*cos($pi*(u + 0.04)*1.2)*sin(anim_ph)); u += 0.04;);
+    el_top = y - 22; el_bot = y + 7; el_r = 7;
+  ) : opt == 3 ? (
+    // a flat sheet, with its thickness
+    dep = md == 0 ? 70 : 64; w = x1 - x0 - 20; xs = x0 + 10; yf = y + 14;
+    dx = dep*0.55; dy = -dep*0.45;
+    wf_mv(xs, yf); wf_to(xs + w, yf); wf_to(xs + w + dx, yf + dy); wf_to(xs + dx, yf + dy); wf_close();
+    wf_mv(xs, yf); wf_to(xs, yf + 4); wf_to(xs + w, yf + 4); wf_to(xs + w, yf);
+    wf_line(xs + w, yf + 4, xs + w + dx, yf + dy + 4); wf_line(xs + w + dx, yf + dy, xs + w + dx, yf + dy + 4);
+    el_top = yf + dy; el_bot = yf + 4; el_r = 10;
+  ) : opt == 4 ? (
+    // tines clamped in a block, a comb of them in layers
+    n = md == 0 ? 4 : 7; bl = md == 0 ? 30 : 40;
+    wf_box(x0, y - 12, bl, 24, n*8 + 6);
+    i = 0;
+    loop(n,
+      lt = (x1 - x0 - bl - 10)*(1 - i*(md == 0 ? 0.16 : 0.1));
+      dx = (i*8 + 4)*0.55; dy = -(i*8 + 4)*0.45; xa = x0 + bl + dx; ya = y + dy;
+      wf_mv(xa, ya - 3); wf_to(xa + lt - 4, ya - 2); wf_to(xa + lt, ya); wf_to(xa + lt - 4, ya + 2); wf_to(xa, ya + 3);
+      i += 1;
     );
-  ) : (c == 3 || c == 5) ? (
-    draw_mat(i);
-  ) : c == 4 ? (
-    m = rsm;
-    i == 0 ? (                                  // bore (cone)
-      gmat(m, 1); gquad(0.06, 0.44, 0.9, 0.16, 0.9, 0.84, 0.06, 0.56);
-      gmat(m, 0.55); gell(0.9, 0.5, 0.05, 0.34, 1);
-      gmat(m, 1.3); gln(0.06, 0.44, 0.9, 0.16);
-    ) : i == 1 ? (                              // soundbox
-      gmat(m, 1); gell(0.34, 0.52, 0.28, 0.34, 1); gell(0.7, 0.52, 0.22, 0.27, 1); grc(0.34, 0.3, 0.36, 0.44);
-      gcol(0.1, 0.08, 0.08); gci(0.56, 0.52, 0.09, 1);
-      gmat(m, 0.6); gell(0.34, 0.52, 0.28, 0.34, 0);
-    ) : i == 2 ? (                              // pipe
-      gmat(m, 1); grc(0.38, 0.14, 0.24, 0.74);
-      gmat(m, 0.5); gell(0.5, 0.14, 0.12, 0.05, 1);
-      gmat(m, 1.35); gln(0.42, 0.18, 0.42, 0.86);
-      gmat(m, 0.8); gell(0.5, 0.88, 0.12, 0.05, 1);
-    ) : i == 3 ? (                              // cavity (gourd)
-      gmat(m, 1); gci(0.5, 0.62, 0.3, 1); grc(0.43, 0.12, 0.14, 0.26);
-      gmat(m, 0.45); gell(0.5, 0.12, 0.07, 0.03, 1);
-      gmat(m, 1.3); garc_(0.44, 0.56, 0.18);
-    ) : (                                       // solid body
-      gmat(m, 1); grc(0.14, 0.36, 0.6, 0.5);
-      gmat(m, 1.3); gquad(0.14, 0.36, 0.3, 0.2, 0.9, 0.2, 0.74, 0.36);
-      gmat(m, 0.7); gquad(0.74, 0.36, 0.9, 0.2, 0.9, 0.7, 0.74, 0.86);
-    );
-  ) : c == 6 ? (
-    m = rsm;
-    i == 0 ? (                                  // bridge
-      gmat(m, 1); gquad(0.18, 0.78, 0.82, 0.78, 0.68, 0.44, 0.32, 0.44);
-      gcol(0.1, 0.1, 0.1); gtri(0.4, 0.78, 0.6, 0.78, 0.5, 0.62);
-      gcol(0.8, 0.8, 0.82); k = 0; loop(4, gln(0.02, 0.36 + 0.02*k, 0.98, 0.36 + 0.02*k); k += 1;);
-    ) : i == 1 ? (                              // soundpost
-      gmat(m, 1); glnw(0.06, 0.2, 0.94, 0.26, 4); glnw(0.06, 0.82, 0.94, 0.78, 4);
-      gmat(m, 0.75); grc(0.46, 0.24, 0.08, 0.55);
-    ) : i == 2 ? (                              // mouthpiece
-      gmat(m, 1); gci(0.32, 0.5, 0.24, 1);
-      gquad(0.42, 0.42, 0.96, 0.46, 0.96, 0.54, 0.42, 0.58);
-      gcol(0.1, 0.08, 0.08); gell(0.26, 0.5, 0.1, 0.16, 1);
-      gmat(m, 1.3); gell(0.32, 0.5, 0.24, 0.24, 0);
-    ) : (                                       // windway
-      gmat(m, 1); grc(0.06, 0.28, 0.58, 0.44);
-      gcol(0.08, 0.08, 0.1); grc(0.06, 0.47, 0.58, 0.06);
-      gmat(m, 1); gtri(0.72, 0.5, 0.94, 0.3, 0.94, 0.5);
-      gcol(0.62, 0.82, 1); gln(0.64, 0.5, 0.8, 0.48); gln(0.64, 0.5, 0.8, 0.54);
-    );
-  ) : c == 7 ? (
-    m = rsm;
-    i == 0 ? (                                  // bell
-      gmat(m, 1); u = 0.04;
-      loop(20, gquad(u, 0.5 - 0.06 - 0.36*(u/0.84)^3, u + 0.043, 0.5 - 0.06 - 0.36*((u + 0.043)/0.84)^3,
-                     u + 0.043, 0.5 + 0.06 + 0.36*((u + 0.043)/0.84)^3, u, 0.5 + 0.06 + 0.36*(u/0.84)^3); u += 0.042;);
-      gmat(m, 0.5); gell(0.88, 0.5, 0.05, 0.42, 1);
-      gmat(m, 1.35); u = 0.04; loop(20, gln(u, 0.5 - 0.06 - 0.36*(u/0.84)^3, u + 0.042, 0.5 - 0.06 - 0.36*((u + 0.042)/0.84)^3); u += 0.042;);
-    ) : i == 1 ? (                              // soundboard
-      gmat(m, 1); grc(0.06, 0.2, 0.88, 0.6);
-      gmat(m, 0.75); k = 0; loop(6, u = 0.06; loop(15, gln(u, 0.26 + 0.1*k + 0.02*sin(u*9 + k), u + 0.058, 0.26 + 0.1*k + 0.02*sin((u + 0.058)*9 + k)); u += 0.058;); k += 1;);
-    ) : i == 2 ? (                              // drumhead
-      gcol(0.3, 0.3, 0.32); gci(0.5, 0.5, 0.44, 1);
-      gmat(m, 1.1); gci(0.5, 0.5, 0.38, 1);
-      gcol(0.75, 0.75, 0.78); k = 0; loop(12, gln(0.5 + 0.4*cos(k*$pi/6), 0.5 + 0.4*sin(k*$pi/6), 0.5 + 0.46*cos(k*$pi/6), 0.5 + 0.46*sin(k*$pi/6)); k += 1;);
-    ) : (                                       // cone
-      gcol(0.2, 0.2, 0.22); gci(0.5, 0.5, 0.46, 1);
-      gmat(m, 0.8); gci(0.5, 0.5, 0.38, 1);
-      gmat(m, 1); gci(0.5, 0.5, 0.28, 1);
-      gmat(m, 0.6); gci(0.5, 0.5, 0.28, 0); gci(0.5, 0.5, 0.18, 0);
-      gcol(0.15, 0.15, 0.16); gci(0.5, 0.5, 0.1, 1);
-    );
-  ) : c == 8 ? (
-    i == 0 ? (                                  // frets
-      gcol(0.3, 0.2, 0.14); grc(0.04, 0.3, 0.92, 0.4);
-      gcol(0.82, 0.82, 0.85); u = 0.08; k = 0; loop(8, glnw(u, 0.3, u, 0.7, 2); u += 0.16*0.891^k; k += 1;);
-      gcol(0.9, 0.9, 0.9); gci(0.33, 0.5, 0.025, 1);
-    ) : i == 1 ? (                              // tone holes
-      gcol(0.2, 0.18, 0.18); grc(0.04, 0.36, 0.92, 0.28);
-      gcol(0.05, 0.05, 0.05); k = 0; loop(5, gci(0.18 + 0.16*k, 0.5, 0.045, 1); k += 1;);
-      gcol(0.8, 0.8, 0.82); gci(0.82, 0.5, 0.06, 1); gln(0.82, 0.44, 0.95, 0.3);
-    ) : i == 2 ? (                              // valves
-      k = 0;
-      loop(3,
-        gcol(0.85, 0.72, 0.35); grc(0.18 + 0.24*k, 0.3, 0.16, 0.56);
-        gcol(0.95, 0.9, 0.8); gell(0.26 + 0.24*k, 0.22, 0.08, 0.05, 1); grc(0.24 + 0.24*k, 0.22, 0.04, 0.1);
-        k += 1;
-      );
-    ) : i == 3 ? (                              // slide
-      gcol(0.85, 0.72, 0.35); glnw(0.08, 0.36, 0.8, 0.36, 3); glnw(0.08, 0.64, 0.8, 0.64, 3); garc_(0.8, 0.5, 0.14);
-      gcol(0.6, 0.8, 0.95); gln(0.3, 0.5, 0.6, 0.5); gtri(0.6, 0.45, 0.6, 0.55, 0.66, 0.5); gtri(0.3, 0.45, 0.3, 0.55, 0.24, 0.5);
-    ) : (                                       // keys
-      gcol(0.95, 0.95, 0.93); grc(0.06, 0.2, 0.88, 0.62);
-      gcol(0.3, 0.3, 0.3); k = 1; loop(6, gln(0.06 + 0.1257*k, 0.2, 0.06 + 0.1257*k, 0.82); k += 1;);
-      gcol(0.1, 0.1, 0.12); k = 0; loop(6, (k != 2) ? grc(0.15 + 0.1257*k, 0.2, 0.07, 0.38); k += 1;);
-    );
-  ) : c == 9 ? (
-    i == 0 ? (                                  // pegs
-      gcol(0.35, 0.22, 0.15); grc(0.3, 0.1, 0.4, 0.8);
-      gcol(0.12, 0.1, 0.1); k = 0; loop(2, glnw(0.1, 0.32 + 0.36*k, 0.9, 0.32 + 0.36*k, 3); gell(0.12, 0.32 + 0.36*k, 0.08, 0.1, 1); k += 1;);
-    ) : i == 1 ? (                              // tuning pins
-      gcol(0.4, 0.3, 0.22); grc(0.06, 0.25, 0.88, 0.5);
-      k = 0; loop(4, gcol(0.75, 0.75, 0.78); gci(0.18 + 0.21*k, 0.5, 0.06, 1); gcol(0.5, 0.5, 0.52); gci(0.18 + 0.21*k, 0.5, 0.03, 0); gcol(0.8, 0.8, 0.82); gln(0.18 + 0.21*k, 0.44, 0.18 + 0.21*k, 0.05); k += 1;);
-    ) : i == 2 ? (                              // machine head
-      gcol(0.75, 0.75, 0.78); gci(0.4, 0.5, 0.2, 1);
-      gcol(0.55, 0.55, 0.58); k = 0; loop(12, gln(0.4 + 0.2*cos(k*$pi/6), 0.5 + 0.2*sin(k*$pi/6), 0.4 + 0.26*cos(k*$pi/6), 0.5 + 0.26*sin(k*$pi/6)); k += 1;);
-      gcol(0.95, 0.9, 0.8); gell(0.84, 0.5, 0.1, 0.16, 1); gcol(0.75, 0.75, 0.78); glnw(0.6, 0.5, 0.76, 0.5, 3);
-    ) : (                                       // tuning slide
-      gcol(0.85, 0.72, 0.35); glnw(0.1, 0.36, 0.66, 0.36, 3); glnw(0.1, 0.64, 0.66, 0.64, 3); garc_(0.66, 0.5, 0.14);
-      gcol(0.6, 0.8, 0.95); gtri(0.86, 0.44, 0.86, 0.56, 0.94, 0.5);
-    );
-  ) : c == 10 ? (
-    i == 0 ? (                                  // damper
-      gcol(0.8, 0.8, 0.82); glnw(0.04, 0.7, 0.96, 0.7, 2);
-      gcol(0.25, 0.2, 0.18); grc(0.46, 0.08, 0.08, 0.3);
-      gcol(0.75, 0.18, 0.2); grrf(0.3, 0.36, 0.4, 0.32, 0.06);
-    ) : i == 1 ? (                              // mute
-      gcol(0.7, 0.72, 0.75); gquad(0.1, 0.36, 0.1, 0.64, 0.86, 0.9, 0.86, 0.1);
-      gcol(0.55, 0.42, 0.28); grc(0.2, 0.38, 0.14, 0.05); grc(0.2, 0.57, 0.14, 0.05);
-      gcol(0.4, 0.42, 0.45); gell(0.86, 0.5, 0.04, 0.4, 1);
-    ) : i == 2 ? (                              // palm
-      gcol(0.8, 0.8, 0.82); k = 0; loop(4, gln(0.02, 0.6 + 0.06*k, 0.98, 0.6 + 0.06*k); k += 1;);
-      gcol(0.95, 0.77, 0.64); gell(0.5, 0.5, 0.36, 0.26, 1);
-      gcol(0.85, 0.66, 0.54); gell(0.5, 0.56, 0.26, 0.14, 0);
-    ) : i == 3 ? (                              // felt
-      gcol(0.8, 0.8, 0.82); glnw(0.04, 0.62, 0.96, 0.62, 2);
-      gcol(0.72, 0.16, 0.2); grc(0.1, 0.34, 0.8, 0.24);
-      gcol(0.55, 0.1, 0.14); u = 0.12; loop(13, gln(u, 0.36, u + 0.05, 0.56); u += 0.06;);
-    ) : (                                       // hand
-      gcol(0.95, 0.77, 0.64); gell(0.46, 0.64, 0.24, 0.26, 1);
-      k = 0; loop(4, grrf(0.25 + 0.11*k, 0.12 + 0.04*abs(k - 1.5), 0.09, 0.5, 0.045); k += 1;);
-      grrf(0.64, 0.5, 0.26, 0.1, 0.05);
+    el_top = y - 12 - (n*8 + 6)*0.45; el_bot = y + 12; el_r = 12; el_x1 = x0 + bl + (x1 - x0 - bl - 10);
+  ) : (
+    // a tube of air
+    wf_tube(x0, x1, y, r, r, 1, 1);
+    wf_ring(x0 + (x1 - x0)*0.36, y, r); wf_ring(x0 + (x1 - x0)*0.68, y, r);
+    el_top = y - r; el_bot = y + r; el_r = r;
+  );
+);
+
+function wf_res(opt, md) local(x0, x1, y, r0, w, sy, dep, i, t, cx, rr, bx0, bx1, by0, by1, cy, yt, cyy)
+(
+  rz_cone = 0;
+  md == 0 ? (
+    x0 = lay_rx0; x1 = lay_rx1; y = lay_ey; r0 = el_r > 4 ? min(el_r, 22) : 14;
+    opt == 0 ? (
+      wf_tube(x0, x1, y, r0, 40, 0, 0);
+      wf_ring(x0 + 70, y, r0 + (40 - r0)*70/(x1 - x0)); wf_ring(x0 + 140, y, r0 + (40 - r0)*140/(x1 - x0));
+      rz_x = x1; rz_y = y; rz_r = 40;
+    ) : opt == 1 ? (
+      w = x1 - x0; sy = 0.42*w; dep = 22;
+      i = 0; loop(41, t = i/40; i == 0 ? wf_mv(x0 + t*w, y - wf_gh(t)*sy) : wf_to(x0 + t*w, y - wf_gh(t)*sy); i += 1;);
+      i = 40; loop(41, t = i/40; wf_to(x0 + t*w, y + wf_gh(t)*sy); i -= 1;); wf_close();
+      i = 40; loop(41, t = i/40; i == 40 ? wf_mv(x0 + t*w, y + wf_gh(t)*sy + dep) : wf_to(x0 + t*w, y + wf_gh(t)*sy + dep); i -= 1;);
+      wf_line(x0 + w*0.98, y, x0 + w*0.98, y + dep); wf_lineh(x0 + 2, y, x0 + 2, y + dep);
+      wf_ell(x0 + w*0.46, y, w*0.08, w*0.08);
+      rz_x = x1; rz_y = y; rz_r = 20;
+    ) : opt == 2 ? (
+      wf_tube(x0, x1, y, r0, r0, 0, 1); wf_ell(x1, y, r0*0.24, r0*0.8); wf_lineh(x1 - 8, y - r0, x1 - 8, y + r0);
+      rz_x = x1; rz_y = y; rz_r = r0;
+    ) : opt == 3 ? (
+      cx = x0 + (x1 - x0)*0.6; rr = (x1 - x0)*0.36;
+      wf_tube(x0, cx - rr*0.92, y, 9, 9, 1, 0);
+      wf_ell(cx, y, rr, rr); wf_arc(cx, y, rr, rr*0.3, 0, $pi); wf_arch(cx, y, rr, rr*0.3, $pi, 2*$pi);
+      wf_arc(cx, y, rr*0.4, rr, -0.5*$pi, 0.5*$pi);
+      rz_x = cx + rr; rz_y = y; rz_r = 14;
+    ) : (
+      wf_box(x0, y - 42, x1 - x0 - 24, 84, 40); rz_x = x1 - 24; rz_y = y; rz_r = 26;
     );
   ) : (
-    i == 0 ? (                                  // keywork
-      gcol(0.8, 0.8, 0.82); glnw(0.06, 0.3, 0.94, 0.3, 2);
-      k = 0; loop(3, gln(0.2 + 0.3*k, 0.3, 0.2 + 0.3*k, 0.62); gci(0.2 + 0.3*k, 0.68, 0.09, 1); k += 1;);
-    ) : i == 1 ? (                              // pedals
-      gcol(0.85, 0.72, 0.35); gquad(0.12, 0.32, 0.42, 0.32, 0.46, 0.86, 0.08, 0.86); gquad(0.58, 0.32, 0.88, 0.32, 0.92, 0.86, 0.54, 0.86);
-      gcol(0.6, 0.5, 0.25); grc(0.2, 0.14, 0.14, 0.18); grc(0.66, 0.14, 0.14, 0.18);
-    ) : i == 2 ? (                              // rotary valves
-      k = 0; loop(2, gcol(0.85, 0.72, 0.35); gci(0.3 + 0.4*k, 0.5, 0.18, 1); gcol(0.45, 0.35, 0.15); gquad(0.3 + 0.4*k - 0.1, 0.42, 0.3 + 0.4*k + 0.04, 0.34, 0.3 + 0.4*k + 0.1, 0.58, 0.3 + 0.4*k - 0.04, 0.66); k += 1;);
-    ) : i == 3 ? (                              // lever
-      gcol(0.8, 0.8, 0.82); glnw(0.08, 0.72, 0.9, 0.3, 3);
-      gcol(0.3, 0.3, 0.32); gci(0.4, 0.56, 0.06, 1);
-      gcol(0.6, 0.8, 0.95); u = 0.66; loop(6, gln(u, 0.62, u + 0.03, 0.72); gln(u + 0.03, 0.72, u + 0.06, 0.62); u += 0.06;);
-    ) : (                                       // electronics
-      gcol(0.2, 0.22, 0.25); grrf(0.06, 0.18, 0.88, 0.64, 0.08);
-      gcol(0.4, 1, 0.6); u = 0.12; loop(15, gln(u, 0.42 + 0.14*sin(u*16 + anim_ph), u + 0.05, 0.42 + 0.14*sin((u + 0.05)*16 + anim_ph)); u += 0.05;);
-      gcol(0.8, 0.8, 0.82); gci(0.3, 0.7, 0.06, 1); gci(0.6, 0.7, 0.06, 1);
+    bx0 = lay_bx0; bx1 = lay_bx1; by0 = lay_by0; by1 = lay_by1; cy = 0.5*(by0 + by1);
+    opt == 0 ? (
+      wf_tube(bx0, bx1, cy + 10, 16, 46, 1, 1);
+      wf_ring(bx0 + 150, cy + 10, 16 + 30*150/(bx1 - bx0)); wf_ring(bx0 + 300, cy + 10, 16 + 30*300/(bx1 - bx0));
+      rz_fx = bx1; rz_fy = cy + 10; rz_fr = 46; rz_top = cy - 36;
+    ) : opt == 1 ? (
+      w = bx1 - bx0; sy = 1.05*(by1 - by0); dep = 30; yt = by0 + 22;
+      i = 0; loop(49, t = i/48; i == 0 ? wf_mv(bx0 + t*w, yt + 8 - wf_gh(t)*sy) : wf_to(bx0 + t*w, yt + 8 - wf_gh(t)*sy); i += 1;);
+      i = 48; loop(49, t = i/48; wf_to(bx0 + t*w, yt + 8 + wf_gh(t)*sy); i -= 1;); wf_close();
+      i = 48; loop(49, t = i/48; i == 48 ? wf_mv(bx0 + t*w, yt + 8 + wf_gh(t)*sy + dep) : wf_to(bx0 + t*w, yt + 8 + wf_gh(t)*sy + dep); i -= 1;);
+      wf_line(bx0 + w*0.98, yt + 8, bx0 + w*0.98, yt + 8 + dep);
+      wf_ell(bx0 + w*0.42, yt + 8, w*0.07, w*0.07*0.42);
+      rz_fx = bx1; rz_fy = yt + 30; rz_fr = 22; rz_top = yt + 8 - 0.3*sy; rz_cone = 1; rz_cx = bx0 + w*0.7; rz_cy = yt + 8 + 0.18*sy;
+    ) : opt == 2 ? (
+      i = 0; loop(7, cx = bx0 + 20 + i*(bx1 - bx0 - 40)/6; wf_vtube(cx, by0 + 6, by0 + 126 - i*11, 13, 1); i += 1;);
+      wf_lineh(bx0 + 4, by0 + 18, bx1 - 4, by0 + 18);
+      rz_fx = bx1 + 14; rz_fy = by0 + 40; rz_fr = 16; rz_top = by0;
+    ) : opt == 3 ? (
+      cx = 0.5*(bx0 + bx1); rr = 58; cyy = by0 + 66;
+      wf_vtube(cx, lay_ey + 6, cyy - rr*0.94, 9, 0);
+      wf_ell(cx, cyy, rr*1.25, rr); wf_arc(cx, cyy, rr*1.25, rr*0.3, 0, $pi); wf_arch(cx, cyy, rr*1.25, rr*0.3, $pi, 2*$pi);
+      wf_arc(cx, cyy, rr*0.45, rr, -0.5*$pi, 0.5*$pi);
+      rz_fx = cx + rr*1.25; rz_fy = cyy; rz_fr = 16; rz_top = cyy - rr; rz_cone = 1; rz_cx = cx + rr*0.55; rz_cy = cyy + rr*0.35;
+    ) : (
+      wf_box(bx0, by0 + 14, bx1 - bx0 - 40, by1 - by0 - 18, 60);
+      rz_fx = bx1 - 40; rz_fy = cy + 12; rz_fr = 24; rz_top = by0 + 14; rz_cone = 1; rz_cx = bx1 - 110; rz_cy = cy + 12;
     );
+  );
+);
+
+function wf_coupler(opt) local(a, b, x, yt, yb, y)
+(
+  y = lay_ey;
+  opt == 2 ? (
+    a = lay_cx0; b = lay_cx1;
+    wf_tube(a, a + 26, y, 9, 5, 1, 0); wf_tube(a + 26, b, y, 5, min(el_r > 4 ? el_r : 14, 22), 0, 0); wf_lineh(a + 26, y - 5, a + 26, y + 5);
+  ) : opt == 3 ? (
+    a = lay_cx0; b = lay_cx1; wf_box(a, y - 13, b - a, 26, 20);
+    wf_mv(b - 26, y - 13); wf_to(b - 18, y - 20); wf_to(b - 6, y - 20); wf_to(b - 12, y - 13); wf_close();
+    wf_lineh(a + 4, y, b - 22, y - 9);
+  ) : opt == 0 ? (
+    x = lay_cpx; yt = el_bot + 1; yb = lay_cpy;
+    wf_mv(x - 22, yb); wf_to(x - 14, yt); wf_to(x + 14, yt); wf_to(x + 22, yb); wf_to(x + 12, yb); wf_to(x + 6, yb - 7); wf_to(x - 6, yb - 7); wf_to(x - 12, yb); wf_close();
+    wf_line(x + 14, yt, x + 22, yt - 6); wf_line(x + 22, yt - 6, x + 30, yb - 6); wf_line(x + 22, yb, x + 30, yb - 6);
+  ) : (
+    x = lay_cpx; yt = el_bot + 1; yb = lay_cpy + 4; wf_vtube(x, yt, yb, 5, 1);
+  );
+);
+
+// a flared bell from (x0, y, radius r0) to x1, mouth radius r1
+function wf_bell(x0, x1, y, r0, r1) local(i, t, x, r)
+(
+  i = 0; loop(25, t = i/24; x = x0 + t*(x1 - x0); r = r0 + (r1 - r0)*t*t*t; i == 0 ? wf_mv(x, y - r) : wf_to(x, y - r); i += 1;);
+  i = 0; loop(25, t = i/24; x = x0 + t*(x1 - x0); r = r0 + (r1 - r0)*t*t*t; i == 0 ? wf_mv(x, y + r) : wf_to(x, y + r); i += 1;);
+  wf_ell(x1, y, r1*0.28, r1);
+);
+function wf_rad(opt, md) local(x0, y, r0, x1, i, a, aa, xa, xb, yf, dx, dy, cx, yy)
+(
+  md == 0 ? (
+    x0 = rz_x; y = rz_y; r0 = rz_r; x1 = lay_dx1;
+    opt == 0 ? (
+      wf_bell(x0, x1, y, r0, 78); wf_ell(x1, y, 78*0.24, 78*0.88);
+    ) : opt == 1 ? (
+      wf_tube(x0, x0 + 30, y, 8, 8, 0, 0); wf_box(x0 + 30, y - 85, 12, 150, 70);
+    ) : opt == 2 ? (
+      a = x0 + 50; wf_tube(x0, a, y, min(r0, 12), min(r0, 12), 0, 0);
+      wf_line(a, y - 70, x1 - 20, y - 70); wf_line(a, y + 70, x1 - 20, y + 70);
+      wf_arc(a, y, 22, 70, 0.5*$pi, 1.5*$pi); wf_arch(a, y, 22, 70, -0.5*$pi, 0.5*$pi);
+      wf_ell(x1 - 20, y, 22, 70); wf_ell(x1 - 20, y, 19, 64);
+      i = 1; loop(4, aa = -0.5*$pi + $pi*i/5; wf_line(a + 22*cos(aa) + 10, y + 70*sin(aa), x1 - 20 + 22*cos(aa) - 10, y + 70*sin(aa)); i += 1;);
+    ) : (
+      a = x0 + 30; wf_box(x0, y - 16, 30, 32, 16);
+      wf_ell(x1 - 20, y, 22, 72); wf_ell(x1 - 20, y, 17, 60); wf_ell(x1 - 44, y, 7, 22);
+      wf_line(x1 - 20, y - 60, x1 - 44, y - 22); wf_line(x1 - 20, y + 60, x1 - 44, y + 22);
+      wf_lineh(a, y - 16, x1 - 44, y - 22); wf_lineh(a, y + 16, x1 - 44, y + 22);
+    );
+  ) : (
+    opt == 0 ? (
+      wf_bell(rz_fx, 880, rz_fy, min(rz_fr, 16), 62);
+    ) : opt == 1 ? (
+      xa = lay_bx0 + 30; xb = lay_bx1 - 60; yf = rz_top - 2; dx = 50*0.55; dy = -50*0.45;
+      wf_mv(xa, yf); wf_to(xb, yf); wf_to(xb + dx, yf + dy); wf_to(xa + dx, yf + dy); wf_close();
+      wf_mv(xa, yf); wf_to(xa, yf + 4); wf_to(xb, yf + 4); wf_to(xb, yf);
+      wf_line(xb, yf + 4, xb + dx, yf + dy + 4); wf_line(xb + dx, yf + dy, xb + dx, yf + dy + 4);
+      wf_ell(xa + (xb - xa)*0.35 + 0.5*dx, yf + 0.5*dy, 22, 7);
+    ) : opt == 2 ? (
+      cx = 0.5*(lay_bx0 + lay_bx1) - 10; yy = rz_top + 2;
+      wf_ell(cx, yy, 150, 30); wf_ell(cx, yy, 158, 34);
+      i = 0; loop(12, a = 2*$pi*i/12; wf_line(cx + 158*cos(a), yy + 34*sin(a), cx + 158*cos(a), yy + 34*sin(a) + 10); i += 1;);
+    ) : (
+      cx = rz_cone ? rz_cx : lay_bx1 - 100; yy = rz_cone ? rz_cy : 0.5*(lay_by0 + lay_by1);
+      wf_ell(cx, yy, 34, 34); wf_ell(cx, yy, 26, 26); wf_ell(cx, yy, 9, 9);
+      i = 0; loop(4, a = 0.25*$pi + 0.5*$pi*i; wf_ell(cx + 30*cos(a), yy + 30*sin(a), 1.8, 1.8); i += 1;);
+    );
+  );
+);
+
+// the exciter, touching the element at the origin, coming from -x
+function wf_exc(opt)
+(
+  opt == 0 ? (
+    wf_mv(-88, -10); wf_to(-22, -12); wf_to(0, -5); wf_to(0, 5); wf_to(-22, 10); wf_to(-88, 10);
+    wf_arc(-88, 0, 3, 10, 0.5*$pi, 1.5*$pi);
+    wf_line(-70, 12, -2, 7); wf_line(-70, 15, -2, 9);
+    wf_ring(-58, 0, 14); wf_ring(-48, 0, 14);
+  ) : opt == 1 ? (
+    wf_chs(); wf_ch(-44, -30); wf_ch(-30, -26); wf_ch(-12, -20); wf_ch(0, -10); wf_ch(-3, -3); wf_ch(-24, -6); wf_ch(-44, -10); wf_chrun(2, 1); wf_chdraw(1, 1);
+    wf_chs(); wf_ch(-44, 30); wf_ch(-30, 28); wf_ch(-12, 20); wf_ch(0, 10); wf_ch(-3, 3); wf_ch(-24, 7); wf_ch(-44, 12); wf_chrun(2, 1); wf_chdraw(1, 1);
+    wf_chs(); wf_ch(-46, -42); wf_ch(-36, -36); wf_ch(-44, -30); wf_chrun(1, 0); wf_chdraw(0, 1);
+  ) : opt == 2 ? (
+    wf_chs(); wf_ch(-30, -14); wf_ch(-6, -12); wf_ch(0, 0); wf_ch(-6, 12); wf_ch(-30, 14); wf_ch(-36, 0); wf_chrun(2, 1); wf_chdraw(1, 1);
+    wf_line(-24, 12, -24, 70); wf_line(-14, 13, -14, 70); wf_rect(-30, 70, 22, 10);
+  ) : opt == 3 ? (
+    wf_line(28, -70, -12, 78); wf_line(18, -72, -20, 70); wf_line(28, -70, 18, -72); wf_box(-26, 64, 16, 18, 10);
+  ) : opt == 4 ? (
+    wf_chs(); wf_ch(0, 0); wf_ch(-38, -20); wf_ch(-44, 0); wf_ch(-38, 20); wf_chrun(2, 1); wf_chdraw(1, 1);
+  ) : (
+    wf_ell(-16, 0, 16, 16); wf_arc(-16, 0, 16, 5, 0, $pi); wf_arch(-16, 0, 16, 5, $pi, 2*$pi);
+    wf_line(-24, 14, -66, 82); wf_line(-18, 16, -60, 84);
+  );
+);
+// the energy source, ending at the origin, coming from -x
+function wf_energy(opt) local(k, i, x)
+(
+  opt == 0 ? (
+    k = -1;
+    loop(3,
+      i = 0; loop(25, x = -84 + i*3; i == 0 ? wf_mv(x, k*13 + 4*sin(i*0.7 + k)) : wf_to(x, k*13 + 4*sin(i*0.7 + k)); i += 1;);
+      wf_arrow(-12, k*13 + 4*sin(16.8 + k), 0.3*cos(16.8 + k), 6);
+      k += 1;
+    );
+  ) : opt == 1 ? (
+    wf_line(-40, -38, -40, 38); wf_arrow(-40, -38, -0.5*$pi, 8); wf_arrow(-40, 38, 0.5*$pi, 8);
+    wf_lineh(-56, -26, -56, 26); wf_lineh(-24, -26, -24, 26);
+  ) : opt == 2 ? (
+    wf_chs(); wf_ch(-90, -8); wf_ch(-18, -8); wf_ch(-6, -5); wf_ch(-2, 0); wf_ch(-6, 6); wf_ch(-18, 8); wf_ch(-90, 8); wf_chrun(2, 0); wf_chdraw(0, 1);
+    wf_chs(); wf_ch(-26, -8); wf_ch(-10, -6); wf_ch(-6, 0); wf_chrun(1, 0); wf_chdraw(0, 1);
+    wf_lineh(-50, -8, -50, 8);
+  ) : opt == 3 ? (
+    wf_arc(-44, 30, 40, 40, -0.95*$pi, -0.15*$pi); wf_arrow(-44 + 40*cos(-0.15*$pi), 30 + 40*sin(-0.15*$pi), 0.35*$pi, 8);
+  ) : opt == 4 ? (
+    wf_push(-36, 6, -0.5, 1);
+    wf_line(-50, 0, 0, 0); wf_line(-50, 6, 0, 6); wf_box(0, -14, 14, 34, 10); wf_line(0, -14, -8, -22);
+    wf_pop();
+  ) : (
+    wf_mv(-50, -40); wf_to(-28, -40); wf_to(-38, -6); wf_to(-20, -6); wf_to(-52, 40); wf_to(-42, 4); wf_to(-60, 4); wf_close();
+  );
+);
+
+function wf_freq(opt, md) local(x0, x1, k, x, a, b, yb, d, ky, kw)
+(
+  x0 = el_x0 + (el_x1 - el_x0)*0.18; x1 = el_x0 + (el_x1 - el_x0)*0.86;
+  opt == 0 ? (
+    // frets, closer together up the neck
+    k = 0;
+    while (x = x0 + (x1 - x0)*(1 - 2^(-k/7))*1.6; k < 9 && x <= x1) ( wf_line(x, el_bot + 3, x + 10, el_top - 2); k += 1; );
+  ) : opt == 1 ? (
+    k = 0; loop(6, x = x0 + (x1 - x0)*k/5; wf_ell(x, el_top + 4, 6, 2.6); wf_ell(x, el_top + 4, 3.5, 1.4); k += 1;);
+  ) : opt == 2 ? (
+    k = 0;
+    loop(3,
+      x = x0 + 30 + k*32; wf_vtube(x, el_top - 42, el_top, 8, 1); wf_vtube(x, el_top - 52, el_top - 44, 5, 1);
+      wf_line(x - 8, el_bot, x - 8, el_bot + 16); wf_line(x + 8, el_bot, x + 8, el_bot + 16); wf_arc(x, el_bot + 16, 8, 2.6, 0, $pi);
+      k += 1;
+    );
+  ) : opt == 3 ? (
+    a = x0 + 40; b = x1 - 30; yb = el_bot + 4; d = 58;
+    wf_line(a, yb, a, yb + d); wf_line(a + 10, yb, a + 10, yb + d - 10); wf_line(b, yb, b, yb + d); wf_line(b - 10, yb, b - 10, yb + d - 10);
+    wf_line(a, yb + d, b, yb + d); wf_line(a + 10, yb + d - 10, b - 10, yb + d - 10);
+    wf_line(a - 6, yb + d*0.45, a + 16, yb + d*0.45); wf_line(b - 16, yb + d*0.45, b + 6, yb + d*0.45);
+  ) : (
+    // a keyboard: under the element in a line, in front of the body in layers
+    ky = el_bot + 14; md == 1 ? ( x0 = 28; x1 = 222; ky = el_y + 74; );
+    kw = (x1 - x0)/10;
+    k = 0; loop(10, wf_box(x0 + k*kw, ky, kw - 1.5, 9, 22); k += 1;);
+    k = 0; loop(9, (k != 2 && k != 6) ? wf_box(x0 + (k + 0.68)*kw + 5, ky - 6, kw*0.55, 6, 13); k += 1;);
+  );
+);
+
+function wf_tune(opt, x, y) local(k, px, py, a, b, yt)
+(
+  opt == 0 ? (
+    wf_box(x - 22, y - 10, 26, 20, 16);
+    wf_line(x - 14, y - 10, x - 14, y - 30); wf_ell(x - 14, y - 36, 7, 9);
+    wf_line(x - 2, y - 6, x - 2, y - 30); wf_ell(x - 2, y - 36, 7, 9);
+  ) : opt == 1 ? (
+    wf_box(x - 30, y - 6, 36, 12, 18);
+    k = 0; loop(4, px = x - 22 + k*8; py = y - 6 - k*2.5; wf_line(px, py, px, py - 16); wf_ell(px, py - 17, 2.4, 1.2); k += 1;);
+  ) : opt == 2 ? (
+    wf_box(x - 26, y - 8, 30, 10, 18); wf_vtube(x - 12, y - 30, y - 8, 4, 1); wf_ell(x - 12, y - 18, 9, 3);
+    wf_line(x - 4, y - 14, x + 10, y - 14); wf_ell(x + 16, y - 14, 4, 8);
+  ) : (
+    a = x - 24; b = x + 6; yt = y - 40;
+    wf_line(a, y - 4, a, yt); wf_line(a + 8, y - 4, a + 8, yt + 8); wf_line(b, y - 4, b, yt); wf_line(b - 8, y - 4, b - 8, yt + 8);
+    wf_arc(0.5*(a + b), yt, 0.5*(b - a), 10, $pi, 2*$pi); wf_arc(0.5*(a + b), yt + 8, 0.5*(b - a) - 8, 6, $pi, 2*$pi);
+  );
+);
+
+// mouth: the bell's mouth is at (mx, my), where a mute or a hand goes
+function wf_damp(opt, mouth, mx, my) local(x, a)
+(
+  x = el_x0 + (el_x1 - el_x0)*0.9;
+  opt == 0 ? (
+    wf_line(x, el_top - 60, x, el_top - 16); wf_box(x - 10, el_top - 16, 20, 14, 14);
+  ) : opt == 1 ? (
+    mouth ? ( wf_ell(mx - 14, my, 6, 24); wf_ell(mx + 18, my, 12, 46); wf_line(mx - 14, my - 24, mx + 18, my - 46); wf_line(mx - 14, my + 24, mx + 18, my + 46); ) :
+            ( wf_box(x - 12, el_top - 14, 24, 14, 16); wf_line(x - 12, el_top - 7, x - 20, el_top + 4); );
+  ) : opt == 2 ? (
+    wf_hand(x - 10, el_top - 10, 0.9, 0.08);
+  ) : opt == 3 ? (
+    a = el_x0 + (el_x1 - el_x0)*0.06; wf_box(a, el_top - 6, (el_x1 - el_x0)*0.1, 6, 18); wf_line(a + 10, el_top - 10, a + 10, el_top - 40);
+  ) : (
+    mouth ? wf_hand(mx - 10, my + 6, 1.1, -1.35) : wf_hand(x - 10, el_top - 10, 0.9, 0.08);
+  );
+);
+
+// ytop: where the modulation part reaches up to (under the element, or the body)
+function wf_mod(opt, ytop) local(base, k, x, a, b, ry, cx, yy, i, bx, by, t)
+(
+  base = lay_floor;
+  opt == 0 ? (
+    a = el_x0 + (el_x1 - el_x0)*0.25; b = el_x0 + (el_x1 - el_x0)*0.8; ry = max(ytop + 30, base - 34);
+    wf_line(a, ry, b, ry);
+    k = 0; loop(3, x = a + 20 + k*(b - a - 40)/2; wf_line(x, ry, x, ytop + 2); wf_ell(x, ry + 10, 9, 3); wf_line(x, ry, x, ry + 10); k += 1;);
+  ) : opt == 1 ? (
+    cx = lay_pedx; wf_box(cx - 50, base - 10, 100, 10, 30);
+    k = 0; loop(3, x = cx - 34 + k*28; wf_mv(x, base - 10); wf_to(x + 10, base - 10); wf_to(x + 20, base - 36); wf_to(x + 10, base - 36); wf_close(); k += 1;);
+    wf_lineh(cx, base - 30, cx, lay_pedtop);
+  ) : opt == 2 ? (
+    x = el_x0 + (el_x1 - el_x0)*0.55; wf_vtube(x, ytop + 4, ytop + 40, 7, 1); wf_line(x, ytop + 40, x + 40, ytop + 52); wf_ell(x + 44, ytop + 53, 6, 2.4);
+  ) : opt == 3 ? (
+    x = el_x0 + (el_x1 - el_x0)*0.4; yy = max(ytop + 34, base - 30);
+    wf_line(x - 50, yy, x + 50, yy - 14); wf_mv(x - 6, yy + 10); wf_to(x, yy - 7); wf_to(x + 6, yy + 10); wf_close();
+    i = 0; loop(9, i == 0 ? wf_mv(x + 28, yy - 12) : wf_to(x + 34 + (i % 2 ? 6 : -6), yy - 12 + i*(base - yy + 6)/8); i += 1;);
+    wf_lineh(x - 50, yy, x - 50, ytop + 2);
+  ) : (
+    bx = lay_elx; by = base - 34; wf_box(bx, by, 80, 30, 26);
+    wf_ell(bx + 20, by + 15, 6, 6); wf_ell(bx + 42, by + 15, 6, 6); wf_rect(bx + 58, by + 11, 12, 8);
+    i = 0; loop(17, t = i/16; x = bx + 2 - t*60; yy = by + 15 + sin(t*$pi)*22 - t*t*(by + 15 - ytop - 4); i == 0 ? wf_mv(x, yy) : wf_to(x, yy); i += 1;);
+  );
+);
+
+// The whole instrument from the twelve choices in WF_P, into buf: buf[0] is
+// the number of segments, then six values each.
+function wf_build(buf) local(md, cx, cxx, cyy)
+(
+  wf_reset(); wfbuf = buf; wfn = 0;
+  md = WF_P[6] >= 2 ? 0 : 1; wf_mode = md;
+  md == 0 ? (
+    lay_ey = 176; lay_cx0 = 196; lay_cx1 = 262; lay_ex0 = 262; lay_ex1 = 520; lay_rx0 = 520; lay_rx1 = 712; lay_dx1 = 872;
+    lay_floor = 352; lay_pedx = 640; lay_pedtop = 216; lay_elx = 610;
+  ) : (
+    lay_ey = 150; lay_ex0 = 176; lay_ex1 = 770; lay_bx0 = 240; lay_bx1 = 700; lay_by0 = 186; lay_by1 = 300; lay_cpx = 600; lay_cpy = 188;
+    lay_floor = 352; lay_pedx = 470; lay_pedtop = 300; lay_elx = 740;
+  );
+  wfcat = 2; wf_element(WF_P[2], md);
+  wfcat = 4; wf_res(WF_P[4], md);
+  md == 1 ? lay_cpy = max(el_bot + 12, rz_top);
+  wfcat = 6; wf_coupler(WF_P[6]);
+  wfcat = 7; wf_rad(WF_P[7], md);
+  md == 0 ? (
+    cx = lay_cx0;
+    wfcat = 1; WF_P[1] == 3 ? wf_push(cx - 30, lay_ey, 0, 1) : wf_push(cx, lay_ey, 0, 1); wf_exc(WF_P[1]); wf_pop();
+    wfcat = 0; wf_push(cx - 100, lay_ey, 0, 1); wf_energy(WF_P[0]); wf_pop();
+  ) : (
+    cxx = el_x0 + (el_x1 - el_x0)*0.22; cyy = el_top + 2;
+    wfcat = 1; WF_P[1] == 3 ? wf_push(cxx, el_y - 36, 0, 1) : wf_push(cxx, cyy, 0.5*$pi, 1); wf_exc(WF_P[1]); wf_pop();
+    // the energy comes in from the upper right, mirrored, clear of the exciter
+    wfcat = 0; wf_push(cxx + 34, max(48, el_top - 62), 0, -1); wf_energy(WF_P[0]); wf_pop();
+  );
+  wfcat = 8; wf_freq(WF_P[8], md);
+  wfcat = 9; md == 0 ? wf_tune(WF_P[9], el_x0 + 26, el_top) : wf_tune(WF_P[9], el_x0 - 4, el_y);
+  wfcat = 10; wf_damp(WF_P[10], WF_P[7] == 0, md == 0 ? lay_dx1 : 880, md == 0 ? lay_ey : rz_fy);
+  wfcat = 11; wf_mod(WF_P[11], md == 0 ? max(el_bot, lay_ey + 22) : lay_by1);
+  buf[0] = wfn;
+);
+// the bounding box of part c in buf, into (wbx0, wby0) - (wbx1, wby1)
+function wf_bbox(buf, c) local(n, p, k)
+(
+  wbx0 = wby0 = 1000000; wbx1 = wby1 = -1000000; n = buf[0]; p = buf + 1; k = 0;
+  loop(n,
+    p[4] == c ? (
+      wbx0 = min(wbx0, min(p[0], p[2])); wbx1 = max(wbx1, max(p[0], p[2]));
+      wby0 = min(wby0, min(p[1], p[3])); wby1 = max(wby1, max(p[1], p[3]));
+    );
+    p += 6;
   );
 );
 
@@ -1833,7 +1988,7 @@ function randomise() local(c)
   slider_automate(2^12 - 1);
   gui_dirty = 1; cur_preset = -1;
 );
-cur_preset = 0; last_cat = 2; aud_note = 60; wrap_ymax = 1000000; drag_k = -1;
+cur_preset = 0; last_cat = 2; aud_note = 60; wrap_ymax = 1000000; drag_k = -1; pop_c = -1; wf_optc = -1;
 
 @slider
 update_globals();
@@ -1982,7 +2137,7 @@ ui_zoom < 1 ? ui_zoom = 1;
 ret_ = max(1, gfx_ext_retina);
 zoom_fit = max(1, min(ui_zoom, min(gfx_w/(800*ret_), gfx_h/(480*ret_))));
 gsc = ret_*zoom_fit;
-// Reduce Motion stills the drawings' wobble and the element's shake
+// Reduce Motion stills the sounding element's tremble
 calm ? anim_ph = 0 : ( anim_ph += 0.3; anim_ph > 628.3 ? anim_ph -= 628.3; );
 gw = gfx_w; gh = gfx_h;
 
@@ -1990,15 +2145,17 @@ gw = gfx_w; gh = gfx_h;
 // (ADR 0023); tools/hig_check.py measures each one on the real pixels.
 C_WIN = 0x1B1C20; C_TILE = 0x25262D; C_TILE_HOV = 0x30333D; C_PREV = 0x212228; C_SUNK = 0x17181C;
 C_BTN = 0x2E303B; C_BTN_HOV = 0x404552; C_ON = 0x2B4C80; C_EDGE = 0x6D7581; C_SEG = 0x1C1D21; C_MAT_HOV = 0x3D424F;
+C_POP = 0x30323C;    // the picker: a raised surface, lighter than the window (ADR 0024)
+C_CTX = 0x5C626E;    // the rest of the instrument behind a part in the picker
 T_MAIN = 0xF2F2F7;   // names, values, button labels: 11:1 or more
-T_BODY = 0xCCD1DE;   // descriptions and messages: 10:1 on the preview
-T_DIM = 0xB0B6C0;    // secondary words on the window and the preview: 7.8:1 or more
-T_LABEL = 0xC4C9D2;  // captions and control names on a tile or cell: 7.6:1 even hovered
-T_HINT = 0x8CD999;   // the hint and a control's value in the preview: 9.4:1
+T_BODY = 0xCCD1DE;   // descriptions and messages: 10:1 on the close-up
+T_DIM = 0xB0B6C0;    // secondary words on the window and the close-up: 7.8:1 or more
+T_LABEL = 0xC4C9D2;  // captions and control names on a label, cell or the picker: 7.6:1 even hovered
+T_HINT = 0x8CD999;   // the hint and a control's value in the close-up: 9.4:1
 T_AGE = 0xF5B48A;    // the age note: 9.5:1
 T_ELEM = 0x7FD8F5; T_RES = 0x8EE29A;  // a material's name, in its group's hue: 7.8:1 hovered
 C_RING = 0xF2F4F7;   // the keyboard focus ring
-// edges (final sweep): C_EDGE outlines every button, part tile and control
+// edges (final sweep): C_EDGE outlines every button, label and control
 // cell, 3.7:1 on the window; C_TRACK outlines what sits inside a cell (a
 // slider's track, Play Mode's two halves), 3.5:1 on the cell even hovered
 C_TRACK = 0x80879A;
@@ -2008,6 +2165,26 @@ function edge(c, x, y, w, h) local(k)
 (
   col(c); k = 0;
   loop(max(1, floor(gsc + 0.5)), gfx_rect(x + k, y + k, w - 2*k, h - 2*k, 0); k += 1;);
+);
+// a filled rectangle with round corners (antialiased)
+function rfill(x, y, w, h, r) local(rr)
+(
+  rr = floor(min(r, 0.5*min(w, h)));
+  rr < 1 ? gfx_rect(x, y, w, h, 1) : (
+    gfx_rect(x + rr, y, w - 2*rr, h, 1);
+    gfx_rect(x, y + rr, rr, h - 2*rr, 1); gfx_rect(x + w - rr, y + rr, rr, h - 2*rr, 1);
+    gfx_circle(x + rr, y + rr, rr, 1, 1); gfx_circle(x + w - 1 - rr, y + rr, rr, 1, 1);
+    gfx_circle(x + rr, y + h - 1 - rr, rr, 1, 1); gfx_circle(x + w - 1 - rr, y + h - 1 - rr, rr, 1, 1);
+  );
+);
+// the shape of every button, label and cell: rounded, filled, and edged in
+// ec, 3:1 on the window (final sweep), thicker at larger sizes
+function rbox(x, y, w, h, r, fill, ec) local(t)
+(
+  x = floor(x + 0.5); y = floor(y + 0.5); w = floor(w + 0.5); h = floor(h + 0.5);
+  t = max(1, floor(gsc + 0.5));
+  col(ec); rfill(x, y, w, h, r);
+  col(fill); rfill(x + t, y + t, w - 2*t, h - 2*t, max(0, r - t));
 );
 col(C_WIN); gfx_rect(0, 0, gw, gh, 1);
 
@@ -2040,6 +2217,11 @@ key = gfx_getchar(); key < 0 ? key = 0;
 clicked ? focus_id = 0;     // pointing takes over from the keyboard
 fl_n = 0; fr_on = 0; wrap_cut = 0;   // lines of a wrapped text that did not fit (none should)
 hig_audit ? HIG_TXT[0] = 0;
+// While the picker is open it has the mouse and the keyboard to itself: a
+// click anywhere else only closes it (ADR 0024).
+ui_block = pop_c >= 0;
+pclick = clicked; pwheel = wheel;
+ui_block ? ( clicked = 0; wheel = 0; );
 // A preset or Surprise Me replaces the whole instrument. The frame that asks
 // for it adds a REAPER undo point (sliderchange(-1) from @gfx); this one makes
 // the change and adds another, so Edit -> Undo puts back the instrument as it
@@ -2049,188 +2231,250 @@ want_preset || want_rand ? (
   sliderchange(-1); want_preset = 0; want_rand = 0;
 );
 
-function inbox(x, y, w, h) ( mouse_x >= x && mouse_x < x + w && mouse_y >= y && mouse_y < y + h; );
+function inbox(x, y, w, h) ( !ui_block && mouse_x >= x && mouse_x < x + w && mouse_y >= y && mouse_y < y + h; );
+// the same for the picker, which is not blocked by itself
+function pinbox(x, y, w, h) ( mouse_x >= x && mouse_x < x + w && mouse_y >= y && mouse_y < y + h; );
 
 // ---- keyboard focus (ADR 0023). Every control registers itself as it is
 // drawn, so Tab and Shift+Tab move through them in the order they are drawn:
-// top to bottom, and through the diagram the way its arrows go. The ring is
+// top to bottom, then the parts in the order the energy flows. While the
+// picker is open only its own controls take part (ids 70 and up). The ring is
 // drawn last, over everything, round the focused control.
 function focusable(id, x, y, w, h) local(p)
 (
-  fl_n < FOCUS_MAX ? ( p = FOCUS_TAB + fl_n*5; p[0] = id; p[1] = x; p[2] = y; p[3] = w; p[4] = h; fl_n += 1; );
-  focus_id == id ? ( fr_on = 1; fr_x = x; fr_y = y; fr_w = w; fr_h = h; );
-  focus_id == id;
+  (ui_block && id < 70) ? 0 : (
+    fl_n < FOCUS_MAX ? ( p = FOCUS_TAB + fl_n*5; p[0] = id; p[1] = x; p[2] = y; p[3] = w; p[4] = h; fl_n += 1; );
+    focus_id == id ? ( fr_on = 1; fr_x = x; fr_y = y; fr_w = w; fr_h = h; );
+    focus_id == id;
+  );
 );
 // Return or Space presses the focused control
 function activated(id) ( (focus_id == id && (key == 13 || key == 32)) ? ( key = 0; 1; ) : 0; );
 
-// ---- rendered pictures (ADR 0020): PNGs in Instrument-Creator-images/ next to
-// this file, made by tools/render_parts.py. Each category keeps its current
-// picture in four image slots (full size and three halvings, so small icons are
-// not aliased) and its rust layer in four more. Loaded when first needed; if a
-// file is missing the drawing in draw_part() is used instead, and the message
-// bar says where the pictures go.
-function img_load(slot, key_, row) local(r, l, w, h)
-(
-  IMG_TAB[row] = key_;
-  r = gfx_loadimg(slot, #imgf);
-  r < 0 ? ( IMG_TAB[row + 1] = -1; pics_missing = 1; ) : (
-    gfx_getimgdim(slot, w, h);
-    IMG_TAB[row + 1] = w > 0 ? 1 : -1; IMG_TAB[row + 2] = w; IMG_TAB[row + 3] = h;
-    l = 1; gfx_a = 1; gfx_mode = 2;
-    loop(3,
-      gfx_setimgdim(slot + l, max(1, w/2^l), max(1, h/2^l)); gfx_dest = slot + l;
-      gfx_blit(slot + l - 1, 1, 0, 0, 0, max(1, w/2^(l - 1)), max(1, h/2^(l - 1)), 0, 0, max(1, w/2^l), max(1, h/2^l));
-      l += 1;
-    );
-    gfx_dest = -1; gfx_mode = 0;
-  );
-  IMG_TAB[row + 1] > 0;
-);
-// blit a loaded picture to fit inside (x, y, w, h), centred, from the right halving
-// (the renders have a margin of their own, so they may spill 8 % past the box)
-function img_blit(slot, row, x, y, w, h, alpha, dy) local(iw, ih, s, l, dw, dh)
-(
-  iw = IMG_TAB[row + 2]; ih = IMG_TAB[row + 3];
-  s = 1.16*min(w/iw, h/ih); dw = iw*s; dh = ih*s;
-  l = max(0, min(3, floor(log(1/s)/log(2))));
-  gfx_a = alpha; gfx_mode = 0;
-  gfx_blit(slot + l, 1, 0, 0, 0, max(1, iw/2^l), max(1, ih/2^l), x + 0.5*(w - dw), y + 0.5*(h - dh) + dy, dw, dh);
-  gfx_a = 1;
-);
-function picture(c, i, x, y, w, h, big) local(m, key_, row, ok, rr, ra, d)
-(
-  m = c == 2 ? elm : (c == 4 || c == 6 || c == 7) ? rsm : -1;
-  key_ = 1 + 100*i + (m >= 0 ? m + 1 : 0);
-  row = IMG_TAB + c*8;
-  IMG_TAB[row] != key_ ? (
-    (c == 3 || c == 5) ? sprintf(#imgf, "Instrument-Creator-images/mat%d.png", i) :
-    m >= 0 ? sprintf(#imgf, "Instrument-Creator-images/c%d_%d_m%d.png", c, i, m) :
-             sprintf(#imgf, "Instrument-Creator-images/c%d_%d.png", c, i);
-    img_load(IMG_SLOT + 8*c, key_, row);
-  );
-  ok = IMG_TAB[row + 1] > 0;
-  ok ? (
-    // the vibrating element shakes while it sounds (not with Reduce Motion)
-    d = (big && c == 2 && !calm) ? min(0.06, 0.3*vis_lvl)*h : 0;
-    d > 0.5 ? ( img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 0.35, d); img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 0.35, -d); );
-    img_blit(IMG_SLOT + 8*c, row, x, y, w, h, 1, 0);
-    // rust and grime, faded in by Age, on the parts made of a material
-    (m >= 0 || c == 3 || c == 5) && age_ > 0.02 ? (
-      rr = row + 4;
-      IMG_TAB[rr] != 1 + 100*i ? (
-        (c == 3 || c == 5) ? strcpy(#imgf, "Instrument-Creator-images/mat_rust.png") :
-                             sprintf(#imgf, "Instrument-Creator-images/c%d_%d_rust.png", c, i);
-        img_load(IMG_SLOT + 8*c + 4, 1 + 100*i, rr);
-      );
-      ra = age_*(is_metal(m >= 0 ? m : i) ? 0.9 : 0.5);
-      IMG_TAB[rr + 1] > 0 ? img_blit(IMG_SLOT + 8*c + 4, rr, x, y, w, h, ra, 0);
-    );
-  ) : draw_part(c, i, x, y, w, h, big);
-);
 // a button 28 px tall, never narrower than its label. On (Playing…), it is
 // blue and has a bar under its label, so colour is not the only sign.
 function bwidth(s) local(tw, th) ( gfx_setfont(2); gfx_measurestr(s, tw, th); max(72*gsc, tw + 28*gsc); );
 function button(id, x, y, w, h, s, on) local(hv, tw, th, f)
 (
   f = focusable(id, x, y, w, h);
-  hv = inbox(x, y, w, h);
-  col(on ? C_ON : hv ? C_BTN_HOV : C_BTN); gfx_rect(x, y, w, h, 1);
-  edge(C_EDGE, x, y, w, h);
+  hv = id >= 70 ? pinbox(x, y, w, h) : inbox(x, y, w, h);
+  // (inside the picker the edge is the lighter grey, 3:1 on its raised surface)
+  rbox(x, y, w, h, 6*gsc, on ? C_ON : hv ? C_BTN_HOV : C_BTN, id >= 70 ? C_TRACK : C_EDGE);
   gfx_setfont(2); col(T_MAIN);
   gfx_measurestr(s, tw, th); gfx_x = x + 0.5*(w - tw); gfx_y = y + 0.5*(h - th) - (on ? gsc : 0); say(s);
   on ? gfx_rect(x + 0.5*(w - tw), y + h - 5*gsc, tw, max(1, 2*gsc), 1);
-  (hv && clicked) || activated(id);
+  (hv && (id >= 70 ? pclick : clicked)) || activated(id);
 );
-function group_col(c)
-(
-  c <= 1 ? gfx_set(0.95, 0.6, 0.25, 1) : c <= 3 ? gfx_set(0.35, 0.8, 0.95, 1) :
-  c <= 7 ? gfx_set(0.45, 0.85, 0.5, 1) : gfx_set(0.72, 0.55, 0.95, 1);
-);
+// the four kinds of part have a colour each: energy and exciter orange, the
+// element blue, resonator, coupler and radiator green, the controls purple
+function group_hex(c) ( c <= 1 ? 0xF29940 : c <= 3 ? 0x59CCF2 : c <= 7 ? 0x73D980 : 0xB88CF2; );
+function group_col(c) ( col(group_hex(c)); );
 // the material category (3 or 5) that a part is made of, or -1
 function mat_cat(c) ( c == 2 ? 3 : (c == 4 || c == 6 || c == 7) ? 5 : -1; );
-// a part's options, then (for parts made of a material) a "Made of" submenu,
-// opened at (mx, my). Menu ids count items only: separators and submenu
-// headings take none.
-function part_menu(c, mx, my) local(k, r, n, mc)
+function is_metal(m) ( m <= 4 || m == 25 || m >= 27; );
+// A part's colour in the drawing: its group's, turning towards rust as Age
+// goes up when it is made of a material (metals most), as the pictures did
+// (ADR 0018). Every shade stays 3:1 or more on the window.
+function part_col(c) local(h, r, g, b, m, a)
 (
-  n = cat_count(c); mc = mat_cat(c);
-  strcpy(#menu, ""); k = 0;
-  loop(n, k > 0 ? strcat(#menu, "|"); (slider(c + 1)|0) == k ? strcat(#menu, "!"); strcat(#menu, opt_name(c, k)); k += 1;);
-  mc >= 0 ? (
-    strcat(#menu, "||>Made of: "); strcat(#menu, mat_name(slider(mc + 1)|0));
-    k = 0;
-    loop(MAT_N, strcat(#menu, k == MAT_N - 1 ? "|<" : "|"); (slider(mc + 1)|0) == k ? strcat(#menu, "!"); strcat(#menu, mat_name(k)); k += 1;);
+  h = group_hex(c); r = ((h >> 16) & 255)/255; g = ((h >> 8) & 255)/255; b = (h & 255)/255;
+  m = mat_cat(c);
+  (m >= 0 && age_ > 0.02) ? (
+    m = slider(m + 1)|0; a = age_*(is_metal(m) ? 0.8 : 0.45);
+    r += a*(0.80 - r); g += a*(0.50 - g); b += a*(0.33 - b);
   );
+  gfx_set(r, g, b, 1);
+);
+// a part's kind in title style, for the picker's heading
+function cat_name(c)
+(
+  c==0?"Energy Source" : c==1?"Exciter" : c==2?"Vibrating Element" : c==3?"Element Material" :
+  c==4?"Resonator" : c==5?"Resonator Material" : c==6?"Coupler" : c==7?"Radiator" :
+  c==8?"Frequency Control" : c==9?"Tuning Mechanism" : c==10?"Damping" : "Modulation / Control";
+);
+// the 31 materials, for a part made of one, opened at (mx, my)
+function mat_menu(mc, mx, my) local(k, r)
+(
+  strcpy(#menu, ""); k = 0;
+  loop(MAT_N, k > 0 ? strcat(#menu, "|"); (slider(mc + 1)|0) == k ? strcat(#menu, "!"); strcat(#menu, mat_name(k)); k += 1;);
   gfx_x = mx; gfx_y = my;
   r = gfx_showmenu(#menu);
-  r > 0 && r <= n ? set_part(c, r - 1) : r > n ? set_part(mc, r - n - 1);
+  r > 0 ? set_part(mc, r - 1);
 );
-// one part of the assembled instrument: its picture, and beside it the
-// category, the option and (for parts made of one) the material. Click for
-// the part's menu, click the material for the materials, roll the wheel to
-// step (over the material: step the material), or use the arrows on hover.
-// From the keyboard: Return or Space opens the menu, the arrow keys step.
-function tile(c, x, y, w, h) local(v, hv, tw, th, s, pw, ph, tx, tmax, mc, m, bh, ty, t4, t2, t1, ax1, ax2, z, onm, ona1, ona2, f, cap, mh, my_)
+
+// ---- the drawing (ADR 0024): the segments built by wf_build, drawn with
+// antialiased lines that grow with the interface size
+function wline(x1, y1, x2, y2, t) local(dx, dy, l, nx, ny, n, o, s)
 (
-  v = slider(c + 1)|0; mc = mat_cat(c);
-  f = focusable(10 + c, x, y, w, h); f ? focc = c;
-  hv = inbox(x, y, w, h); hv ? hov = c;
-  col(hv ? C_TILE_HOV : C_TILE); gfx_rect(x, y, w, h, 1);
-  group_col(c); gfx_rect(x, y, w, 2*gsc, 1);
-  // the picture gives way before the words do: never narrower than the
-  // option's name (in the smaller font) and the material with its arrow
-  gfx_setfont(1); gfx_measurestr(opt_name(c, v), tw, th); s = tw;
-  mc >= 0 ? ( gfx_measurestr(mat_name(slider(mc + 1)|0), tw, th); s = max(s, tw + 20*gsc); );
-  // (when even a fifth of the tile is too much, the picture goes: the
-  // preview panel and the menu still show it)
-  ph = h - 14*gsc; pw = min(min(0.5*w, 1.5*ph), w - 22*gsc - s); pw < 0.2*w ? pw = 0;
-  pw > 0 ? picture(c, v, x + 6*gsc, y + 8*gsc, pw, ph, c == 2);
-  tx = x + (pw > 0 ? pw + 14*gsc : 10*gsc); tmax = x + w - 8*gsc;
-  gfx_setfont(4); gfx_measurestr("A", tw, t4); gfx_setfont(2); gfx_measurestr("A", tw, t2); gfx_setfont(1); gfx_measurestr("A", tw, t1);
-  // a short tile keeps the lines that fit: the option, then the material
-  // (also in the part's menu), then the caption; none runs off the tile
-  // (5 px clear of the tile's edge and its coloured strip, top and bottom)
-  bh = t2; mc >= 0 && bh + 5*gsc + t1 <= h - 12*gsc ? bh += 5*gsc + t1 : mc = -1;
-  cap = bh + t4 + 4*gsc <= h - 12*gsc; cap ? bh += t4 + 4*gsc;
-  ty = y + 0.5*(h - bh) + gsc;
-  cap ? (
-    gfx_setfont(4); col(T_LABEL);
-    s = cat_title(c); gfx_measurestr(s, tw, th); tx + tw > tmax ? s = cat_short(c);
-    gfx_x = tx; gfx_y = ty; say(s);
-    ty += t4 + 4*gsc;
+  dx = x2 - x1; dy = y2 - y1; l = max(0.001, sqrt(dx*dx + dy*dy)); nx = -dy/l; ny = dx/l;
+  n = max(1, floor(t + 0.5)); s = t/n; o = -0.5*(n - 1)*s;
+  loop(n, gfx_line(x1 + nx*o, y1 + ny*o, x2 + nx*o, y2 + ny*o, 1); o += s;);
+);
+// an edge hidden behind the part, dashed; the dashes carry on round a curve
+function wdash(x1, y1, x2, y2, t) local(dx, dy, l, on, per, a, m, sl, n)
+(
+  (abs(x1 - wd_lx) > 0.5 || abs(y1 - wd_ly) > 0.5) ? wd_ph = 0;
+  dx = x2 - x1; dy = y2 - y1; l = sqrt(dx*dx + dy*dy); on = 4*gsc; per = 7*gsc; a = 0; n = 0;
+  // (every step moves at least a hundredth of a pixel, so rounding can't stall it)
+  while (a < l - 0.01 && n < 1000) (
+    m = wd_ph - floor(wd_ph/per)*per;
+    m < on - 0.01 ? (
+      sl = min(on - m, l - a);
+      wline(x1 + dx*a/l, y1 + dy*a/l, x1 + dx*(a + sl)/l, y1 + dy*(a + sl)/l, t);
+    ) : sl = min(per - m, l - a);
+    sl = max(sl, 0.01); a += sl; wd_ph += sl; n += 1;
   );
-  s = opt_name(c, v); gfx_setfont(2); gfx_measurestr(s, tw, th); tx + tw > tmax ? gfx_setfont(1);
-  col(T_MAIN); gfx_x = tx; gfx_y = ty; say(s);
-  ty += t2 + 5*gsc;
+  wd_lx = x2; wd_ly = y2;
+);
+// keep the part of (x0, y0)-(x1, y1) inside a box (Liang-Barsky): 1 if any is
+function wclip(x0, y0, x1, y1, xa, ya, xb, yb) local(t0, t1, dx, dy, p, q, r, k, ok)
+(
+  t0 = 0; t1 = 1; dx = x1 - x0; dy = y1 - y0; ok = 1; k = 0;
+  loop(4,
+    p = k == 0 ? -dx : k == 1 ? dx : k == 2 ? -dy : dy;
+    q = k == 0 ? x0 - xa : k == 1 ? xb - x0 : k == 2 ? y0 - ya : yb - y0;
+    p == 0 ? ( q < 0 ? ok = 0; ) : (
+      r = q/p;
+      p < 0 ? ( r > t1 ? ok = 0 : r > t0 ? t0 = r; ) : ( r < t0 ? ok = 0 : r < t1 ? t1 = r; );
+    );
+    k += 1;
+  );
+  ok ? ( wcx0 = x0 + t0*dx; wcy0 = y0 + t0*dy; wcx1 = x0 + t1*dx; wcy1 = y0 + t1*dy; );
+  ok;
+);
+// Draw buf at scale s from (ox, oy). The instrument (one < 0): every part in
+// its colour, part hl heavier, the element trembling while it sounds. The
+// picker (one = a part): that part in its colour and the rest faint, clipped
+// to the cell.
+function wf_draw(buf, s, ox, oy, hl, one, xa, ya, xb, yb) local(n, p, c, x1, y1, x2, y2, t, u1, u2, ok)
+(
+  n = buf[0]; p = buf + 1; wd_lx = -1000000;
+  loop(n,
+    c = p[4]; x1 = p[0]; y1 = p[1]; x2 = p[2]; y2 = p[3];
+    (one < 0 && c == 2 && wf_vib != 0) ? (
+      u1 = max(0, min(1, (x1 - wm_ex0)/max(1, wm_ex1 - wm_ex0))); u2 = max(0, min(1, (x2 - wm_ex0)/max(1, wm_ex1 - wm_ex0)));
+      y1 += wf_vib*sin($pi*u1); y2 += wf_vib*sin($pi*u2);
+    );
+    x1 = ox + s*x1; y1 = oy + s*y1; x2 = ox + s*x2; y2 = oy + s*y2;
+    ok = one < 0 ? 1 : wclip(x1, y1, x2, y2, xa, ya, xb, yb);
+    one >= 0 && ok ? ( x1 = wcx0; y1 = wcy0; x2 = wcx1; y2 = wcy1; );
+    ok ? (
+      one >= 0 ? ( c == one ? part_col(c) : col(C_CTX); t = (c == one ? 1.6 : 1)*gsc; ) :
+                 ( part_col(c); t = (c == hl ? 2.4 : 1.4)*gsc; );
+      p[5] ? wdash(x1, y1, x2, y2, t) : ( wline(x1, y1, x2, y2, t); wd_lx = -1000000; );
+    );
+    p += 6;
+  );
+);
+// the part whose lines pass within r px of the mouse, or -1
+function wf_hit(buf, s, ox, oy, r) local(n, p, best, bc, x1, y1, dx, dy, t, ex, ey, d)
+(
+  n = buf[0]; p = buf + 1; best = r*r; bc = -1;
+  loop(n,
+    x1 = ox + s*p[0]; y1 = oy + s*p[1]; dx = s*(p[2] - p[0]); dy = s*(p[3] - p[1]);
+    t = max(0, min(1, ((mouse_x - x1)*dx + (mouse_y - y1)*dy)/max(0.0001, dx*dx + dy*dy)));
+    ex = x1 + t*dx - mouse_x; ey = y1 + t*dy - mouse_y; d = ex*ex + ey*ey;
+    d < best ? ( best = d; bc = p[4]; );
+    p += 6;
+  );
+  bc;
+);
+// each part's anchor for its label's line: its own point nearest the middle
+// of its side facing the label's row (target at +12, +13; anchor to +4, +5)
+function wf_anchors(buf, s, ox, oy) local(n, p, c, q, x, y, d, j)
+(
+  c = 0; loop(12, CAT_TAB[c*CAT_STRIDE + 14] = 1000000000; c += 1;);
+  n = buf[0]; p = buf + 1;
+  loop(n,
+    q = CAT_TAB + p[4]*CAT_STRIDE; j = 0;
+    loop(2,
+      x = ox + s*p[j*2]; y = oy + s*p[j*2 + 1];
+      d = 0.15*(x - q[12])*(x - q[12]) + (y - q[13])*(y - q[13]);
+      d < q[14] ? ( q[14] = d; q[4] = x; q[5] = y; );
+      j += 1;
+    );
+    p += 6;
+  );
+);
+
+// ---- the labels round the drawing. Each part's label sits above the drawing
+// (row 0) or below it (row 1), as near over its part as the others allow,
+// with a line to the part. lv says how much each label holds when a row is
+// short of room: 0 the full caption, 1 a short one, 2 a short one and the
+// name in the smaller font, 3 no caption. A name is never cut short.
+LAB_ORD = WF_AUX + 2470;
+function lab_rows() local(c)
+(
+  c = 0; loop(12, CAT_TAB[c*CAT_STRIDE + 6] = -1; c += 1;);
+  c = 0;
+  loop(12,
+    (c != 3 && c != 5) ? CAT_TAB[c*CAT_STRIDE + 6] =
+      wm_mode == 0 ? ((c == 0 || c == 1 || c == 9 || c == 8 || c == 10) ? 0 : 1) :
+                     ((c == 0 || c == 1 || c == 9 || c == 2 || c == 10 || (c == 8 && (slider(9)|0) != 4)) ? 0 : 1);
+    c += 1;
+  );
+);
+function lab_w(c, lv) local(tw, th, w, mc)
+(
+  w = 0;
+  lv < 3 ? ( gfx_setfont(4); gfx_measurestr(lv == 0 ? cat_title(c) : cat_short(c), tw, th); w = tw; );
+  gfx_setfont(lv < 2 ? 2 : 1); gfx_measurestr(opt_name(c, slider(c + 1)|0), tw, th); w = max(w, tw);
+  mc = mat_cat(c); mc >= 0 ? ( gfx_setfont(1); gfx_measurestr(mat_name(slider(mc + 1)|0), tw, th); w = max(w, tw); );
+  ceil(w + 24*gsc);
+);
+function row_w(row, lv) local(c, s, n)
+(
+  s = 0; n = 0; c = 0;
+  loop(12, CAT_TAB[c*CAT_STRIDE + 6] == row ? ( s += lab_w(c, lv); n += 1; ); c += 1;);
+  s + max(0, n - 1)*12*gsc;
+);
+function lab_place(row, y, lv, lh) local(n, i, j, c, t, x, mr, q)
+(
+  n = 0; c = 0;
+  loop(12, CAT_TAB[c*CAT_STRIDE + 6] == row ? ( LAB_ORD[n] = c; n += 1; ); c += 1;);
+  // in order of their anchors, left to right
+  i = 1;
+  loop(max(0, n - 1),
+    t = LAB_ORD[i]; j = i - 1;
+    while (j >= 0 && CAT_TAB[LAB_ORD[j]*CAT_STRIDE + 4] > CAT_TAB[t*CAT_STRIDE + 4]) ( LAB_ORD[j + 1] = LAB_ORD[j]; j -= 1; );
+    LAB_ORD[j + 1] = t; i += 1;
+  );
+  x = pad; i = 0;
+  loop(n,
+    q = CAT_TAB + LAB_ORD[i]*CAT_STRIDE;
+    q[8] = lab_w(LAB_ORD[i], lv); q[7] = max(x, floor(q[4] - 0.5*q[8])); q[9] = y; q[10] = lh;
+    x = q[7] + q[8] + 12*gsc; i += 1;
+  );
+  mr = gw - pad; i = n - 1;
+  loop(n, q = CAT_TAB + LAB_ORD[i]*CAT_STRIDE; q[7] + q[8] > mr ? q[7] = mr - q[8]; mr = q[7] - 12*gsc; i -= 1;);
+);
+// open the picker for part c (kb: from the keyboard, so its focus goes in)
+function pop_open(c, kb) ( pop_c = c; pop_kb = kb; focus_id = kb ? 70 + (slider(c + 1)|0) : 0; wf_optc = -1; );
+// one label: a coloured tab, the kind of part, the option and (for parts
+// made of one) the material. Click for the picker; scroll to step (over the
+// material: step the material). From the keyboard: Return or Space opens the
+// picker, the arrow keys step.
+function label(c, lv) local(q, x, y, w, h, v, mc, m, f, hv, onm, tw, th, tx, ty, s, t1, t2, t4, bh, on)
+(
+  q = CAT_TAB + c*CAT_STRIDE; x = q[7]; y = q[9]; w = q[8]; h = q[10];
+  v = slider(c + 1)|0; mc = mat_cat(c); on = c == hl;
+  f = focusable(10 + c, x, y, w, h); f ? focc = c;
+  hv = inbox(x, y, w, h);
+  rbox(x, y, w, h, 6*gsc, hv ? C_TILE_HOV : C_TILE, on ? group_hex(c) : C_EDGE);
+  // the tab: longer on the part lit up in the drawing
+  group_col(c); rfill(x + 10*gsc, y + 4*gsc, on ? w - 20*gsc : 18*gsc, 3*gsc, 1.5*gsc);
+  gfx_setfont(4); gfx_measurestr("A", tw, t4); gfx_setfont(lv < 2 ? 2 : 1); gfx_measurestr("A", tw, t2); gfx_setfont(1); gfx_measurestr("A", tw, t1);
+  bh = (lv < 3 ? t4 + gsc : 0) + t2 + (mc >= 0 ? t1 : 0);
+  tx = x + 12*gsc; ty = y + 9*gsc + 0.5*(h - 14*gsc - bh);
+  lv < 3 ? ( gfx_setfont(4); col(T_LABEL); gfx_x = tx; gfx_y = ty; say(lv == 0 ? cat_title(c) : cat_short(c)); ty += t4 + gsc; );
+  gfx_setfont(lv < 2 ? 2 : 1); col(T_MAIN); gfx_x = tx; gfx_y = ty; say(opt_name(c, v)); ty += t2;
   onm = 0;
   mc >= 0 ? (
     m = slider(mc + 1)|0; s = mat_name(m); gfx_setfont(1); gfx_measurestr(s, tw, th);
-    // the material is a target of its own, at least 24 px tall
-    mh = max(t1 + 4*gsc, 24*gsc); my_ = ty - 2*gsc - 0.5*(mh - t1 - 4*gsc);
-    onm = inbox(tx - 4*gsc, my_, tw + 20*gsc, mh);
-    onm ? ( hov = mc; col(C_MAT_HOV); gfx_rect(tx - 4*gsc, my_, tw + 20*gsc, mh, 1); );
-    col(onm ? T_MAIN : mc == 3 ? T_ELEM : T_RES);
-    gfx_x = tx; gfx_y = ty; say(s);
-    gfx_triangle(tx + tw + 5*gsc, ty + 0.45*t1, tx + tw + 13*gsc, ty + 0.45*t1, tx + tw + 9*gsc, ty + 0.45*t1 + 4*gsc);
+    onm = inbox(tx - 4*gsc, ty, tw + 8*gsc, t1); onm ? hov = mc;
+    col(mc == 3 ? T_ELEM : T_RES); gfx_x = tx; gfx_y = ty; say(s);
   );
-  // step arrows, top right, only while the mouse is over the tile: a pair,
-  // like a stepper, each 24 px square (smaller only on a very short tile)
-  z = min(24*gsc, floor(0.42*h)); ax1 = x + w - 2*z - 4*gsc; ax2 = x + w - z - 4*gsc;
-  ona1 = inbox(ax1, y + 4*gsc, z, z); ona2 = inbox(ax2, y + 4*gsc, z, z);
-  hv ? (
-    ona1 ? col(T_MAIN) : gfx_set(0.5, 0.53, 0.6, 1);
-    gfx_triangle(ax1 + 0.65*z, y + 4*gsc + 0.25*z, ax1 + 0.65*z, y + 4*gsc + 0.75*z, ax1 + 0.3*z, y + 4*gsc + 0.5*z);
-    ona2 ? col(T_MAIN) : gfx_set(0.5, 0.53, 0.6, 1);
-    gfx_triangle(ax2 + 0.35*z, y + 4*gsc + 0.25*z, ax2 + 0.35*z, y + 4*gsc + 0.75*z, ax2 + 0.7*z, y + 4*gsc + 0.5*z);
-  );
-  // the tile's edge, 3:1 on the window, drawn last so a picture's margin cannot cover it
-  edge(C_EDGE, x, y, w, h); group_col(c); gfx_rect(x, y, w, 2*gsc, 1);
-  hv && clicked ? (
-    ona1 ? set_part(c, (v + cat_count(c) - 1) % cat_count(c)) :
-    ona2 ? set_part(c, (v + 1) % cat_count(c)) :
-    onm ? part_menu(mc, mouse_x, mouse_y) : part_menu(c, mouse_x, mouse_y);
-  );
+  hv && clicked ? pop_open(c, 0);
   hv && wheel != 0 ? (
     onm ? set_part(mc, (m + (wheel > 0 ? MAT_N - 1 : 1)) % MAT_N) :
           set_part(c, (v + (wheel > 0 ? cat_count(c) - 1 : 1)) % cat_count(c));
@@ -2238,16 +2482,95 @@ function tile(c, x, y, w, h) local(v, hv, tw, th, s, pw, ph, tx, tmax, mc, m, bh
   f ? (
     (key == 'rght' || key == 'down') ? ( key = 0; set_part(c, (v + 1) % cat_count(c)); ) :
     (key == 'left' || key == 'up') ? ( key = 0; set_part(c, (v + cat_count(c) - 1) % cat_count(c)); );
-    activated(10 + c) ? part_menu(c, x + 6*gsc, y + h);
+    activated(10 + c) ? pop_open(c, 1);
   );
 );
-function arrow(x1, y1, x2, y2) local(dx, dy, l, ux, uy, k)
+// strings the picker covers can't be seen: the test host's audit forgets them
+function hig_forget(x, y, w, h) local(n, i, j, k, p, q)
 (
-  gfx_set(0.45, 0.48, 0.55, 1);
-  dx = x2 - x1; dy = y2 - y1; l = max(1, sqrt(dx*dx + dy*dy)); ux = dx/l; uy = dy/l;
-  // two pixels at 100%, growing with the interface size
-  k = 0; loop(max(2, floor(2*gsc + 0.5)), gfx_line(x1 - k*uy, y1 + k*ux, x2 - k*uy, y2 + k*ux, 1); k += 1;);
-  gfx_triangle(x2, y2, x2 - 7*gsc*ux + 4*gsc*uy, y2 - 7*gsc*uy - 4*gsc*ux, x2 - 7*gsc*ux - 4*gsc*uy, y2 - 7*gsc*uy + 4*gsc*ux);
+  n = HIG_TXT[0]; i = 0; j = 0;
+  loop(n,
+    p = HIG_TXT + 1 + i*8;
+    (p[3] + p[5] > x && p[3] < x + w && p[4] + p[6] > y && p[4] < y + h) ? 0 : (
+      q = HIG_TXT + 1 + j*8; k = 0; loop(8, q[k] = p[k]; k += 1;); j += 1;
+    );
+    i += 1;
+  );
+  HIG_TXT[0] = j;
+);
+// The picker (ADR 0024): every option of a part, each drawn on this
+// instrument, beside its label. Click one (or Return on it) to use it; it
+// stays open so you can play and compare. Done, Esc or a click elsewhere
+// closes it. For a part made of a material, a menu of the 31 materials.
+function chooser() local(c, n, mc, v, cols, rows, cw, chh, g, ip, hh, pw, ph, px, py, q, i, cx, cy, fi, hvc, on, tx0, ty0, tx1, ty1, bw, bh, s, ox, oy, tw, th, my, mw, k, inside, dw)
+(
+  c = pop_c; n = cat_count(c); mc = mat_cat(c); v = slider(c + 1)|0;
+  cols = min(3, n); rows = ceil(n/cols);
+  cw = 132*gsc; chh = 92*gsc; g = 12*gsc; ip = 16*gsc; hh = 28*gsc;
+  pw = cols*cw + (cols - 1)*g + 2*ip;
+  ph = ip + hh + g + rows*chh + (rows - 1)*g + (mc >= 0 ? g + hh : 0) + ip;
+  q = CAT_TAB + c*CAT_STRIDE;
+  px = floor(max(pad, min(gw - pad - pw, q[7] + 0.5*q[8] - 0.5*pw)));
+  py = q[6] == 0 ? q[9] + q[10] + 8*gsc : q[9] - 8*gsc - ph;
+  py = floor(max(pad, min(gh - pad - ph, py)));
+  hig_audit ? hig_forget(px, py, pw, ph);
+  // a soft shadow, then the raised surface
+  k = 3; loop(3, gfx_set(0, 0, 0, 0.12); rfill(px - k*gsc, py - k*gsc + 3*gsc, pw + 2*k*gsc, ph + 2*k*gsc, (10 + k)*gsc); k -= 1;);
+  rbox(px, py, pw, ph, 10*gsc, C_POP, C_EDGE);
+  gfx_setfont(2); col(T_MAIN); gfx_measurestr(cat_name(c), tw, th);
+  gfx_x = px + ip; gfx_y = py + ip + 0.5*(hh - th); say(cat_name(c));
+  dw = bwidth("Done");
+  button(81, px + pw - ip - dw, py + ip, dw, hh, "Done", 0) ? ( pop_c = -1; focus_id = pop_kb && focus_id > 0 ? 10 + c : 0; );
+  pop_hv = -1;
+  i = 0;
+  loop(n,
+    cx = px + ip + (i % cols)*(cw + g); cy = py + ip + hh + g + floor(i/cols)*(chh + g);
+    fi = focusable(70 + i, cx, cy, cw, chh);
+    hvc = pinbox(cx, cy, cw, chh);
+    (hvc || fi) ? pop_hv = i;
+    on = i == v;
+    rbox(cx, cy, cw, chh, 8*gsc, hvc ? C_TILE_HOV : C_TILE, on ? group_hex(c) : C_TRACK);
+    // the option, drawn on this instrument, framed on its part
+    tx0 = cx + 8*gsc; ty0 = cy + 8*gsc; tx1 = cx + cw - 8*gsc; ty1 = cy + chh - 30*gsc;
+    bw = max(WF_OBB[i*4 + 2] - WF_OBB[i*4] + 40, 120); bh = max(WF_OBB[i*4 + 3] - WF_OBB[i*4 + 1] + 30, 64);
+    s = min((tx1 - tx0)/bw, (ty1 - ty0)/bh);
+    ox = 0.5*(tx0 + tx1) - s*0.5*(WF_OBB[i*4] + WF_OBB[i*4 + 2]); oy = 0.5*(ty0 + ty1) - s*0.5*(WF_OBB[i*4 + 1] + WF_OBB[i*4 + 3]);
+    wf_draw(WF_OPT + i*WF_OPT_STRIDE, s, ox, oy, -1, c, tx0, ty0, tx1, ty1);
+    gfx_setfont(1); col(T_MAIN); gfx_measurestr(opt_name(c, i), tw, th);
+    gfx_x = cx + 0.5*(cw - tw); gfx_y = cy + chh - 25*gsc; say(opt_name(c, i));
+    // the one in use: an edge in its colour and a bar under its name
+    on ? ( col(T_MAIN); gfx_rect(floor(cx + 0.5*(cw - tw)), floor(cy + chh - 25*gsc + th) + gsc, tw, max(1, floor(1.5*gsc)), 1); );
+    (ui_block && hvc && pclick) || activated(70 + i) ? set_part(c, i);
+    i += 1;
+  );
+  // the arrow keys move between the options
+  (focus_id >= 70 && focus_id < 70 + n) ? (
+    i = focus_id - 70;
+    key == 'rght' ? ( key = 0; i = min(n - 1, i + 1); ) : key == 'left' ? ( key = 0; i = max(0, i - 1); ) :
+    key == 'down' ? ( key = 0; i = min(n - 1, i + cols); ) : key == 'up' ? ( key = 0; i = max(0, i - cols); );
+    focus_id = 70 + i;
+  );
+  mc >= 0 ? (
+    my = py + ip + hh + g + rows*chh + (rows - 1)*g + g;
+    gfx_setfont(1); col(T_LABEL); gfx_measurestr("Made of", tw, th);
+    gfx_x = px + ip; gfx_y = my + 0.5*(hh - th); say("Made of");
+    cx = px + ip + tw + 12*gsc;
+    gfx_measurestr(mat_name(slider(mc + 1)|0), tw, th); mw = max(130*gsc, tw + 40*gsc);
+    fi = focusable(80, cx, my, mw, hh); hvc = pinbox(cx, my, mw, hh);
+    rbox(cx, my, mw, hh, 6*gsc, hvc ? C_BTN_HOV : C_BTN, C_TRACK);
+    col(T_MAIN); gfx_x = cx + 12*gsc; gfx_y = my + 0.5*(hh - th); say(mat_name(slider(mc + 1)|0));
+    tx0 = cx + mw - 20*gsc; ty0 = my + 0.5*hh;
+    gfx_triangle(tx0, ty0 - 2*gsc, tx0 + 8*gsc, ty0 - 2*gsc, tx0 + 4*gsc, ty0 + 2*gsc);
+    (ui_block && hvc && pclick) || activated(80) ? mat_menu(mc, cx, my + hh);
+    (c == 6 || c == 7) ? (
+      gfx_measurestr("Shared with the resonator", tw, th);
+      cx + mw + 12*gsc + tw <= px + pw - ip ? ( col(T_LABEL); gfx_x = cx + mw + 12*gsc; gfx_y = my + 0.5*(hh - th); say("Shared with the resonator"); );
+    );
+  );
+  pop_x = px; pop_y = py; pop_w = pw; pop_h = ph;
+  // a click outside closes it (and does nothing else)
+  inside = pinbox(px, py, pw, ph);
+  ui_block && pclick && !inside ? pop_c = -1;
 );
 
 // ---- the eleven controls (sliders 13-23, control k is slider 13 + k). They
@@ -2291,7 +2614,7 @@ function ctl_def(k) ( k==0?70:k==1?100:k==3?100:k==4?20:k==5?50:k==7?120:0; );
 // log controls: the value at the middle of the track (0 = linear)
 function ctl_mid(k) ( k==1?100:k==3?100:k==7?150:0; );
 function ctl_step(k) ( k==9?0.1:1; );
-// the part whose picture stands for the control
+// the part whose colour the control takes
 function ctl_part(k) ( k==0?0:k==1?4:k==2?2:k==3?10:k==4?1:k==5?4:k==6?11:k==7?8:k==8?9:k==9?7:2; );
 function ctl_col(k) ( k == 10 ? gfx_set(0.85, 0.5, 0.3, 1) : group_col(ctl_part(k)); );
 function ctl_pos(k, v) local(a, b, m)
@@ -2341,9 +2664,8 @@ function control(k, x, y, w, h, vin) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1
   v = slider(13 + k);
   f = focusable(40 + k, x, y, w, h); f ? focc = 100 + k;
   hv = inbox(x, y, w, h) && drag_k < 0; hv ? hovc = k;
-  col(hv || drag_k == k ? C_TILE_HOV : C_TILE); gfx_rect(x, y, w, h, 1);
-  edge(C_EDGE, x, y, w, h);
-  ctl_col(k); gfx_rect(x, y, 3*gsc, h, 1);
+  rbox(x, y, w, h, 6*gsc, hv || drag_k == k ? C_TILE_HOV : C_TILE, C_EDGE);
+  ctl_col(k); rfill(floor(x + 4*gsc), floor(y + 9*gsc), max(2, floor(3*gsc)), floor(h - 18*gsc), 1.5*gsc);
   gfx_setfont(1);
   s = ctl_text(k); gfx_measurestr(s, tw, th); k == 6 ? tw = 0;
   gfx_measurestr(ctl_widest(k), vw, th);
@@ -2364,13 +2686,14 @@ function control(k, x, y, w, h, vin) local(v, p, hv, x0, x1, ty, hx, tw, th, tw1
     z = 0;
     loop(2,
       d = x0 + z*0.5*(x1 - x0); on = (v >= 0.5) == z;
-      col(on ? C_ON : C_SEG); gfx_rect(d, segy, sw_, segh, 1);
-      edge(C_TRACK, d, segy, sw_, segh);
+      rbox(d, segy, sw_, segh, 4*gsc, on ? C_ON : C_SEG, C_TRACK);
       gfx_setfont(4); col(on ? T_MAIN : T_DIM);
       s = z ? "MONO" : "POLY"; gfx_measurestr(s, tw, th);
-      gfx_x = d + 0.5*(sw_ - tw); gfx_y = segy + gsc; say(s);
+      // (clear of the half's edge, which sits on whole pixels)
+      wy_ = floor(segy + 0.5) + max(1, floor(gsc + 0.5)) + 0.5*gsc;
+      gfx_x = d + 0.5*(sw_ - tw); gfx_y = wy_; say(s);
       // (on whole pixels below the word's box, whatever the size)
-      on ? gfx_rect(d + 0.5*(sw_ - tw), ceil(segy + gsc + th) + floor(0.5*gsc), tw, max(1, floor(1.5*gsc)), 1);
+      on ? gfx_rect(d + 0.5*(sw_ - tw), ceil(wy_ + th) + floor(0.5*gsc), tw, max(1, floor(1.5*gsc)), 1);
       z += 1;
     );
     hv && clicked ? set_ctl(k, mouse_x >= x + 0.5*w);
@@ -2410,8 +2733,7 @@ function more_button(x, y, w, h) local(hv, f, tw, th, s, tx, ty)
 (
   f = focusable(60, x, y, w, h);
   hv = inbox(x, y, w, h) && drag_k < 0;
-  col(hv ? C_TILE_HOV : C_TILE); gfx_rect(x, y, w, h, 1);
-  edge(C_EDGE, x, y, w, h);
+  rbox(x, y, w, h, 6*gsc, hv ? C_TILE_HOV : C_TILE, C_EDGE);
   s = more_ctl ? "Less" : "More";
   gfx_setfont(1); col(T_BODY); gfx_measurestr(s, tw, th);
   gfx_x = x + 0.5*(w - tw) - 6*gsc; gfx_y = y + 0.5*(h - th); say(s);
@@ -2470,21 +2792,6 @@ button(4, bxx, byy, wO, bh_, "Options", 0) ? (
 );
 top_ = byy + bh_;
 
-// ---- a message, at the top, until it is dismissed (never on a timer)
-msg_on = pics_missing && !msg_gone;
-msg_on ? (
-  strcpy(#msg, "The part pictures weren’t found, so drawings are shown instead. To see the pictures, put the Instrument-Creator-images folder next to Instrument-Creator.jsfx.");
-  dw_ = bwidth("Dismiss"); my_ = top_ + 12*gsc;
-  gfx_setfont(1);
-  wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#msg, pad + 12*gsc, my_, gw - 2*pad - dw_ - 36*gsc, 17*gsc); wrap_ymax = wlim;
-  mh_ = max(bh_ + 8*gsc, hy - my_ + 12*gsc);
-  col(C_PREV); gfx_rect(pad, my_, gw - 2*pad, mh_, 1);
-  gfx_set(0.95, 0.6, 0.25, 1); gfx_rect(pad, my_, 3*gsc, mh_, 1);
-  col(T_BODY); draw_wrapped(#msg, pad + 12*gsc, my_ + 0.5*(mh_ - (hy - my_)), gw - 2*pad - dw_ - 36*gsc, 17*gsc);
-  button(5, gw - pad - dw_ - 8*gsc, my_ + 0.5*(mh_ - bh_), dw_, bh_, "Dismiss", 0) ? msg_gone = 1;
-  top_ = my_ + mh_;
-);
-
 // ---- the controls: the seven that shape the sound, then More, which shows
 // the four that are usually set once (play mode, glide, fine tune, output).
 // Cells 44 px tall and 12 apart; they wrap onto more rows when the window is
@@ -2523,64 +2830,129 @@ drag_k >= 0 ? (
   );
 );
 
-// ---- the assembled instrument
-ax = pad; aw = gw - 2*pad; ay = y2 + 2*gsc;
-gfx_setfont(4); col(T_DIM); s_ = "YOUR INSTRUMENT — CLICK A PART TO CHANGE IT, HOVER FOR A CLOSER LOOK";
-gfx_measurestr(s_, tww, thh); tww > aw ? s_ = "YOUR INSTRUMENT";
-gfx_x = ax; gfx_y = ay; say(s_);
-// keep room for the preview panel, then fit the pictures into what is left;
-// when even the parts are short of room (a large interface size in a small
-// window) the preview gives way to them
-avail = gh - pad - ay;
-gap = min(26*gsc, max(12*gsc, 0.04*avail));
-ph_min = max(130*gsc, 0.27*avail);
-tw_ = (aw - 2*gap)/3;
-th_ = min(0.5*tw_, (avail - 20*gsc - 2*gap - 12*gsc - ph_min)/2.72);
-prev_on = th_ >= 56*gsc;
-!prev_on ? th_ = min(0.5*tw_, (avail - 20*gsc - 2*gap)/2.72);
-th_ = max(28*gsc, th_);
-ty1 = ay + 20*gsc; ty2 = ty1 + th_ + gap;
-tile(0, ax, ty1, tw_, th_);
-tile(1, ax + tw_ + gap, ty1, tw_, th_);
-tile(2, ax + 2*(tw_ + gap), ty1, tw_, th_);
-tile(6, ax + 2*(tw_ + gap), ty2, tw_, th_);
-tile(4, ax + tw_ + gap, ty2, tw_, th_);
-tile(7, ax, ty2, tw_, th_);
-arrow(ax + tw_ + 3*gsc, ty1 + 0.45*th_, ax + tw_ + gap - 3*gsc, ty1 + 0.45*th_);
-arrow(ax + 2*tw_ + gap + 3*gsc, ty1 + 0.45*th_, ax + 2*(tw_ + gap) - 3*gsc, ty1 + 0.45*th_);
-arrow(ax + 2*(tw_ + gap) + 0.5*tw_, ty1 + th_ + 3*gsc, ax + 2*(tw_ + gap) + 0.5*tw_, ty2 - 3*gsc);
-arrow(ax + 2*(tw_ + gap) - 3*gsc, ty2 + 0.45*th_, ax + 2*tw_ + gap + 3*gsc, ty2 + 0.45*th_);
-arrow(ax + tw_ + gap - 3*gsc, ty2 + 0.45*th_, ax + tw_ + 3*gsc, ty2 + 0.45*th_);
-// the four controls
-cy_ = ty2 + th_ + gap; ch_ = max(28*gsc, 0.72*th_); cw_ = (aw - 3*12*gsc)/4;
-k = 0;
-loop(4, tile(8 + k, ax + k*(cw_ + 12*gsc), cy_, cw_, ch_); k += 1;);
+// ---- the instrument (ADR 0024): one drawing of the whole thing, built again
+// whenever a part changes (here, by a preset or by automation)
+k = 0; wf_dirty = !wf_built; loop(12, (slider(k + 1)|0) != WF_LAST[k] ? wf_dirty = 1; k += 1;);
+wf_dirty ? (
+  k = 0; loop(12, WF_P[k] = WF_LAST[k] = slider(k + 1)|0; k += 1;);
+  wf_build(WF_GEO); wm_ex0 = el_x0; wm_ex1 = el_x1; wm_mode = wf_mode;
+  k = 0; loop(12, wf_bbox(WF_GEO, k); q = CAT_TAB + k*CAT_STRIDE; q[0] = wbx0; q[1] = wby0; q[2] = wbx1; q[3] = wby1; k += 1;);
+  wf_built = 1; wf_optc = -1;
+);
+// the picker's drawings: the instrument once per option of its part
+pop_c >= 0 && wf_optc != pop_c ? (
+  i = 0;
+  loop(cat_count(pop_c),
+    k = 0; loop(12, WF_P[k] = slider(k + 1)|0; k += 1;); WF_P[pop_c] = i;
+    wf_build(WF_OPT + i*WF_OPT_STRIDE); wf_bbox(WF_OPT + i*WF_OPT_STRIDE, pop_c);
+    WF_OBB[i*4] = wbx0; WF_OBB[i*4 + 1] = wby0; WF_OBB[i*4 + 2] = wbx1; WF_OBB[i*4 + 3] = wby1;
+    i += 1;
+  );
+  wf_optc = pop_c;
+);
 
-// ---- the close-up preview of the focused, hovered or last changed part or control
-pc = focus_id > 0 && focc >= 0 ? focc : hov >= 0 ? hov : drag_k >= 0 ? 100 + drag_k : hovc >= 0 ? 100 + hovc : last_cat;
-py_ = cy_ + ch_ + 12*gsc; ph_ = gh - pad - py_; pw_ = aw;
-prev_on && ph_ > 40*gsc ? (
-  col(C_PREV); gfx_rect(ax, py_, pw_, ph_, 1);
-  pc >= 100 ? ctl_col(pc - 100) : group_col(pc); gfx_rect(ax, py_, 3*gsc, ph_, 1);
-  psz = min(ph_ - 16*gsc, 0.22*pw_);
-  pp = pc >= 100 ? ctl_part(pc - 100) : pc;
-  v = slider(pp + 1)|0;
-  picture(pp, v, ax + 12*gsc, py_ + 8*gsc, 1.15*psz, psz, 1);
-  sw = pw_ > 560*gsc ? min(200*gsc, 0.22*pw_) : 0;
-  tx = ax + 24*gsc + 1.15*psz; tw2 = pw_ - (tx - ax) - 12*gsc - (sw > 0 ? sw + 12*gsc : 0);
+// where everything goes: the labels' rows, the drawing between them, and the
+// close-up under them while there is room for it (it gives way first)
+ax = pad; aw = gw - 2*pad;
+gfx_setfont(4); gfx_measurestr("A", tww, t4_); gfx_setfont(2); gfx_measurestr("A", tww, t2_); gfx_setfont(1); gfx_measurestr("A", tww, t1_);
+// (a fixed height, so 200% is 100% doubled; taller only if a font needs it)
+lh_ = max(ceil(62*gsc), ceil(14*gsc + t4_ + gsc + t2_ + t1_));
+lty = y2;
+avail = gh - pad - lty;
+ph_ = max(124*gsc, 0.24*avail);
+prev_on = avail - (2*lh_ + 28*gsc + 110*gsc) - 12*gsc >= ph_;
+py_ = gh - pad - ph_;
+lby = prev_on ? py_ - 12*gsc - lh_ : gh - pad - lh_;
+dtop = lty + lh_ + 14*gsc; dbot = lby - 14*gsc;
+// the drawing's own space is 900 x 360. What it reaches (measured over
+// 20,000 random instruments) is shown, so the scale stays the same whatever
+// the parts, and changes only between the two builds
+wm_mode == 0 ? ( WX0 = 0; WY0 = 56; WX1 = 906; WY1 = 356; ) : ( WX0 = 20; WY0 = 4; WX1 = 915; WY1 = 358; );
+ws_ = max(0.05, min(aw/(WX1 - WX0), (dbot - dtop)/(WY1 - WY0)));
+wox = ax + 0.5*(aw - ws_*(WX1 + WX0)); woy = dtop + 0.5*(dbot - dtop) - ws_*0.5*(WY0 + WY1);
+lab_rows();
+k = 0;
+loop(12,
+  q = CAT_TAB + k*CAT_STRIDE;
+  q[12] = wox + ws_*0.5*(q[0] + q[2]); q[13] = q[6] == 0 ? dtop : dbot;
+  k += 1;
+);
+wf_anchors(WF_GEO, ws_, wox, woy);
+lv_ = 0;
+while (lv_ < 3 && (row_w(0, lv_) > aw + 0.5 || row_w(1, lv_) > aw + 0.5)) ( lv_ += 1; );
+lab_place(0, lty, lv_, lh_); lab_place(1, lby, lv_, lh_);
+
+// what the mouse is over: a label, or a part of the drawing
+k = 0;
+loop(12, q = CAT_TAB + k*CAT_STRIDE; q[6] >= 0 && inbox(q[7], q[9], q[8], q[10]) ? hov = k; k += 1;);
+whit = (!ui_block && hov < 0 && drag_k < 0 && inbox(ax, dtop - 8*gsc, aw, dbot - dtop + 16*gsc)) ? wf_hit(WF_GEO, ws_, wox, woy, 7*gsc) : -1;
+whit >= 0 ? hov = whit;
+// the part shown in the close-up and lit up in the drawing: the picker's, the
+// focused, the hovered, else the last changed
+pfoc = (focus_id >= 10 && focus_id < 22) ? focus_id - 10 : -1;
+pc0 = pop_c >= 0 ? pop_c : pfoc >= 0 ? pfoc : hov >= 0 ? hov : last_cat;
+hl = pc0 >= 100 ? -1 : pc0 == 3 ? 2 : pc0 == 5 ? 4 : pc0;
+// the sounding element trembles (Reduce Motion holds anim_ph at 0, which stills it)
+wf_vib = min(4, 30*vis_lvl)*sin(anim_ph);
+wf_draw(WF_GEO, ws_, wox, woy, hl, -1, 0, 0, 0, 0);
+// a click on a part opens its picker; scrolling over it steps it
+whit >= 0 && clicked ? pop_open(whit, 0);
+whit >= 0 && wheel != 0 ? set_part(whit, ((slider(whit + 1)|0) + (wheel > 0 ? cat_count(whit) - 1 : 1)) % cat_count(whit));
+// each label's line to its part
+k = 0;
+loop(12,
+  q = CAT_TAB + k*CAT_STRIDE;
+  q[6] >= 0 ? (
+    sx = floor(q[7] + 0.5*q[8]) + 0.5; sy = q[6] == 0 ? q[9] + q[10] : q[9]; my_ = q[6] == 0 ? sy + 6*gsc : sy - 6*gsc;
+    k == hl ? group_col(k) : col(C_EDGE);
+    wline(sx, sy, sx, my_, (k == hl ? 1.5 : 1)*gsc); wline(sx, my_, q[4], q[5], (k == hl ? 1.5 : 1)*gsc);
+    col(T_DIM); gfx_circle(q[4], q[5], 2.5*gsc, 1, 1);
+  );
+  k += 1;
+);
+// the labels, in the order the energy flows (so Tab goes that way too)
+label(0, lv_); label(1, lv_); label(2, lv_); label(6, lv_); label(4, lv_); label(7, lv_);
+label(8, lv_); label(9, lv_); label(10, lv_); label(11, lv_);
+
+// ---- the close-up of the part or control in hand: the picker's (the option
+// under the mouse or the focus), the focused, the hovered, else the last changed
+pc = pop_c >= 0 ? pop_c : focus_id > 0 && focc >= 0 ? focc : hov >= 0 ? hov : drag_k >= 0 ? 100 + drag_k : hovc >= 0 ? 100 + hovc : last_cat;
+prev_on ? (
+  col(C_PREV); rfill(ax, py_, aw, ph_, 8*gsc);
+  v = pc >= 100 ? 0 : slider(pc + 1)|0;
+  pop_c >= 0 && pop_hv >= 0 ? v = pop_hv;
+  sw = aw > 560*gsc ? min(200*gsc, 0.22*aw) : 0;
+  tx = ax + 18*gsc; tw2 = aw - 36*gsc - (sw > 0 ? sw + 16*gsc : 0);
   wrap_ymax = py_ + ph_ - 6*gsc;
-  gfx_setfont(4); col(T_DIM); gfx_x = tx; gfx_y = py_ + 10*gsc; say(pc >= 100 ? "CONTROL" : cat_title(pc));
+  // the kind, with a dot in its colour
+  pc >= 100 ? ctl_col(pc - 100) : group_col(pc); gfx_circle(tx + 3*gsc, py_ + 16*gsc, 3*gsc, 1, 1);
+  gfx_setfont(4); col(T_DIM); gfx_x = tx + 12*gsc; gfx_y = py_ + 10*gsc; say(pc >= 100 ? "CONTROL" : cat_title(pc));
   gfx_setfont(5); col(T_MAIN); gfx_x = tx; gfx_y = py_ + 24*gsc;
   pc >= 100 ? (
     say(ctl_title(pc - 100)); say("   "); col(T_HINT); say(ctl_text(pc - 100));
-  ) : say(opt_name(pc, v));
+  ) : (
+    say(opt_name(pc, v));
+    mat_cat(pc) >= 0 ? ( say("   "); col(pc == 2 ? T_ELEM : T_RES); say(mat_name(slider(mat_cat(pc) + 1)|0)); );
+  );
   gfx_setfont(1); col(T_BODY);
   yy = draw_wrapped(pc >= 100 ? ctl_desc(pc - 100) : opt_desc(pc, v), tx, py_ + 52*gsc, tw2, 17*gsc);
   // how to use it: with the mouse, or (when the keyboard is in use) the keys
-  pc >= 100 || focus_id > 0 ? (
-    strcpy(#info, focus_id > 0 ? (pc >= 100 ? (pc == 106 ? "Return or the arrow keys switch it." : "The arrow keys change it (hold Shift for small steps); Delete resets it.") :
-                                              "Return opens its menu; the arrow keys step through the choices.") :
-                  pc == 106 ? "Click either side to choose." : "Drag to change it (hold Shift for small steps), scroll, or double-click to reset.");
+  strcpy(#info,
+    pop_c >= 0 ? (focus_id > 0 ? "The arrow keys move between them; Return uses one; Esc closes." :
+                                 "Click one to use it, then play to hear it. Click Done when you’re finished.") :
+    focus_id > 0 ? (pc >= 100 ? (pc == 106 ? "Return or the arrow keys switch it." : "The arrow keys change it (hold Shift for small steps); Delete resets it.") :
+                                "Return shows every choice; the arrow keys step through them.") :
+    pc >= 100 ? (pc == 106 ? "Click either side to choose." : "Drag to change it (hold Shift for small steps), scroll, or double-click to reset.") :
+    (pc == 3 || pc == 5) ? "Scroll over it to step through the materials." :
+                           "Click it, or its name, to see every choice; scroll over it to step through them.");
+  wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); wrap_ymax = wlim;
+  hy <= wrap_ymax ? ( col(T_DIM); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
+  // the coupler decides how the instrument is built
+  pc == 6 ? (
+    strcpy(#info, v >= 2 ? (v == 2 ? "Built in a line: the mouthpiece joins the parts end to end, like a wind instrument." :
+                                     "Built in a line: the windway joins the parts end to end, like a wind instrument.") :
+                           (v == 0 ? "Built in layers: the bridge holds the element over the body, like a guitar or a marimba." :
+                                     "Built in layers: the soundpost holds the element over the body, like a guitar or a marimba."));
     wlim = wrap_ymax; wrap_ymax = -1; hy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); wrap_ymax = wlim;
     hy <= wrap_ymax ? ( col(T_DIM); yy = draw_wrapped(#info, tx, yy + 4*gsc, tw2, 17*gsc); );
   );
@@ -2601,8 +2973,8 @@ prev_on && ph_ > 40*gsc ? (
   // moves with Reduce Motion too)
   sh = min(90*gsc, ph_ - 20*gsc);
   (sw > 0 && sh > 16*gsc) ? (
-    sx = ax + pw_ - sw - 12*gsc; sy = py_ + 0.5*(ph_ - sh);
-    col(C_SUNK); gfx_rect(sx, sy, sw, sh, 1);
+    sx = ax + aw - sw - 12*gsc; sy = py_ + 0.5*(ph_ - sh);
+    col(C_SUNK); rfill(sx, sy, sw, sh, 6*gsc);
     st0 = (scope_w - 1024 + SCOPE_LEN) & (SCOPE_LEN - 1); k = 0;
     while (k < 400 && !(SCOPE_BUF[(st0 + k) & (SCOPE_LEN - 1)] <= 0 && SCOPE_BUF[(st0 + k + 1) & (SCOPE_LEN - 1)] > 0)) ( k += 1; );
     st0 += k; sc_ = 0.45*sh/max(0.05, vis_lvl);
@@ -2615,8 +2987,12 @@ prev_on && ph_ > 40*gsc ? (
   );
 );
 
-// ---- the keyboard: Tab and Shift+Tab move the focus, Esc lets it go. The
-// controls above have already taken Return, Space, the arrows and Delete.
+// ---- the picker, over everything
+pop_c >= 0 ? chooser();
+
+// ---- the keyboard: Tab and Shift+Tab move the focus, Esc closes the picker,
+// then lets the focus go. The controls above have already taken Return,
+// Space, the arrows and Delete.
 key == 9 ? (
   fl_n > 0 ? (
     cur = -1; i = 0;
@@ -2624,9 +3000,11 @@ key == 9 ? (
     (mouse_cap & 8) ? ( cur = cur <= 0 ? fl_n - 1 : cur - 1; ) : ( cur = cur < 0 ? 0 : (cur + 1) % fl_n; );
     focus_id = FOCUS_TAB[cur*5];
   );
-) : key == 27 ? focus_id = 0;
+) : key == 27 ? (
+  pop_c >= 0 ? ( focus_id = focus_id > 0 ? 10 + pop_c : 0; pop_c = -1; ) : focus_id = 0;
+);
 // the focus ring, near-white and two pixels thick, drawn over everything
 fr_on && focus_id > 0 ? (
   col(C_RING); k = 0;
-  loop(max(2, floor(2*gsc + 0.5)), gfx_rect(fr_x - 3*gsc - k, fr_y - 3*gsc - k, fr_w + 6*gsc + 2*k, fr_h + 6*gsc + 2*k, 0); k += 1;);
+  loop(max(2, floor(2*gsc + 0.5)), gfx_roundrect(floor(fr_x - 3*gsc) - k, floor(fr_y - 3*gsc) - k, floor(fr_w + 6*gsc) + 2*k, floor(fr_h + 6*gsc) + 2*k, floor(9*gsc) + k, 0); k += 1;);
 );

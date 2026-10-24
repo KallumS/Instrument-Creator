@@ -1,6 +1,6 @@
 # 0020. Rendered pictures in a folder, drawings as the fallback
 
-- Status: Accepted
+- Status: Superseded by [0024](0024-the-whole-instrument-as-one-line-drawing.md) (24 October 2026: the plugin no longer loads the pictures; the folder is in the git history)
 - Date: 2026-10-08
 - Amends: [0001](0001-a-single-file-jsfx-instrument-not-a-reascript.md) (no
   longer one file only), [0012](0012-a-window-drawn-entirely-in-code.md)

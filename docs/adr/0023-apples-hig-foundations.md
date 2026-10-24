@@ -1,6 +1,6 @@
 # 0023. The window follows the rest of Apple's HIG Foundations
 
-- Status: Accepted
+- Status: Accepted; amended by [0024](0024-the-whole-instrument-as-one-line-drawing.md) (its rules hold for the drawing, labels and picker; the missing-pictures message is gone)
 - Date: 2026-10-15
 - Amends: [0019](0019-every-control-in-the-window-reaper-sliders-hidden.md)
   and [0021](0021-one-diagram-materials-in-menus-four-controls-und.md) (the
