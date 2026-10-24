@@ -73,8 +73,9 @@ review says so rather than counting it as met.
 ## Not relevant
 
 Materials (Liquid Glass), App icons, Icons and SF Symbols (beyond the small
-arrows), Images (the part pictures are content, made by
-`tools/render_parts.py`), Spatial layout and Immersive experiences.
+arrows), Images (the part pictures were content, made by
+`tools/render_parts.py`; since 24 October there are none), Spatial layout
+and Immersive experiences.
 
 ## Checked by
 
@@ -169,3 +170,59 @@ Each rule was broken on purpose in a copy (19 new cases in
 `tools/hig_bite.py`) and the suite watched to fail. Screenshots looked at:
 940 × 720 with More open, 200% in 940 × 720 (drawn at 118%) and in
 1880 × 1440, and Retina. **None of this has been run in REAPER.**
+
+## The new window (24 October 2026)
+
+The tiles gave way to one line drawing of the whole instrument, labelled
+round it, with a picker for each part ([ADR 0024](adr/0024-the-whole-instrument-as-one-line-drawing.md)).
+The user asked for it to look modern and polished and to follow Apple's
+guidelines as the family applies them: the shared review is the Good Idea
+repo's `docs/apple-hig-review.md` (the same 19 Foundations pages, the same
+choices: 7:1 words, 3:1 edges, 28-point targets 12 apart, the keyboard
+alone, Esc lets go first, raised surfaces lighter, nothing at the bottom,
+nothing time-boxed). Its house colour scheme is not adopted; this window
+kept its own palette, as before. Every verdict above still stands for the
+header and the controls; what follows is what the new parts needed.
+
+### What changed
+
+| Guideline (page) | Now |
+| --- | --- |
+| Clear hierarchy; build on what people know (Design principles; Layout) | The instrument is shown whole, the way it is built, instead of ten tiles joined by arrows: one place to look, the labels round it say what each part is, and the colours say its kind. The coupler decides whether it is built in a line (a wind instrument) or in layers (a guitar, a marimba), and the close-up says so. |
+| Progressive disclosure; content first (Layout) | Each part's choices are out of sight until it is clicked; then a picker opens beside its label with every choice drawn on this instrument. |
+| Raised surfaces lighter (Dark Mode) | The picker is `#30323C`, lighter than the window and the labels, with a soft shadow and an edge 3.7:1 on the window. |
+| Non-text contrast (Accessibility; Color) | Inside the picker, cells and buttons are edged in `#80879A`, 3.5:1 on its surface (the window's `#6D7581` would be 2.8:1 there). The drawing's lines are the group colours, 6:1 or more on the window (rusted by Age, still over 5:1). Each label's line to its part is `#6D7581`, 3.7:1. |
+| Marks grow with the text (Accessibility; Typography) | The drawing's lines are 1.4 points (2.4 for the part in hand), the labels' lines 1, and both grow with the interface size. |
+| Feedback; colour never alone (Accessibility; Color) | The part in hand (hovered, focused, picked or last changed) is drawn heavier, its label's tab runs the label's width, and its label and line take its colour. In the picker, the choice in use has a coloured edge and a bar under its name. |
+| The keyboard alone (Accessibility) | Labels are in Tab's order the way the energy flows. Return or Space on a label opens its picker with the ring on the choice in use; the arrows move between choices (up and down by a row), Return uses one; Tab stays inside the picker; Esc closes it and puts the ring back on its label, and a second Esc lets go. The arrows on a label still step it without opening anything. |
+| Modality made obvious (Design principles) | While the picker is open nothing else takes the mouse or the keyboard; a click outside only closes it. Done closes it too. A choice applies at once and the picker stays, so choices can be played and compared. |
+| Truncation (Typography; Layout) | A row of labels short of room shortens its captions, then its names' font, then drops the captions; names are never cut. |
+| Craft (Design principles) | Round corners on buttons, cells, labels, the picker and the close-up, antialiased lines and a rounded focus ring. |
+| Motion (Motion; Accessibility) | The element trembles while it sounds (a smooth bow, about 1.4 swings a second). Reduce Motion stills it. The scope keeps moving: it is the sound. |
+| Time-boxed messages (Accessibility) | The only message (the pictures were missing) is gone with the pictures. |
+
+### Not done, and why
+
+| Guideline | Why |
+| --- | --- |
+| VoiceOver | Unchanged: a JSFX window can't be read. Every part is still a REAPER parameter. |
+| The drawing as a control | The labels are the controls (28 points, focusable); the drawing can be clicked and scrolled too, as a shortcut, but is not in Tab's order: each part's label already is. |
+
+### Checked by
+
+`tools/hig_check.py` grew from 193 to 361 checks: contrast with each label
+and each part of the drawing hovered, with every part's picker open (in a
+line and in layers, at 800 × 480 and at 200%), playing; every part
+labelled; each picker holding only its own controls, its cells 28 points
+tall and 12 apart, inside the window, edged 3:1 on its surface, lighter than
+the window; the choice in use carrying a bar; the picker's keys (Return,
+the arrows by option and by row, Tab staying inside, Esc twice) and mouse
+(a click on a label or a part opens it, on a choice uses it, outside closes
+it, on a control only closes it); scrolling over a part; the drawing's
+lines 3:1 and growing with the size; the element trembling and Reduce
+Motion stilling it; 200% drawn as 100% doubled, the labels' words within
+their labels; a layered instrument at 600 to 700 px wide, where the labels
+shorten their captions rather than overlap. `tools/hig_bite.py` breaks each rule on purpose (60 cases, 14
+of them new). Screenshots: every preset in both builds, the picker for each
+part, More open, keyboard focus, Age 100%, 800 × 480, 200% fitted, Retina.
+**None of this has been run in REAPER.**

@@ -3,12 +3,13 @@
     python3 tools/hig_check.py [path/to/Instrument-Creator.jsfx]
 
 Drives the real @gfx through tools/build/hig (ysfx, no REAPER) and checks:
-words 7:1 on the pixels under them, in many states and sizes; controls 28 px
-tall and 12 apart; no name cut short; one scale for everything; Tab, Shift+Tab,
-Return, Space, the arrows, Delete and Esc; a visible focus ring; a second cue
-besides colour on what is chosen; the controls and messages at the top; a
-message that stays until dismissed; Reduce Motion; the interface size and
-Reduce Motion saved with the project; the system font and nothing under 10 px.
+words 7:1 on the pixels under them, in many states and sizes, the picker
+open included; controls 28 px tall and 12 apart; no name cut short; one scale
+for everything; Tab, Shift+Tab, Return, Space, the arrows, Delete and Esc,
+in the window and in the picker; a visible focus ring; a second cue besides
+colour on what is chosen; the controls at the top; Reduce Motion; the
+interface size and Reduce Motion saved with the project; the system font and
+nothing under 10 px; edges and the drawing's lines 3:1 (ADR 0023, ADR 0024).
 Prints one line per check and exits 1 if any fails.
 """
 import os, re, shutil, subprocess, sys, tempfile
@@ -32,7 +33,7 @@ def run(steps, w=940, h=720, scale=1, jsfx=JSFX):
     r = subprocess.run([HOST, jsfx, str(w), str(h)] + steps, capture_output=True, text=True, env=env)
     if r.returncode:
         raise SystemExit("hig failed: " + r.stderr[-2000:])
-    out = {"text": [], "focus": [], "var": {}, "menu": [], "sliders": None, "focused": [], "restored": None, "texts": [], "undo": []}
+    out = {"text": [], "focus": [], "var": {}, "menu": [], "sliders": None, "focused": [], "restored": None, "texts": [], "undo": [], "cat": {}}
     for line in r.stdout.splitlines():
         p = line.split(" ")
         if p[0] == "text":
@@ -47,6 +48,8 @@ def run(steps, w=940, h=720, scale=1, jsfx=JSFX):
             out["menu"].append(line[5:])
         elif p[0] == "sliders":
             out["sliders"] = [float(x) for x in p[1:]]
+        elif p[0] == "cat":
+            out["cat"][int(p[1])] = [float(x) for x in p[2:]]
         elif p[0] == "undo":
             out["undo"].append([float(x) for x in p[1:]])
         elif p[0] == "restored":
@@ -61,23 +64,36 @@ def pixels(path, w, h):
 
 
 tmp = tempfile.mkdtemp(prefix="hig_")
-# a copy of the plugin with no picture folder beside it: the drawings and the message
-bare = os.path.join(tmp, "bare", "Instrument-Creator.jsfx")
-os.makedirs(os.path.dirname(bare)); shutil.copy(JSFX, bare)
 
 # ---- 1. contrast: every string 7:1 on the pixels under it -----------------------------------
-base = run(["frame=2", "focus", "audit"])
-tiles = [f for f in base["focus"] if 10 <= f[0] < 40]
-centres = ["mouse=%d,%d" % (f[1] + 0.75 * f[3], f[2] + 0.5 * f[4]) for f in tiles]
+base = run(["frame=2", "focus", "audit", "cats"])
+tiles = [f for f in base["focus"] if 10 <= f[0] < 40]          # the parts' labels
+centres = ["mouse=%d,%d" % (f[1] + 0.75 * f[3], f[2] + 0.3 * f[4]) for f in tiles]
+# each part of the drawing, hovered at its anchor (where its label's line ends)
+anchors = ["mouse=%d,%d" % (c[4], c[5]) for k, c in base["cat"].items() if c[6] >= 0]
+# open the picker of each part by clicking its label, measure it, close it with Esc
+def opening(f):
+    at = "%d,%d" % (f[1] + 0.5 * f[3], f[2] + 0.3 * f[4])
+    return ["mouse=%s,1" % at, "mouse=%s" % at, "frame"]
+def pickers(pre=(), w=940, h=720):
+    """open and measure each part's picker in turn, for that layout"""
+    labs = [f for f in run(list(pre) + ["frame=2", "focus"], w, h)["focus"] if 10 <= f[0] < 40]
+    return list(pre) + sum([opening(f) + ["audit", "key=esc"] for f in labs], ["frame"])
+VIOLIN = ["slider=1,1", "slider=2,3", "slider=3,0", "slider=7,0", "slider=8,1"]
 # the material names (their colour is the group's), hovered one by one
 mats = [t for t in base["texts"][0] if abs(t[0] - 0x7F / 255) < 0.01 or abs(t[0] - 0x8E / 255) < 0.01]
 states = {
     "default": (["frame=2", "audit"], 940, 720, 1, JSFX),
-    "each tile hovered": (sum([[c, "audit"] for c in centres], ["frame"]), 940, 720, 1, JSFX),
+    "each label hovered": (sum([[c, "audit"] for c in centres], ["frame"]), 940, 720, 1, JSFX),
+    "each part of the drawing hovered": (sum([[c, "audit"] for c in anchors], ["frame"]), 940, 720, 1, JSFX),
+    "the picker open for each part": (pickers(), 940, 720, 1, JSFX),
+    "the picker open for each part, Ice Violin (built in layers)": (pickers(VIOLIN), 940, 720, 1, JSFX),
+    "the picker open for each part, 800 x 480": (pickers((), 800, 480), 800, 480, 1, JSFX),
+    "the picker open for each part, 200%": (pickers(["set=ui_zoom,2"], 1880, 1440), 1880, 1440, 1, JSFX),
     "each material hovered": (sum([["mouse=%d,%d" % (t[3] + 5, t[4] + 5), "audit"] for t in mats], ["frame"]), 940, 720, 1, JSFX),
     "More open, each control hovered": (["set=more_ctl,1", "frame=2"] + sum([["mouse=%d,%d" % (x, y), "audit"] for x, y in
                                         [(60, 70), (300, 70), (60, 125), (300, 125), (800, 125)]], []), 940, 720, 1, JSFX),
-    "keyboard focus on a tile and a control": (["frame", "key=tab"] * 1 + ["key=tab"] * 4 + ["audit"] + ["key=tab"] * 9 + ["audit"], 940, 720, 1, JSFX),
+    "keyboard focus on a control and a label": (["frame", "key=tab"] * 1 + ["key=tab"] * 4 + ["audit"] + ["key=tab"] * 9 + ["audit"], 940, 720, 1, JSFX),
     "Age 100%, playing": (["slider=23,100", "note", "set=aud_req,1", "frame=2", "audit"], 940, 720, 1, JSFX),
     "Surprise Me, twenty times": (["frame"] + sum([["mouse=%d,%d,1" % (650, 26), "mouse=%d,%d" % (650, 26), "audit"] for _ in range(20)], []), 940, 720, 1, JSFX),
     "every preset": (["frame"] + sum([["menu=%d" % (k + 1), "mouse=550,26,1", "mouse=550,26", "audit"] for k in range(19)], []), 940, 720, 1, JSFX),
@@ -92,7 +108,7 @@ states = {
     "200%": (["set=ui_zoom,2", "frame=2", "audit", "set=more_ctl,1", "frame", "audit"], 1880, 1440, 1, JSFX),
     "200% in the default window": (["set=ui_zoom,2", "frame=2", "audit"], 940, 720, 1, JSFX),
     "Retina": (["frame=2", "audit"], 1880, 1440, 2, JSFX),
-    "no pictures (drawings and the message)": (["frame=2", "audit", "note", "frame", "audit"], 940, 720, 1, bare),
+    "playing, the element trembling": (["note", "frame=2", "audit", "frame", "audit"], 940, 720, 1, JSFX),
 }
 def overlaps(txt):
     """pairs of strings drawn on top of each other (a name running into its value)"""
@@ -153,7 +169,7 @@ def layout_checks(name, out, w, h, S, fits=True):
                 cut.append((f[0], t[3:7]))
     check(not cut, "no name runs past the edge of its control, %s" % name, str(cut[:3]))
     if fits:
-        below = [f for f in fs if f[2] + f[4] > h + 0.5]
+        below = [f for f in fs if f[2] + f[4] > h + 0.5 or f[1] + f[3] > w + 0.5 or f[1] < -0.5 or f[2] < -0.5]
         check(not below, "every control inside the window, %s" % name, str(below[:3]))
 
 
@@ -162,6 +178,26 @@ for name, w, h, sc, z, more in [("940 x 720", 940, 720, 1, 1, 0), ("940 x 720, M
                                 ("150%", 1410, 1080, 1, 1.5, 1), ("200%", 1880, 1440, 1, 2, 1), ("Retina", 1880, 1440, 2, 1, 1)]:
     out = run(["set=ui_zoom,%g" % z, "set=more_ctl,%d" % more, "frame=2", "focus", "audit"], w, h, sc)
     layout_checks(name, out, w, h, sc * z)
+    labs = [f for f in out["focus"] if 10 <= f[0] < 40]
+    check(sorted(f[0] for f in labs) == [10, 11, 12, 14, 16, 17, 18, 19, 20, 21], "every part has its label, %s" % name, str(labs))
+    # the picker of the element (six options and a material) and of the coupler (four and a note)
+    for c in (2, 6, 11):
+        out = run(["set=ui_zoom,%g" % z, "set=more_ctl,%d" % more, "frame", "set=pop_c,%d" % c, "frame=2", "focus", "audit"], w, h, sc)
+        ids_ = sorted(f[0] for f in out["focus"])
+        n_ = {2: 6, 6: 4, 11: 5}[c]
+        check(ids_ == sorted(list(range(70, 70 + n_)) + [81] + ([80] if c in (2, 6) else [])),
+              "the picker of part %d holds only its own controls, %s" % (c, name), str(ids_))
+        layout_checks("the picker of part %d, %s" % (c, name), out, w, h, sc * z)
+
+# a narrow window and a layered instrument (six labels above it): the labels
+# shorten their captions, then their names' font, then drop the captions,
+# rather than overlap or run off (ADR 0024)
+for w in (700, 640, 600):
+    out = run(VIOLIN + ["frame=2", "focus", "audit", "vars=lv_"], w, 480)
+    layout_checks("Ice Violin, %d x 480" % w, out, w, 480, 1, fits=False)
+    worst = min((t[7] for txt in out["texts"] for t in txt), default=0)
+    check(worst >= MIN_CONTRAST and not [o for txt in out["texts"] for o in overlaps(txt)],
+          "contrast 7:1 and no words over words, Ice Violin, %d x 480 (labels at level %d)" % (w, out["var"]["lv_"]))
 
 # 200% in a window too small for it is drawn as large as the window holds
 # (never below 100%), so everything is still inside it (final sweep)
@@ -177,12 +213,28 @@ c = run(["frame=2", "focus", "audit"], 1880, 1440, 2)
 same_ids = [f[0] for f in a["focus"]] == [f[0] for f in b["focus"]]
 # the buttons are as wide as their labels, and text is measured by the font,
 # which does not scale exactly, so they may be a few pixels out; nothing else
-dev = max(abs(2 * fa[i] - fb[i]) for fa, fb in zip(a["focus"], b["focus"]) for i in range(1, 5) if fa[0] >= 10) if same_ids else 99
-bdev = max(abs(2 * fa[i] - fb[i]) for fa, fb in zip(a["focus"], b["focus"]) for i in range(1, 5) if fa[0] < 10) if same_ids else 99
-check(same_ids and dev <= 2, "every control and part at 200%% is its 100%% place and size doubled (largest difference %.1f px)" % dev)
-check(same_ids and bdev <= 8, "the buttons too, give or take the font's own widths (largest difference %.1f px)" % bdev)
-tdev = max(abs(2 * ta[i] - tb[i]) for ta, tb in zip(a["texts"][0], b["texts"][0]) for i in (3, 4)) if len(a["texts"][0]) == len(b["texts"][0]) else 99
-check(tdev <= 6, "every string at 200%% is where its 100%% self is, doubled (largest difference %.1f px)" % tdev)
+# (buttons and the parts' labels are as wide as their words, and text is
+# measured by the font, which does not scale exactly, so they may be a few
+# pixels out, and the labels in a row push each other along; nothing else)
+sized = lambda f: f[0] < 10 or 10 <= f[0] < 40
+dev = max(abs(2 * fa[i] - fb[i]) for fa, fb in zip(a["focus"], b["focus"]) for i in range(1, 5) if not sized(fa)) if same_ids else 99
+bdev = max(abs(2 * fa[i] - fb[i]) for fa, fb in zip(a["focus"], b["focus"]) for i in range(1, 5) if sized(fa)) if same_ids else 99
+ldev = max(abs(2 * fa[i] - fb[i]) for fa, fb in zip(a["focus"], b["focus"]) for i in (2, 4) if sized(fa)) if same_ids else 99
+check(same_ids and dev <= 2, "every control at 200%% is its 100%% place and size doubled (largest difference %.1f px)" % dev)
+check(same_ids and bdev <= 16 and ldev <= 2, "the buttons and labels too, give or take the font's own widths (across %.1f px, up and down %.1f px)" % (bdev, ldev))
+labs_a = {f[0]: f for f in a["focus"] if 10 <= f[0] < 40}
+labs_b = {f[0]: f for f in b["focus"] if 10 <= f[0] < 40}
+def label_of(t):
+    for k, f in labs_a.items():
+        if f[1] <= t[3] < f[1] + f[3] and f[2] <= t[4] < f[2] + f[4]:
+            return k
+    return None
+same_n = len(a["texts"][0]) == len(b["texts"][0])
+tdev = max(abs(2 * ta[i] - tb[i]) for ta, tb in zip(a["texts"][0], b["texts"][0]) for i in (3, 4) if label_of(ta) is None) if same_n else 99
+# a label's words: where they sit in their label, doubled
+ltdev = max(max(abs(2 * (ta[3] - labs_a[k][1]) - (tb[3] - labs_b[k][1])), abs(2 * ta[4] - tb[4]))
+            for ta, tb in zip(a["texts"][0], b["texts"][0]) for k in [label_of(ta)] if k is not None) if same_n else 99
+check(tdev <= 6 and ltdev <= 6, "every string at 200%% is where its 100%% self is, doubled (largest difference %.1f px; %.1f in the labels)" % (tdev, ltdev))
 check(b["focus"] == c["focus"], "Retina draws exactly as 200% does")
 
 # ---- 4. the keyboard ---------------------------------------------------------------------------------------------
@@ -207,8 +259,44 @@ out = run(["frame"] + tabs_to(12) + ["mouse=300,500,1", "vars=focus_id"])
 check(out["var"]["focus_id"] == 0, "a click takes over from the keyboard")
 out = run(["frame", "menu=3"] + tabs_to(1) + ["key=ret", "frame", "vars=cur_preset"])
 check(out["var"]["cur_preset"] == 2 and out["menu"], "Return on Presets opens the presets; choosing one applies it")
-out = run(["frame", "menu=3"] + tabs_to(12) + ["key=space", "sliders"])
-check(out["sliders"][2] == 2 and any("Made of" in m for m in out["menu"]), "Space on a part opens its menu, materials included; choosing Bar sets it")
+out = run(["frame"] + tabs_to(12) + ["key=space", "frame", "vars=pop_c,focus_id"])
+check(out["var"]["pop_c"] == 2 and out["var"]["focus_id"] == 75, "Space on a part's label opens its picker, the focus on the option in use (Air Column)", str(out["var"]))
+r = subprocess.run([HOST, JSFX, "940", "720", "frame"] + tabs_to(12) + ["key=ret", "frame", "key=left", "key=left", "key=left", "key=left", "vars=focus_id",
+                    "key=right", "vars=focus_id", "key=left", "vars=focus_id"], capture_output=True, text=True)
+walk = [float(l.split()[2]) for l in r.stdout.splitlines() if l.startswith("var focus_id")]
+check(walk == [71, 72, 71], "in the picker left and right move between the options", str(walk))
+out = run(["frame"] + tabs_to(12) + ["key=ret", "frame", "key=left", "key=left", "key=left", "vars=focus_id", "key=ret", "sliders", "vars=pop_c"])
+check(out["var"]["focus_id"] == 72 and out["sliders"][2] == 2 and out["var"]["pop_c"] == 2,
+      "in the picker the arrow keys move between the options and Return uses one (Bar); it stays open", str(out["var"]) + str(out["sliders"][:3]))
+out = run(["frame"] + tabs_to(12) + ["key=ret", "frame", "key=up", "vars=focus_id", "key=down", "key=down", "vars=focus_id"])
+check(out["var"]["focus_id"] == 75, "up and down move a row in the picker, and stop at its edge")
+out = run(["frame", "menu=6"] + tabs_to(12) + ["key=ret", "frame", "set=focus_id,80", "key=ret", "sliders"])
+check(out["sliders"][3] == 5 and any("Glass" in m and "!Bamboo" in m for m in out["menu"]),
+      "the picker's Made of opens the 31 materials, the one in use ticked; choosing Glass sets it", str(out["menu"][:1]))
+r = subprocess.run([HOST, JSFX, "940", "720", "frame"] + tabs_to(12) + ["key=ret", "frame"] + ["key=tab", "vars=focus_id"] * 9, capture_output=True, text=True)
+inpk = [float(l.split()[2]) for l in r.stdout.splitlines() if l.startswith("var focus_id")]
+check(inpk == [80, 81, 70, 71, 72, 73, 74, 75, 80], "Tab stays inside the open picker: Done, the options, Made of, round again", str(inpk))
+out = run(["frame"] + tabs_to(12) + ["key=ret", "frame", "key=esc", "vars=pop_c,focus_id", "key=esc", "vars=focus_id"])
+check(out["var"]["pop_c"] == -1 and out["var"]["focus_id"] == 0, "Esc closes the picker, then lets go of the focus", str(out["var"]))
+out = run(["frame"] + tabs_to(12) + ["key=ret", "frame", "key=esc", "vars=pop_c,focus_id"])
+check(out["var"]["pop_c"] == -1 and out["var"]["focus_id"] == 12, "after Esc closes the picker the focus is back on its label", str(out["var"]))
+lab2 = [f for f in base["focus"] if f[0] == 12][0]
+at2 = "%d,%d" % (lab2[1] + lab2[3] / 2, lab2[2] + lab2[4] * 0.3)
+out = run(["frame", "mouse=%s,1" % at2, "mouse=%s" % at2, "frame", "focus", "vars=pop_c"])
+cell = [f for f in out["focus"] if f[0] == 71][0]
+atc = "%d,%d" % (cell[1] + cell[3] / 2, cell[2] + cell[4] / 2)
+out2 = run(["frame", "mouse=%s,1" % at2, "mouse=%s" % at2, "frame", "mouse=%s,1" % atc, "mouse=%s" % atc, "sliders", "vars=pop_c",
+            "mouse=5,700,1", "mouse=5,700", "vars=pop_c", "sliders"])
+check(out["var"]["pop_c"] == 2 and out2["sliders"][2] == 1 and out2["var"]["pop_c"] == -1,
+      "a click on a label opens its picker; a click on an option uses it (Membrane); a click outside closes it", str(out2["var"]))
+cid = [f for f in base["focus"] if f[0] == 40][0]
+out = run(["frame", "mouse=%s,1" % at2, "mouse=%s" % at2, "frame", "mouse=%d,%d,1" % (cid[1] + 10, cid[2] + 30), "mouse=%d,%d" % (cid[1] + 10, cid[2] + 30), "sliders", "vars=pop_c"])
+check(out["var"]["pop_c"] == -1 and out["sliders"][12] == 70, "while the picker is open, a click on a control only closes the picker", str(out["sliders"][12]))
+an = base["cat"][4]
+out = run(["frame", "mouse=%d,%d,1" % (an[4], an[5]), "mouse=%d,%d" % (an[4], an[5]), "frame", "vars=pop_c"])
+check(out["var"]["pop_c"] == 4, "a click on a part of the drawing (the resonator) opens its picker", str(out["var"]))
+out = run(["frame", "mouse=%d,%d,0,0,1" % (an[4], an[5]), "sliders"])
+check(out["sliders"][4] == 4, "scrolling over a part of the drawing steps it (Bore back to Body)", str(out["sliders"][4]))
 r = subprocess.run([HOST, JSFX, "940", "720", "frame"] + tabs_to(10) + ["key=right", "sliders", "key=left", "key=left", "sliders"], capture_output=True, text=True)
 sl = [l.split()[1:] for l in r.stdout.splitlines() if l.startswith("sliders")]
 check(sl[0][0] == "1" and sl[1][0] == "5", "the arrow keys step a part's options, round the end", str([s[0] for s in sl]))
@@ -237,8 +325,9 @@ run(["frame"] + tabs_to(12) + ["frame", "png=" + png1, "key=esc", "frame", "png=
 p1, p2 = pixels(png1, 940, 720), pixels(png2, 940, 720)
 x, y, w_, h_ = int(t12[1]), int(t12[2]), int(t12[3]), int(t12[4])
 ring = np.array([0xF2, 0xF4, 0xF7])
-edge1 = p1[y - 4:y - 2, x:x + w_].reshape(-1, 3)
-edge2 = p2[y - 4:y - 2, x:x + w_].reshape(-1, 3)
+# (the ring's corners are round: the middle 80% of its top edge)
+edge1 = p1[y - 4:y - 2, x + w_ // 10:x + w_ - w_ // 10].reshape(-1, 3)
+edge2 = p2[y - 4:y - 2, x + w_ // 10:x + w_ - w_ // 10].reshape(-1, 3)
 check((edge1 == ring).all(axis=1).mean() > 0.95 and (edge2 == ring).all(axis=1).mean() < 0.05,
       "a near-white focus ring, two pixels, round the focused part; none without focus")
 
@@ -257,36 +346,27 @@ mono_left, mono_right = bars(["set=more_ctl,1", "slider=19,1", "frame"], 46, (0,
 check(poly_left > 10 and poly_right == 0 and mono_right > 10 and mono_left == 0,
       "Play Mode: the chosen half carries a bar as well as its colour", str((poly_left, poly_right, mono_left, mono_right)))
 check(bars(["frame"], 3, (0, 1)) == 0 and bars(["set=aud_req,1", "frame"], 3, (0, 1)) > 10, "Playing… carries a bar as well as its colour")
+used, unused = bars(["set=pop_c,2", "frame"], 75, (0, 1)), bars(["set=pop_c,2", "frame"], 72, (0, 1))
+check(used > 10 and unused == 0, "in the picker the option in use carries a bar under its name as well as its coloured edge", str((used, unused)))
 
-# ---- 6. the controls and messages at the top, the message until dismissed ------------------------------------------------
+# ---- 6. the controls at the top ------------------------------------------------------------------------------------------
 top = [f for f in base["focus"] if f[0] < 10 or f[0] >= 40]
 check(top and tiles and max(f[2] + f[4] for f in top) <= min(f[2] for f in tiles) and max(f[2] + f[4] for f in top) <= 0.25 * 720,
-      "every button and control is in the top quarter of the window, above the diagram")
-out = run(["frame=300", "vars=msg_on", "focus"], jsfx=bare)
-fids = [f[0] for f in out["focus"]]
-dis = [f for f in out["focus"] if f[0] == 5]
-check(out["var"]["msg_on"] == 1 and dis and dis[0][2] < min(f[2] for f in out["focus"] if f[0] >= 40),
-      "without the pictures a message says what to do, above the controls, and is still there 300 frames later")
-r = subprocess.run([HOST, bare, "940", "720", "frame"] + ["key=tab"] * (fids.index(5) + 1) + ["key=ret", "frame=2", "vars=msg_on"], capture_output=True, text=True)
-check("var msg_on 0" in r.stdout, "Dismiss, from the keyboard, takes it away")
-out = run(["frame=2", "vars=msg_on"])
-check(out["var"]["msg_on"] == 0, "no message when the pictures are there")
+      "every button and control is in the top quarter of the window, above the instrument")
 
 # ---- 7. Reduce Motion ------------------------------------------------------------------------------------------------------------
-band = (int(min(f[2] for f in tiles)), int(max(f[2] + f[4] for f in tiles)))
+dv = run(["frame", "vars=dtop,dbot"])["var"]
+band = (int(dv["dtop"]), int(dv["dbot"]))      # the drawing, between the labels' rows
 
 
-def moves(fx, calm, steps=()):
-    run(["set=calm,%d" % calm, "note"] + list(steps) + ["frame=2", "png=" + png1, "frame=3", "png=" + png2], jsfx=fx)
+def moves(calm, steps=()):
+    run(["set=calm,%d" % calm, "note"] + list(steps) + ["frame=2", "png=" + png1, "frame=3", "png=" + png2])
     a, b = pixels(png1, 940, 720)[band[0]:band[1]], pixels(png2, 940, 720)[band[0]:band[1]]
     return int((a != b).any(axis=2).sum())
 
 
-m_draw, m_draw_calm = moves(bare, 0), moves(bare, 1)
-check(m_draw > 50 and m_draw_calm == 0, "Reduce Motion stills the drawings (%d pixels moved without it, %d with)" % (m_draw, m_draw_calm))
-out = run(["set=calm,1", "note", "frame=2", "set=hig_notext,1", "frame", "png=" + png1, "set=calm,0", "frame", "png=" + png2])
-a, b = pixels(png1, 940, 720)[band[0]:band[1]], pixels(png2, 940, 720)[band[0]:band[1]]
-check(int((a != b).any(axis=2).sum()) > 50, "without Reduce Motion the sounding element shakes; with it, it does not")
+m_on, m_calm = moves(0), moves(1)
+check(m_on > 50 and m_calm == 0, "the sounding element trembles, and Reduce Motion stills it (%d pixels moved without it, %d with)" % (m_on, m_calm))
 
 # ---- 8. type: the system font, nothing under 10 px, every word through say() -----------------------------------------------------
 src = open(JSFX, encoding="utf-8").read()
@@ -312,7 +392,7 @@ def ratio(a, b):
     return (np.maximum(la, lb) + 0.05) / (np.minimum(la, lb) + 0.05)
 
 
-def edges(name, steps, w, h, mouse=None):
+def edges(name, steps, w, h, mouse=None, least=20):
     """every button, part, control cell and More: its right and bottom edges
     3:1 on the window just outside them"""
     out = run(steps + ["frame", "focus", "set=hig_notext,1"] + (["mouse=%d,%d" % mouse] if mouse else ["frame"]) + ["png=" + png1], w, h)
@@ -325,11 +405,13 @@ def edges(name, steps, w, h, mouse=None):
         bottom = max(ratio(p[rw, xm], p[yb + 5, xm]) for rw in range(yb - 3, yb + 2))
         if min(right, bottom) < 3:
             bad.append((f[0], round(float(right), 2), round(float(bottom), 2)))
-    check(len(out["focus"]) > 20 and not bad, "every button, part and control has an edge 3:1 on the window, %s" % name, str(bad[:4]))
+    check(len(out["focus"]) > least and not bad, "every button, part and control has an edge 3:1 on what is round it, %s" % name, str(bad[:4]) + " of %d" % len(out["focus"]))
 
 
 edges("940 x 720, More open", ["set=more_ctl,1"], 940, 720)
-edges("940 x 720, a part hovered", [], 940, 720, (100, 200))
+edges("940 x 720, a label hovered", [], 940, 720, (tiles[0][1] + 20, tiles[0][2] + 20))
+edges("940 x 720, the element's picker open", ["set=pop_c,2"], 940, 720, least=7)
+edges("940 x 720, the damping's picker open", ["set=pop_c,10"], 940, 720, least=5)
 edges("200%", ["set=ui_zoom,2", "set=more_ctl,1"], 1880, 1440)
 
 
@@ -355,17 +437,25 @@ for hv in (0, 1):
     sw = inner_lines(46, ["slider=19,0"], 2, hv)
     check(sw > 0.6, "Play Mode's unchosen half shows its edge, 3:1 on the cell%s (%.0f%% of a row)" % (", hovered" if hv else "", 100 * sw))
 
-# the diagram's arrows grow with the interface size
-def arrow_rows(z, w, h):
-    out = run(["set=ui_zoom,%g" % z, "frame", "focus", "set=hig_notext,1", "frame", "png=" + png1], w, h)
-    a, b = [g for g in out["focus"] if g[0] == 10][0], [g for g in out["focus"] if g[0] == 11][0]
-    p = pixels(png1, w, h)
-    xc, yc = int(0.5 * (a[1] + a[3] + b[1])), int(a[2] + 0.45 * a[4])
-    return int((ratio(p[yc - 12:yc + 12, xc], p[yc - 20, xc]) >= 3).sum())
+# the drawing's lines are 3:1 on the window and grow with the interface size:
+# at 200% twice as long and twice as thick, so about four times the pixels
+def line_pixels(z, w, h):
+    out = run(["set=ui_zoom,%g" % z, "frame", "vars=dtop,dbot", "set=hig_notext,1", "frame", "png=" + png1], w, h)
+    p = pixels(png1, w, h)[int(out["var"]["dtop"]):int(out["var"]["dbot"])]
+    return int((ratio(p, np.array([0x1B, 0x1C, 0x20])) >= 3).sum())
 
 
-a1, a2 = arrow_rows(1, 940, 720), arrow_rows(2, 1880, 1440)
-check(a1 >= 2 and a2 >= 2 * a1, "the diagram's arrows are 3:1 on the window and twice as thick at 200%% (%d and %d px)" % (a1, a2))
+a1, a2 = line_pixels(1, 940, 720), line_pixels(2, 1880, 1440)
+check(a1 > 1500 and a2 >= 3.2 * a1, "the drawing's lines are 3:1 on the window, and grow with the interface size (%d and %d px)" % (a1, a2))
+
+# the picker is a raised surface: lighter than the window, as Apple's dark
+# surfaces are, with its edge 3:1 on the window
+out = run(["frame", "set=pop_c,2", "frame", "vars=pop_x,pop_y,pop_w,pop_h", "set=hig_notext,1", "frame", "png=" + png1])
+pv = out["var"]; p = pixels(png1, 940, 720)
+fill = p[int(pv["pop_y"] + 8), int(pv["pop_x"] + pv["pop_w"] / 2)]
+win = np.array([0x1B, 0x1C, 0x20])
+rim = max(ratio(p[int(pv["pop_y"] + pv["pop_h"] / 2), int(pv["pop_x"] + pv["pop_w"]) - k], win) for k in range(1, 4))
+check(lumi(fill) > lumi(win) * 1.3 and rim >= 3, "the picker is lighter than the window and edged 3:1 on it (rim %.2f)" % rim, str(fill))
 
 # nothing cut short: no "…" but Playing…, and no line of a description dropped
 words = re.findall(r'"([^"\n]*)"', gfx)

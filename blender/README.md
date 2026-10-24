@@ -1,6 +1,11 @@
 # Blender files
 
-Every part picture in Instrument Creator is a 3D model. These are the models,
+**Set aside (24 October 2026):** the plugin now draws the whole instrument as
+one line drawing and no longer shows these renders (ADR 0024). The models
+are kept here in case they come back; the rendered pictures are in the git
+history, or `python3 tools/render_parts.py` makes them again.
+
+Every part picture in Instrument Creator was a 3D model. These are the models,
 one `.blend` file per part option, plus `materials.blend`, a table of all 31
 materials (and the rust layer used by Age). Open them in
 [Blender](https://www.blender.org/) (version 4.2 or newer; they were saved

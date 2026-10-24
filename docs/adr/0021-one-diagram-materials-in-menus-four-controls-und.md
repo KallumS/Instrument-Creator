@@ -1,6 +1,6 @@
 # 0021. One diagram, materials in menus, four controls under More
 
-- Status: Accepted; amended by [0023](0023-apples-hig-foundations.md) (the controls at the top; no abbreviated names)
+- Status: Accepted; amended by [0023](0023-apples-hig-foundations.md) (the controls at the top; no abbreviated names) and [0024](0024-the-whole-instrument-as-one-line-drawing.md) (the tiles and their menus give way to one drawing, labels and a picker; materials and More stay)
 - Date: 2026-10-08
 - Amends: [0012](0012-a-window-drawn-entirely-in-code.md) (the part list is
   gone), [0019](0019-every-control-in-the-window-reaper-sliders-hidden.md)

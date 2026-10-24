@@ -3,7 +3,8 @@
 Working notes for Instrument Creator: a JSFX instrument for REAPER that
 assembles a playable instrument from ten kinds of part and two materials (31
 to choose from), with an Age / rust control that wears it out, and a window
-of 3D-rendered pictures of every part. The user is not a programmer: explain
+that draws the whole instrument as one line drawing, rebuilt from the parts
+chosen (ADR 0024). The user is not a programmer: explain
 results in plain language and keep `README.md` readable for them. The
 repository is `KallumS/Instrument-Creator` (it began as
 Wind-Instrument-Creator); the user's original brief is
@@ -11,8 +12,15 @@ Wind-Instrument-Creator); the user's original brief is
 
 **Starting a session:** read this file, then the end of `docs/SESSION-LOG.md`
 ("Where things stand" and "Handover to the next session"). A fresh container
-needs `pip install numpy scipy matplotlib` and `tools/build_host.sh`; to
-render pictures also `pip install bpy imagequant`.
+needs `pip install numpy scipy matplotlib` and `tools/build_host.sh` (the 3D
+renders, set aside, also need `pip install bpy imagequant`).
+
+The window follows Apple's HIG as the user's family of apps applies it: the
+shared review is in the Good Idea repo (`KallumS/Good-Idea`,
+`docs/apple-hig-review.md`, read-only, clone anonymously); this repo's own
+verdicts are `docs/apple-hig-review.md` and ADRs 0022-0024. Good Idea's house
+colour scheme (`docs/COLOUR.md` there) is not used here: this window keeps
+its own palette.
 
 REAPER's JSFX reference is at https://www.reaper.fm/sdk/js/ (the user
 supplied a copy in session 1; the useful parts are in SESSION-LOG §17).
@@ -43,17 +51,16 @@ Where things are documented:
 
 ```
 Instrument-Creator.jsfx   the instrument: sliders, physics, voices, GUI (@gfx)
-Instrument-Creator-images/  the part pictures (3D renders, ADR 0020), installed beside the .jsfx
-blender/                  the models as .blend files for the user (render_parts.py --blend); not the source
+blender/                  the 3D models as .blend files (render_parts.py --blend); set aside with the renders (ADR 0024)
 docs/window.png           screenshot used by the README (tools/shot.py)
 tools/build_host.sh       builds ysfx (with graphics, two key fixes) and five hosts into tools/build/
 tools/render.cpp          MIDI events file -> raw float32 stereo
 tools/shot.cpp            screenshot of @gfx (plays a note first); tools/shot.py -> PNG; SHOT_SCALE=2 for Retina
-tools/render_parts.py     Blender (pip install bpy): models every part, renders Instrument-Creator-images/
+tools/render_parts.py     Blender (pip install bpy): the 3D renders, set aside (ADR 0024); the folder it wrote is in git history
 tools/click.cpp           drive @gfx with a mouse script; prints sliders 1-23 and automation flags; CLICK_MENU=n picks menu item n
-tools/hig.cpp             drive @gfx with keys and the mouse; prints the focus list, variables, and each string's contrast on the pixels under it
-tools/hig_check.py        the window against Apple's HIG Foundations (ADR 0023): 193 checks, under a minute; must say "all checks passed"
-tools/hig_bite.py         breaks each HIG rule in a temporary copy and checks hig_check.py fails (49 cases, ~20 min; all must say BIT; give words to run some)
+tools/hig.cpp             drive @gfx with keys and the mouse; prints the focus list, variables, the parts' boxes and labels (cats), and each string's contrast on the pixels under it
+tools/hig_check.py        the window against Apple's HIG Foundations (ADR 0023, 0024): 361 checks, under a minute; must say "all checks passed"
+tools/hig_bite.py         breaks each HIG rule in a temporary copy and checks hig_check.py fails (60 cases, ~15 min; all must say BIT; give words to run some)
 tools/inspect.cpp         dump plugin memory after N blocks of a held note
 tools/analyse.py          render/measure helpers (LUFS, YIN pitch), the part and material name lists
 tools/sweep.py            every energy x exciter x element: level, pitch, flags
@@ -73,7 +80,7 @@ matplotlib`). `tools/build/` is git-ignored.
 ```
 1 energy source  2 exciter  3 vibrating element  4 element material  5 resonator
 6 resonator material  7 coupler  8 radiator  9 frequency control  10 tuning
-11 damping  12 modulation   (1-12 hidden; tile(c) in the window shows slider c + 1)
+11 damping  12 modulation   (1-12 hidden; label(c) and the picker in the window show slider c + 1)
 13 force  14 size  15 brightness  16 decay  17 excite position  18 resonator amount
 19 play mode  20 glide time  21 fine tune  22 output  23 age / rust
 ```
@@ -98,13 +105,13 @@ python3 tools/check.py                        # ~40 min: run in the background; 
 python3 tools/age_test.py                     # ~10 min
 python3 tools/shot.py out.png 940 720 mx my 3=2 4=8   # then look at the PNG
 SHOT_SCALE=2 python3 tools/shot.py out.png 1880 1440   # as on the user's Retina Mac
-python3 tools/render_parts.py --out /tmp/x --samples 16 --mats 12 2_0   # draft one shape; no args = all (~40 min)
-python3 tools/render_parts.py 2_0 && python3 tools/render_parts.py --blend 2_0   # re-render one shape for real, re-save its .blend
 tools/build/click Instrument-Creator.jsfx - 940 720 55,83,0 55,83,1 30,83,1 30,83,0   # drag Force
-CLICK_MENU=12 tools/build/click Instrument-Creator.jsfx - 940 720 700,190,0 700,190,1 700,190,0   # element menu: Made of > Glass
+tools/build/click Instrument-Creator.jsfx - 940 720 410,510,0 410,510,1 410,510,0 414,276,0 414,276,1 414,276,0   # element's label, then Membrane in its picker
+CLICK_MENU=6 tools/build/click Instrument-Creator.jsfx - 940 720 410,510,0 410,510,1 410,510,0 329,452,0 329,452,1 329,452,0   # element's picker: Made of > Glass
 SHOT_CLICK=1 python3 tools/shot.py out.png 940 720 890 73   # click once (here: More) before the screenshot
-python3 tools/hig_check.py                    # under a minute: contrast, edges, sizes, keyboard, Reduce Motion, undo, saving; must pass
+python3 tools/hig_check.py                    # under a minute: contrast, edges, sizes, keyboard, the picker, Reduce Motion, undo, saving; must pass
 tools/build/hig Instrument-Creator.jsfx 940 720 frame key=tab key=tab key=ret vars=focus_id png=o.bgra   # drive with keys
+tools/build/hig Instrument-Creator.jsfx 940 720 frame set=pop_c,2 frame focus cats   # open the element's picker; where everything is
 ```
 
 ## EEL2 traps (Reverberator ADR 0010, and new ones)
@@ -168,11 +175,16 @@ tools/build/hig Instrument-Creator.jsfx 940 720 frame key=tab key=tab key=ret va
   value next to the one used.
 - **Age scales existing physics** (ADR 0018); a new age effect should do the
   same, and its make-up gain applies to strikes, plucks and bows only.
-- **Pictures are renders, drawings are the fallback** (ADR 0020). A new
-  option or material needs a builder in `tools/render_parts.py` (rendered in
-  every material if its part has one) and a drawing in `draw_part()`. Shapes
-  are framed per shape, not per material, so a shape's versions and its rust
-  layer line up: never frame on something that changes with the material.
+- **The instrument is one line drawing** (ADR 0024), built by `wf_build`
+  from the twelve choices into segments in a 900 x 360 space (y down) and
+  drawn by `wf_draw`. A new option needs a builder in its `wf_*` function
+  for both builds (`md` 0, in a line: a mouthpiece or windway; 1, in layers:
+  a bridge or soundpost), using the pen (`wf_mv`/`wf_to`, `wf_box`,
+  `wf_tube`, `wf_arc`, `wf_lineh` for hidden edges) and leaving `el_*` or
+  `rz_*` set for the parts that join it. Then look at it in both builds, in
+  the picker, and check `WX0..WY1` still hold it (they are the area 20,000
+  random instruments reach). The drawing is rebuilt only when a part changes
+  (`WF_LAST`); it is window-only memory, never touched by the audio.
 - **Text follows Apple's writing guidelines** (ADR 0022): title-style part,
   material, control and slider names; sentence-case descriptions and hints;
   "…", curly quotes, em dashes. Rename a label, never reorder a list. Text
@@ -185,27 +197,35 @@ tools/build/hig Instrument-Creator.jsfx 940 720 frame key=tab key=tab key=ret va
     pixel count does not grow at 200%;
   - **every word through `say()`** (never `gfx_drawstr`), in a colour at
     least 7:1 on what it sits on: `T_MAIN`, `T_BODY`, `T_DIM` (#B0B6C0, on
-    the window and preview only), `T_LABEL` (on tiles and cells, hovered
-    too), `T_HINT`, `T_AGE`, `T_ELEM`/`T_RES`. Not the house red, not a
-    group colour as it stands;
+    the window and the close-up only, not on the picker), `T_LABEL` (on
+    labels, cells and the picker, hovered too), `T_HINT`, `T_AGE`,
+    `T_ELEM`/`T_RES`. Not the house red, not a group colour as it stands;
   - **every control registers with `focusable(id, x, y, w, h)`** where it is
     drawn (Tab goes in drawing order), answers `activated(id)` (Return or
     Space) and the keys it uses, and is at least 28 px tall and 12 apart;
-  - **nothing important at the bottom**: buttons and controls go at the top,
-    and messages go in the bar under the header and stay until *Dismiss*;
+  - **nothing important at the bottom**: buttons and controls go at the top;
+    a message, if one is ever needed again, goes in a bar under the header
+    and stays until *Dismiss* (there is none now: the only one said the
+    pictures were missing);
+  - **the picker is modal** (ADR 0024): while `pop_c >= 0`, `ui_block` keeps
+    the click, the wheel and `focusable` (ids under 70) from everything else;
+    the picker's controls are ids 70 and up and use `pinbox`/`pclick`. It is
+    a raised surface (`C_POP`, lighter than the window), so edges inside it
+    use `C_TRACK` (3:1 on it), and `hig_forget` drops the strings it covers
+    from the test audit;
   - **a chosen state carries a second cue** (a bar), not colour alone;
   - **decorative motion stops with `calm`** (Reduce Motion); the scope is
     the sound itself and keeps moving;
   - names are never cut short: a tight row moves values to the track's end,
-    a tight tile shrinks its picture (or drops it), then drops lines; no
-    "…" anywhere, and `draw_wrapped` counts any line it had to leave out
-    in `wrap_cut`, which the checks hold at 0;
-  - **every control's boundary is 3:1** (final sweep): outlines go through
-    `edge(colour, x, y, w, h)` (thicker at larger sizes): `C_EDGE` #6D7581
-    round a button, tile or cell (3.7:1 on the window), `C_TRACK` #80879A
-    round what sits inside a cell (a track, a switch's halves; 3.5:1 on a
-    hovered cell). Marks that carry meaning (arrows, the scope's line) grow
-    with `gsc` too;
+    a tight row of labels shortens its captions, then the names' font, then
+    drops the captions (`lv_`); no "…" anywhere, and `draw_wrapped` counts
+    any line it had to leave out in `wrap_cut`, which the checks hold at 0;
+  - **every control's boundary is 3:1** (final sweep): shapes go through
+    `rbox(x, y, w, h, r, fill, edge)` (round corners, the edge thicker at
+    larger sizes) or `edge()`: `C_EDGE` #6D7581 round a button, label or cell
+    on the window (3.7:1), `C_TRACK` #80879A round what sits inside a cell or
+    the picker (3.5:1). Marks that carry meaning (the drawing's lines, the
+    labels' lines, the scope's line) grow with `gsc` too;
   - **the size fits the window**: `gsc` uses `zoom_fit`, the interface size
     cut to what the window holds (the layout needs 800 x 480 at 100%), never
     below 100%; the window has no scroll, so nothing may be pushed off it;
@@ -224,10 +244,12 @@ tools/build/hig Instrument-Creator.jsfx 940 720 frame key=tab key=tab key=ret va
 5000   body modes (24 x 8)         5300  head modes       5500 note stack   5600/5700 biquads
 5900   diffusion lengths/pointers  6400  trims (72)       6480 part trims (13)
 11000  scope (2048)                13100 presets (19 x 20)   13600 materials (31 x 16)
-14200  picture cache (12 x 8, window only; image slots 10-105)
+14200  CAT_TAB: each part's box, anchor and label (12 x 16, window only)
 14400  focus list (64 x 5, window only)   14800 text audit for tools/hig.cpp (1 + 180 x 8, window only)
 16384  diffusers (8 x 8192)        82000 MIDI queue (1000 x 4)
 131072 delay lines (8 voices x 4 x 16384)
+690000 the drawing, window only: transform stack, smoothing buffers, WF_P, WF_LAST, the picker's boxes
+700000 the instrument's segments (1 + 4000 x 6)   725000 the picker's six versions (25000 each)
 ```
 
 Inside a voice: fields `V_*` 0-101, modes from `MODE_OFF` = 160 (24 x 8).
@@ -274,6 +296,9 @@ line A.
   REAPER draws any visible slider above `@gfx` and takes that height from the
   window, which is why every slider is now hidden (ADR 0019). The layout
   still fits any height (it reserves the preview panel first).
+- **Nothing from session 5 has been seen in REAPER** (ADR 0024, 24 October):
+  the line drawing, the labels, the picker, the round corners, and how fast
+  the drawing is (3-5 ms a frame in ysfx, against 2 for the old window).
 - **Nothing from the final HIG sweep has been seen in REAPER** (ADR 0023,
   21 October): the undo points either side of a preset or Surprise Me, the
   sizes fitted to a small window, the new edges on a Retina screen.
@@ -281,10 +306,9 @@ line A.
   whether REAPER passes Tab, Return and the arrows to the window, whether
   `gfx_getfont` names San Francisco or Segoe UI, the interface sizes, the
   layout with the controls at the top, and saving the preferences.
-- **Nothing from session 2 has been seen in REAPER**: the 3D pictures
-  (ADR 0020, loaded from the folder beside the .jsfx; drawings without it),
-  the tile layout and menus, More, Retina mode. Menus, clicking, dragging and
-  automation are tested only in ysfx (`tools/click.cpp`).
+- **Nothing from session 2 has been seen in REAPER**: More, Retina mode
+  (the 3D pictures and the tiles are gone since session 5). Menus, clicking,
+  dragging and automation are tested only in ysfx (`tools/click.cpp`).
 - JSFX only, for REAPER. VST3 / CLAP / AU versions were looked at and set
   aside by the user (SESSION-LOG §20: wrap with ysfx's JUCE plugin, build on
   macOS, mind AGPL).

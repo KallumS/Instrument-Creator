@@ -14,9 +14,8 @@ made of, and play. The plugin works out how the whole thing sounds from the
 physics of the parts, the same way Trombolese does for its bore and
 Reverberator does for its materials.
 
-It is a **JSFX** instrument for REAPER: one file, `Instrument-Creator.jsfx`,
-plus a folder of pictures, `Instrument-Creator-images`. No compiling, no
-installer.
+It is a **JSFX** instrument for REAPER: one file, `Instrument-Creator.jsfx`.
+No compiling, no installer.
 
 ![The Instrument Creator window](docs/window.png)
 
@@ -25,10 +24,10 @@ installer.
 1. Download this repository: on its GitHub page click the green **Code**
    button, then **Download ZIP**, and unzip it.
 2. In REAPER choose **Options → Show REAPER resource path in explorer/finder**.
-3. Open the **Effects** folder there and copy two things into it, side by
-   side: the file `Instrument-Creator.jsfx` and the folder
-   `Instrument-Creator-images`. (A subfolder of Effects is fine, as long as
-   both go in the same one.)
+3. Open the **Effects** folder there and copy the file
+   `Instrument-Creator.jsfx` into it (a subfolder of Effects is fine). If you
+   installed an older version, you can delete its `Instrument-Creator-images`
+   folder: the plugin no longer uses it.
 4. In the FX browser press **F5** to refresh (or restart REAPER), then search
    for **Instrument Creator**. It shows up as *JS: Instrument Creator - build
    impossible instruments from parts*.
@@ -45,26 +44,35 @@ The window reads from the top: your instrument's name and the buttons, then
 the controls, then the instrument itself, then a close-up of whatever you're
 looking at.
 
-- **The big picture** is your instrument, part by part, in the order the
-  energy flows through it (the arrows), with the four controls (frequency
-  control, tuning, damping, modulation) in the row underneath. Each part
-  shows its picture, what kind of part it is, and which option you chose.
-  To change a part:
-  - click it for a menu of its options;
-  - or hover over it and click the small arrows in its top corner to step
-    through them;
-  - or scroll over it.
+- **The instrument** is drawn whole, as a line drawing, and redrawn every
+  time you change a part. Each part is labelled above or below it, with a
+  line to the part. The colours tell you the kind of part: orange for the
+  energy source and exciter, blue for the vibrating element, green for the
+  resonator, coupler and radiator, purple for the four controls.
+- **How it's built depends on the coupler.** A mouthpiece or a windway joins
+  everything end to end, like a wind instrument. A bridge or a soundpost
+  holds the strings, bars or tines over the body, like a guitar, a marimba or
+  a music box. The controls sit where they act: tone holes and frets on the
+  element, the tuning at its end, a mute or a hand in the bell, pedals
+  underneath.
+- **To change a part**, click it, or its label. A panel opens beside the
+  label with every choice for that part, each drawn on your instrument.
+  Click one to use it: the instrument changes at once and the panel stays
+  open, so you can play and compare. Click **Done** (or anywhere else) when
+  you're finished. Or scroll over a part or its label to step through the
+  choices without opening anything.
 - **Materials.** The vibrating element, resonator, coupler and radiator also
-  show what they are made of, in colour with a small ▾. Click the material
-  name for the list of 31 materials, or scroll over it. The part's
-  own menu has them too, under **Made of**. The resonator, coupler and
-  radiator always share one material, so changing it on one changes all
-  three. The element's picture shimmers while it sounds (unless Reduce
-  Motion is on).
-- **Hover over anything** (a part, a material name, a control), or move to
-  it with **Tab**, and the panel at the bottom shows a big picture of it, what it does, and (for a
-  material) how stiff and heavy it is and how long it rings. The green line tells you how your combination will play,
-  and the little screen shows the sound's waveform as you play.
+  show what they are made of, in colour under their name. The panel for one
+  of them has **Made of**, with all 31 materials; or scroll over the
+  material's name on the label. The resonator, coupler and radiator always
+  share one material, so changing it on one changes all three. The vibrating
+  element trembles while it sounds (unless Reduce Motion is on).
+- **Hover over anything** (a part, a label, a material name, a control, a
+  choice in the panel), or move to it with **Tab**, and the panel at the
+  bottom says what it does, and (for a material) how stiff and heavy it is
+  and how long it rings. The green line tells you how your combination will
+  play, and the little screen shows the sound's waveform as you play. The
+  part you're looking at is drawn a little heavier, and its label lights up.
 - **The controls under the buttons** (Force, Size, Brightness, Decay,
   Position, Resonator and Age, described [below](#the-controls)) shape how
   it plays. Drag one to change it (hold **Shift** for small steps), scroll
@@ -81,10 +89,10 @@ looking at.
   instrument you had. **Play C4** plays a note so you can hear a change
   without touching your keyboard.
 - **Options** sets the **Interface Size** (100%, 125%, 150% or 200%: every
-  word, control and picture grows together) and **Reduce Motion** (the
-  pictures stay still while you play; the little waveform screen still shows
-  the sound, because that is the sound itself). Both are saved with your
-  project. A large size needs a large window: if the window is too small
+  word, control and line grows together) and **Reduce Motion** (the
+  instrument stays still while you play; the little waveform screen still
+  shows the sound, because that is the sound itself). Both are saved with
+  your project. A large size needs a large window: if the window is too small
   for it, everything is drawn as large as the window allows (never smaller
   than 100%), and the Options menu says what size it is shown at. Make the
   window bigger by dragging its corner and the size you chose comes back.
@@ -95,25 +103,23 @@ Click the window first, so it has the keyboard.
 
 | Key | What it does |
 |---|---|
-| **Tab** / **Shift+Tab** | Move to the next or previous button, control or part. A white ring shows where you are, and the close-up panel shows what it is. The order is the buttons, the controls, then the parts in the order the arrows go. |
-| **Return** or **Space** | Press the button; open a part's menu (its materials are in it, under **Made of**); switch Play Mode. |
-| **←** **→** **↑** **↓** | Step a part through its options; move a control (hold **Shift** for small steps); switch Play Mode. |
+| **Tab** / **Shift+Tab** | Move to the next or previous button, control or part's label. A white ring shows where you are, and the close-up panel shows what it is. The order is the buttons, the controls, then the parts in the order the energy flows. |
+| **Return** or **Space** | Press the button; open a part's panel of choices; switch Play Mode. In the panel: use the choice the ring is on. |
+| **←** **→** **↑** **↓** | Step a part through its choices; move a control (hold **Shift** for small steps); switch Play Mode. In the panel: move between the choices. |
 | **Delete** (or **Backspace**) | Put a control back to normal. |
-| **Esc** | Let go of the keyboard focus. |
+| **Esc** | Close the panel of choices (the ring goes back to the part's label); press again to let go of the keyboard focus. |
+
+While the panel of choices is open, Tab moves only through it (Done, the
+choices and Made of), and a click outside it just closes it.
 
 REAPER may keep some keys for itself (Space often starts playback). If a key
 does nothing here, either use **Return**, or turn on REAPER's *Send all
 keyboard input to plug-in* in the FX window's menu. Your playing keyboard and
 MIDI are not affected either way.
 
-The pictures are 3D renders: every part has been modelled and rendered in
-every one of the 31 materials, so a glass bell looks like glass and a chain
-link drum skin is a see-through mesh. They live in the
-`Instrument-Creator-images` folder. If that folder isn't next to the plugin,
-nothing breaks: the window falls back to simple drawings of each part, and a
-message at the top says where the folder goes (click **Dismiss** to hide it).
-The 3D models themselves are in the [`blender`](blender/README.md) folder,
-one Blender file per part, if you'd like to open them in Blender.
+Earlier versions showed 3D renders of every part. They are set aside for
+now: the models are still in the [`blender`](blender/README.md) folder, one
+Blender file per part, if you'd like to open them in Blender.
 
 ## The parts
 
@@ -286,8 +292,8 @@ Turn it up and the whole instrument wears out, whatever it is made of:
 - **it leaks**: blown and bowed instruments get wheezy and breathy, and old
   tubes are rougher inside.
 
-The pictures rust and get grimy to match: a layer of rust fades in over
-the parts as you turn Age up (metals rust most). Struck,
+The drawing rusts to match: the parts made of a material turn rust-coloured
+as you turn Age up (metals most). Struck,
 plucked and bowed instruments get a little volume back as they age, so an
 old one is only a few dB quieter than a new one. Presets don't change the
 Age control, so you can make any preset old. Changes to Age apply to the next
@@ -396,16 +402,16 @@ python3 tools/range.py 1=0 2=0 3=5       # one combination across the keyboard
 python3 tools/check.py                   # stability sweep, must report 0 failures (~40 min)
 python3 tools/trims.py                   # loudness trims after a sound change
 python3 tools/shot.py out.png            # screenshot of the window
-python3 tools/render_parts.py            # re-render every part picture in Blender (~40 min)
+python3 tools/render_parts.py            # the 3D renders (set aside, ADR 0024; ~40 min)
 python3 tools/render_parts.py --blend    # save the models as .blend files in blender/
 tools/build/click Instrument-Creator.jsfx - 940 720 55,83,0 55,83,1 30,83,1 30,83,0   # drag a control
-python3 tools/hig_check.py               # the window against Apple's guidelines (~1 min)
+python3 tools/hig_check.py               # the window against Apple's guidelines (under a minute)
 python3 tools/spectrograms.py out.png    # spectrograms of every preset
 ```
 
-The Python tools need `numpy`, `scipy` and `matplotlib`; the picture
-renderer needs Blender's Python module (`pip install bpy`) and `Pillow`. See `CLAUDE.md` for
-the traps.
+The Python tools need `numpy`, `scipy` and `matplotlib`; the 3D renderer
+(set aside) needs Blender's Python module (`pip install bpy`) and `Pillow`.
+See `CLAUDE.md` for the traps.
 
 ## Licence
 

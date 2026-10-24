@@ -1,6 +1,6 @@
 # 0001. A single-file JSFX instrument, not a ReaScript
 
-- Status: Accepted; amended by [0020](0020-rendered-pictures-in-a-folder-drawings-as-fallb.md) (an optional folder of pictures sits beside the file)
+- Status: Accepted; amended by [0020](0020-rendered-pictures-in-a-folder-drawings-as-fallb.md) (an optional folder of pictures sat beside the file) and [0024](0024-the-whole-instrument-as-one-line-drawing.md) (one file again)
 - Date: 2026-09-30
 
 ## Context

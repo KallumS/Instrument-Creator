@@ -70,8 +70,8 @@ nonlinearity and the limiter, all feed-forward.
   writes the sliders themselves, as REAPER does.
 - Globals derived from sliders are recomputed by `update_globals` in
   `@slider`, and in `@block` when the window has changed a slider
-  (`gui_dirty`). All 23 sliders are hidden in REAPER; the window's part tiles
-  and control strip set them with `slider(n) = v; slider_automate(2^(n-1))`
+  (`gui_dirty`). All 23 sliders are hidden in REAPER; the window's labels,
+  picker and control strip set them with `slider(n) = v; slider_automate(2^(n-1))`
   (ADR 0019). Part changes take effect at the next note-on (per-voice
   setup is done in `voice_start`), except shared-stage filters and the
   controls, which are global.
@@ -717,12 +717,15 @@ holds k = 0-5 and 10; **More** (`more_ctl`) adds a row with k = 6-9 (ADR
 0021). Names fall back `ctl_title` → `ctl_short` → `ctl_tiny` as the
 control narrows.
 
-**The part tiles (ADR 0021).** `tile(c, …)`: picture on the left (width
-`min(0.5w, 1.5(h − 14))`), then `cat_title` (or `cat_short`), the option,
-and for `mat_cat(c) ≥ 0` the material with a ▾. Click: arrows (top corner,
-on hover) step, the material opens `part_menu(mat_cat(c))`, elsewhere
-`part_menu(c)`, which ends with a "Made of" submenu: ids 1…n are options,
-n + 1… are materials. Wheel: over the material steps it, else the option.
+**The parts in the window (ADR 0024).** Each part has a label (`label(c,
+lv)`, focus id 10 + c) round the drawing; a click on it, or on the part in the
+drawing (`wf_hit`, within 7 px of its lines), opens the picker for it
+(`pop_open`, `chooser()`), as do Return and Space on a focused label. The
+wheel over a label or a part steps the option (over a label's material: the
+material); the arrow keys on a focused label step it. The picker shows every
+option (ids 70 + i) drawn on the current instrument, Done (81) and, for
+`mat_cat(c) ≥ 0`, Made of (80), which opens the 31 materials
+(`mat_menu`). Choosing calls `set_part`, as before.
 
 | k | slider | range | default | track |
 |---|---|---|---|---|
@@ -745,28 +748,48 @@ restores the default. Each change: `slider(13 + k) = v`,
 `slider_automate(2^(12 + k))`, `gui_dirty = 1`; mouse-up ends the touch with
 `slider_automate(mask, 1)`.
 
-**The window's pictures (ADR 0020).** `picture(c, i, x, y, w, h, big)` in
-`@gfx` draws option `i` of category `c` from `Instrument-Creator-images/`:
-`c<c>_<i>.png` (energy, exciter, controls), `c<c>_<i>_m<m>.png` (element with
-`m = elm`; resonator, coupler, radiator with `m = rsm`), `mat<i>.png`
-(categories 3 and 5). Category `c` uses image slots `IMG_SLOT + 8c` … `+3`
-(picture and halvings) and `+4` … `+7` (rust layer `c<c>_<i>_rust.png` or
-`mat_rust.png`); `IMG_TAB + 8c` holds key, status (1 loaded, −1 failed),
-width, height, then the same for the rust layer. Key = 1 + 100 i + (m + 1).
-`img_blit` fits the picture centred in the box at 1.16 × the contain scale
-(the renders carry a 6 % margin) from halving `l = clamp(floor(log2(1/s)), 0,
-3)`. Rust alpha `age·0.9` (metals, `is_metal`) or `age·0.5`; drawn when age >
-0.02. Element shake (tile and preview): copies at ±`d`, alpha 0.35, `d =
-min(0.06, 0.3·vis_lvl)·h`. Missing file → `draw_part()`.
+**The drawing (ADR 0024).** `wf_build(buf)` draws the twelve choices in
+`WF_P` into segments: `buf[0]` = count, then `x1 y1 x2 y2 part hidden` each,
+in a 900 × 360 space, y down. The pen is an affine transform with an
+eight-deep stack (`wf_push(ox, oy, ang, sx)`, `wf_pop`) and a current point
+(`wf_mv`, `wf_to`, `wf_close`); helpers draw a box seen from the front-right
+and above (depth vector (0.55, −0.45) per unit), a tube along x or upright
+(ends as ellipses of aspect 0.3, the far half hidden), rings, arrows and
+Chaikin-smoothed outlines (`wf_chs`/`wf_ch`/`wf_chrun`/`wf_chdraw`).
+`wf_mode` = 0 when the coupler is a mouthpiece or windway (in a line:
+coupler 196-262, element 262-520, resonator 520-712, radiator to 872, axis
+y = 176), else 1 (in layers: element 176-770 at y = 150, body box
+240-700 × 186-300, coupler at x = 600 between them). The element leaves
+`el_x0, el_x1, el_y, el_top, el_bot, el_r`, the resonator `rz_*` (where a
+radiator joins it, its top, where a cone sits), which the later parts use.
+The main drawing (`WF_GEO`) is rebuilt when any of sliders 1-12 differs from
+`WF_LAST`; the picker's versions (`WF_OPT + i·25000`) when it opens on
+another part. Each part's bounding box goes to `CAT_TAB + 16c` (+0…+3).
 
-Renders (`tools/render_parts.py`): 360 × 240 RGBA, Cycles CPU, 64 samples
-with denoising, Standard view transform, transparent film (glass too), camera
-60 mm fitted to each shape's projected vertices with a 6 % margin, view
-direction per builder. Materials reuse `mat_def`'s colours; metals are
-Principled metallic (roughness 0.14-0.32), glass/crystal/ice/cling film
-transmissive (IOR 1.5/2.0/1.31/1.5), woods a distorted wave texture,
-chain link a diamond-wire alpha mask, handpan voronoi dimples. The rust layer
-is a noise-masked rust shader over the material-bearing objects only.
+Drawn by `wf_draw(buf, s, ox, oy, hl, one, …)`: a segment is an antialiased
+line `1.4·gsc` px wide (`2.4·gsc` for part `hl`, the one in hand),
+`wline` splitting a width into `round(t)` parallel lines; a hidden one is
+dashed 4 on, 3 off (× `gsc`), the phase carried across joined segments. The
+colour is the part's group (`group_hex`: #F29940, #59CCF2, #73D980,
+#B88CF2), turned towards rust (#CC8054) by `age·0.8` for metals or
+`age·0.45` otherwise on parts made of a material (`part_col`). The element
+is offset by `min(4, 30·vis_lvl)·sin(anim_ph)·sin(π u)` (u along it) while
+it sounds; Reduce Motion holds `anim_ph` at 0. Shown area: x 0-906,
+y 56-356 in a line; x 20-915, y 4-358 in layers (what 20,000 random
+instruments reach), fitted between the label rows at one scale per build.
+In the picker, `one` = the part: it in its colour 1.6 px, the rest `C_CTX`
+1 px, clipped to the cell (`wclip`, Liang-Barsky) and framed on the part's
+box plus 40 × 30 (at least 120 × 64).
+
+Labels: rows from `lab_rows()` (in a line: energy, exciter, tuning,
+frequency, damping above; in layers the element above too, and the
+frequency control below when it is the keyboard); each part's anchor is
+its segment end nearest (0.15 weight on x) the middle of its box's side
+facing its row (`wf_anchors`); labels are sorted by anchor x, placed as
+near over it as 12 px gaps allow, then pushed back inside the window
+(`lab_place`). `lv_` 0-3 picks the full caption, a short one, the smaller
+name font, or no caption, the first at which both rows fit. Height
+`max(62, 14 + caption + name + material)·gsc`.
 
 ---
 
