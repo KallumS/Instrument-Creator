@@ -65,7 +65,7 @@ cases = [
  ("W: picker cells 24 px tall", "chh = 92*gsc;", "chh = 24*gsc;"),
  ("W: picker cells 6 apart", "g = 12*gsc; ip = 16*gsc;", "g = 6*gsc; ip = 16*gsc;"),
  ("W: picker lets the window's controls through to Tab", "(ui_block && id < 70) ? 0 :", "0 ? 0 :"),
- ("W: picker lets a click through to the controls", "ui_block ? ( clicked = 0; wheel = 0; );", ""),
+ ("W: picker lets a click through to the controls", "function inbox(x, y, w, h) ( !ui_block && mouse_x", "function inbox(x, y, w, h) ( mouse_x"),
  ("W: picker arrow keys ignored", "key == 'rght' ? ( key = 0; i = min(n - 1, i + 1); )", "0 ? ( key = 0; i = min(n - 1, i + 1); )"),
  ("W: picker stays open after a click outside", "ui_block && pclick && !inside ? pop_c = -1;", ";"),
  ("W: picker cells edged in the window's grey", "on ? group_hex(c) : C_TRACK);", "on ? group_hex(c) : C_EDGE);"),

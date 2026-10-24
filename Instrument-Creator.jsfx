@@ -2218,10 +2218,10 @@ clicked ? focus_id = 0;     // pointing takes over from the keyboard
 fl_n = 0; fr_on = 0; wrap_cut = 0;   // lines of a wrapped text that did not fit (none should)
 hig_audit ? HIG_TXT[0] = 0;
 // While the picker is open it has the mouse and the keyboard to itself: a
-// click anywhere else only closes it (ADR 0024).
+// click anywhere else only closes it (ADR 0024). inbox() and focusable()
+// below ignore everything else while ui_block is set.
 ui_block = pop_c >= 0;
 pclick = clicked; pwheel = wheel;
-ui_block ? ( clicked = 0; wheel = 0; );
 // A preset or Surprise Me replaces the whole instrument. The frame that asks
 // for it adds a REAPER undo point (sliderchange(-1) from @gfx); this one makes
 // the change and adds another, so Edit -> Undo puts back the instrument as it

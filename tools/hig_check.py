@@ -261,6 +261,10 @@ out = run(["frame", "menu=3"] + tabs_to(1) + ["key=ret", "frame", "vars=cur_pres
 check(out["var"]["cur_preset"] == 2 and out["menu"], "Return on Presets opens the presets; choosing one applies it")
 out = run(["frame"] + tabs_to(12) + ["key=space", "frame", "vars=pop_c,focus_id"])
 check(out["var"]["pop_c"] == 2 and out["var"]["focus_id"] == 75, "Space on a part's label opens its picker, the focus on the option in use (Air Column)", str(out["var"]))
+r = subprocess.run([HOST, JSFX, "940", "720", "frame"] + tabs_to(12) + ["key=ret", "frame", "key=left", "key=left", "key=left", "key=left", "vars=focus_id",
+                    "key=right", "vars=focus_id", "key=left", "vars=focus_id"], capture_output=True, text=True)
+walk = [float(l.split()[2]) for l in r.stdout.splitlines() if l.startswith("var focus_id")]
+check(walk == [71, 72, 71], "in the picker left and right move between the options", str(walk))
 out = run(["frame"] + tabs_to(12) + ["key=ret", "frame", "key=left", "key=left", "key=left", "vars=focus_id", "key=ret", "sliders", "vars=pop_c"])
 check(out["var"]["focus_id"] == 72 and out["sliders"][2] == 2 and out["var"]["pop_c"] == 2,
       "in the picker the arrow keys move between the options and Return uses one (Bar); it stays open", str(out["var"]) + str(out["sliders"][:3]))
