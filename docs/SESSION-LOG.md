@@ -628,11 +628,15 @@ drawing's material parts (`part_col`), standing in for the rust layer.
 part in both builds, at 800 × 480 and 200%; its keys and mouse; modality;
 lighter than the window; the drawing's lines 3:1 and growing; labels; the
 tremble and Reduce Motion), all passing in about 15 s; `tools/hig_bite.py`
-60 sabotages (14 new for the drawing and picker), all BIT after two first
-MISSED: text in a label not scaled (the loosened 200% check had stopped
-looking at words in labels; it now compares them with their label), and
-labels never shortening (no state needed them to; now a layered instrument
-at 600-700 px wide does).
+60 sabotages (14 new for the drawing and picker), all BIT after five first
+MISSED, each fixed and re-run: text in a label not scaled (the loosened 200%
+check had stopped looking at words in labels; it now compares them with
+their label); labels never shortening (no state needed them to; now a
+layered instrument at 600-700 px wide does); the picker's right arrow (only
+left was pressed); a click let through while the picker is open (the
+`clicked = 0` it removed was redundant with `inbox()`'s own block, now the
+one that is sabotaged; the redundant line is gone); and Poly's bar on its
+word (the word had moved, so the old sabotage no longer touched it).
 `click`: dragging Force, the element's label then Membrane, Made of then
 Glass. Screenshots: all 19 presets, both builds, every picker, More open,
 keyboard focus, Age 100%, 800 × 480, 200% fitted. **None of it seen in
