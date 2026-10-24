@@ -55,6 +55,7 @@ public:
 private:
     void timerCallback() override;
     void syncParameterFromSlider(int slider);
+    void applyHostChanges();
     juce::File writeJsfx();
 
     ysfx_t *m_fx = nullptr;

@@ -22,7 +22,7 @@ public:
                 m_enum.add(juce::CharPointer_UTF8(ysfx_slider_get_enum_name(fx, (uint32_t)index, i)));
         }
         m_default = (float)fromYsfx(m_curve.def);
-        m_norm = m_default;
+        m_value = toYsfx(m_default);
     }
 
     double toYsfx(double norm) const
@@ -37,12 +37,16 @@ public:
         return juce::jlimit(0.0, 1.0, (double)ysfx_ysfx_value_to_normalized(value, &m_curve));
     }
 
-    float getValue() const override { return m_norm.load(); }
+    // The parameter holds the slider's own value, snapped to its step, so a
+    // value set by the host comes back from a saved project exactly as it was.
+    float getValue() const override { return (float)fromYsfx(m_value.load()); }
     void setValue(float v) override
     {
-        m_norm.store(v);
+        m_value.store(toYsfx(v));
         if (!syncing) m_owner.markHostChange(m_index);
     }
+    double sliderValue() const { return m_value.load(); }
+    void setSliderValue(double v) { m_value.store(v); }
     float getDefaultValue() const override { return m_default; }
     bool isDiscrete() const override { return !m_enum.isEmpty(); }
     int getNumSteps() const override
@@ -92,7 +96,7 @@ private:
     ysfx_slider_curve_t m_curve{};
     juce::StringArray m_enum;
     float m_default = 0;
-    std::atomic<float> m_norm{0};
+    std::atomic<double> m_value{0};
 };
 
 //==============================================================================
@@ -177,9 +181,7 @@ void JsfxProcessor::syncParameterFromSlider(int i)
 {
     SliderParameter *p = m_params[(size_t)i];
     if (!p) return;
-    p->syncing = true;
-    p->setValue((float)p->fromYsfx(ysfx_slider_get_value(m_fx, (uint32_t)i)));
-    p->syncing = false;
+    p->setSliderValue(ysfx_slider_get_value(m_fx, (uint32_t)i));
 }
 
 //==============================================================================
@@ -203,6 +205,21 @@ void JsfxProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     setLatencySamples((int)std::lround(ysfx_get_pdc_delay(m_fx)));
 }
 
+// The host's parameter changes become slider changes (and run @slider).
+// Called with m_lock held.
+void JsfxProcessor::applyHostChanges()
+{
+    for (uint8_t g = 0; g < ysfx_max_slider_groups; ++g) {
+        uint64_t bits = m_hostChanged[g].exchange(0);
+        for (int b = 0; bits && b < 64; ++b, bits >>= 1) {
+            if (!(bits & 1)) continue;
+            int i = g * 64 + b;
+            if (SliderParameter *p = m_params[(size_t)i])
+                ysfx_slider_set_value(m_fx, (uint32_t)i, p->sliderValue(), true);
+        }
+    }
+}
+
 void JsfxProcessor::processBlock(juce::AudioBuffer<float> &buffer, juce::MidiBuffer &midi)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -213,16 +230,7 @@ void JsfxProcessor::processBlock(juce::AudioBuffer<float> &buffer, juce::MidiBuf
         return;
     }
 
-    // the host's parameter changes become slider changes (and run @slider)
-    for (uint8_t g = 0; g < ysfx_max_slider_groups; ++g) {
-        uint64_t bits = m_hostChanged[g].exchange(0);
-        for (int b = 0; bits && b < 64; ++b, bits >>= 1) {
-            if (!(bits & 1)) continue;
-            int i = g * 64 + b;
-            if (SliderParameter *p = m_params[(size_t)i])
-                ysfx_slider_set_value(m_fx, (uint32_t)i, p->toYsfx(p->getValue()), true);
-        }
-    }
+    applyHostChanges();
 
     // where the song is, for the JSFX's play_state, tempo and beat_position
     if (auto *ph = getPlayHead()) {
@@ -279,12 +287,13 @@ void JsfxProcessor::timerCallback()
             int i = g * 64 + b;
             SliderParameter *p = m_params[(size_t)i];
             if (!p) continue;
-            float norm = (float)p->fromYsfx(ysfx_slider_get_value(m_fx, (uint32_t)i));
-            if (std::abs(norm - p->getValue()) > 1e-6f) {
+            double v = ysfx_slider_get_value(m_fx, (uint32_t)i);
+            if (v != p->sliderValue()) {
                 p->syncing = true;
                 p->beginChangeGesture();
-                p->setValueNotifyingHost(norm);
+                p->setValueNotifyingHost((float)p->fromYsfx(v));
                 p->endChangeGesture();
+                p->setSliderValue(v);
                 p->syncing = false;
             }
             m_drift[(size_t)i] = 0;
@@ -300,14 +309,15 @@ void JsfxProcessor::timerCallback()
             if (!p) continue;
             uint8_t g = ysfx_fetch_slider_group_index((uint32_t)i);
             bool pending = (m_hostChanged[g].load() & ysfx_slider_mask((uint32_t)i, g)) != 0;
-            float norm = (float)p->fromYsfx(ysfx_slider_get_value(m_fx, (uint32_t)i));
-            if (pending || std::abs(norm - p->getValue()) <= 1e-6f) {
+            double v = ysfx_slider_get_value(m_fx, (uint32_t)i);
+            if (pending || v == p->sliderValue()) {
                 m_drift[(size_t)i] = 0;
                 continue;
             }
             if (++m_drift[(size_t)i] >= 2) {
                 p->syncing = true;
-                p->setValueNotifyingHost(norm);
+                p->setValueNotifyingHost((float)p->fromYsfx(v));
+                p->setSliderValue(v);
                 p->syncing = false;
                 m_drift[(size_t)i] = 0;
             }
@@ -326,6 +336,7 @@ void JsfxProcessor::getStateInformation(juce::MemoryBlock &dest)
     ysfx_state_u state;
     {
         const juce::ScopedLock sl(m_lock);
+        applyHostChanges();          // a host may set parameters and save before any audio runs
         state.reset(ysfx_save_state(m_fx));
     }
     juce::ValueTree root("jsfx");
