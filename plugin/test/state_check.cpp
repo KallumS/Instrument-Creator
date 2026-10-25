@@ -12,9 +12,12 @@
 
 // Counts the parameter changes the plugin reports to the host.
 struct Reports : juce::AudioProcessorListener {
-    int n = 0;
+    int n = 0, reread = 0;
     void audioProcessorParameterChanged(juce::AudioProcessor *, int, float) override { ++n; }
-    void audioProcessorChanged(juce::AudioProcessor *, const ChangeDetails &) override {}
+    void audioProcessorChanged(juce::AudioProcessor *, const ChangeDetails &d) override
+    {
+        if (d.programChanged) ++reread;
+    }
 };
 
 // A host sets parameters; the plugin must not report them back as if the
@@ -107,8 +110,19 @@ int main()
         juce::MemoryBlock s1;
         a->getStateInformation(s1);
 
+        // load as a host does: into a fresh instance, then start audio (odd
+        // rounds) or into one already playing (even rounds), and play on
         std::unique_ptr<juce::AudioProcessor> b(createPluginFilter());
+        if (round % 2 == 0) run(*b, 2);
+        Reports told;
+        b->addListener(&told);
         b->setStateInformation(s1.getData(), (int)s1.getSize());
+        b->removeListener(&told);
+        if (told.reread == 0) {
+            std::cout << "round " << round << ": the host was not asked to re-read the parameters after a load  FAILED\n";
+            ++failures;
+        }
+        run(*b, 4);
         juce::MemoryBlock s2;
         b->getStateInformation(s2);
 

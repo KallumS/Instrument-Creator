@@ -391,6 +391,11 @@ void JsfxProcessor::setStateInformation(const void *data, int size)
         for (auto &bits : m_hostChanged) bits.store(0);
     }
     for (int i = 0; i < ysfx_max_sliders; ++i) syncParameterFromSlider(i);
+
+    // Every parameter may have changed without the host being told one by
+    // one; ask it to read them all again (CLAP: a values rescan, VST3: a
+    // parameter-values restart). clap-validator 0.4 fails a plugin that does not.
+    updateHostDisplay(juce::AudioProcessorListener::ChangeDetails().withProgramChanged(true));
 }
 
 //==============================================================================
