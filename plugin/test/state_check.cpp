@@ -1,7 +1,9 @@
-// The plugin's saved state, checked without a host (as clap-validator does):
-// random parameter values, a few blocks of audio, save; a new instance loads
-// that and saves again; both saves must be the same, and so must every
-// parameter. Prints the two states as XML where they differ.
+// The plugin checked without a host. First, that it makes sound: a note
+// into an instrument, a burst of noise into an effect. Then its saved state,
+// as clap-validator checks it: random parameter values, a few blocks of
+// audio, save; a new instance loads that and saves again; both saves must be
+// the same, and so must every parameter. Prints the two states as XML where
+// they differ.
 //
 //   EXTRA_TARGETS=jsfx_state_check plugin/build.sh && plugin/build/jsfx_state_check
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -25,10 +27,40 @@ static void run(juce::AudioProcessor &p, int blocks)
     }
 }
 
+// Peak level of a second of output: a held note (instrument) or a tenth of a
+// second of noise (effect), at the plugin's default settings.
+static float soundCheck()
+{
+    std::unique_ptr<juce::AudioProcessor> p(createPluginFilter());
+    p->prepareToPlay(48000, 256);
+    juce::AudioBuffer<float> audio(2, 256);
+    juce::MidiBuffer midi;
+    juce::Random rng(7);
+    float peak = 0;
+    for (int b = 0; b < 188; ++b) {
+        audio.clear();
+        midi.clear();
+#if JucePlugin_IsSynth
+        if (b == 0) midi.addEvent(juce::MidiMessage::noteOn(1, 45, (juce::uint8)100), 0);
+#else
+        if (b < 19)
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < 256; ++i) audio.setSample(c, i, rng.nextFloat() * 0.5f - 0.25f);
+#endif
+        p->processBlock(audio, midi);
+        if (b >= 19) peak = juce::jmax(peak, audio.getMagnitude(0, 256));
+    }
+    return peak;
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
     int failures = 0;
+    float peak = soundCheck();
+    std::cout << "sound: peak " << juce::Decibels::gainToDecibels(peak) << " dB after the first 0.1 s"
+              << (peak > 0.001f && peak < 4.0f ? "" : "  FAILED (silent or blown up)") << "\n";
+    if (!(peak > 0.001f && peak < 4.0f)) ++failures;
     for (int round = 0; round < 5; ++round) {
         juce::Random rng(1234 + round);
         std::unique_ptr<juce::AudioProcessor> a(createPluginFilter());

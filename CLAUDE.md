@@ -107,7 +107,7 @@ are `slider<n>` (ADR 0025). Presets set sliders 1-19 and never touch Age.
 ```bash
 tools/build_host.sh                          # ~1 min, needs cmake, g++, freetype, fontconfig
 plugin/build.sh                              # VST3 + CLAP into plugin/out (~10 min first time)
-EXTRA_TARGETS=jsfx_state_check plugin/build.sh && plugin/build/jsfx_state_check   # saved state round-trips
+EXTRA_TARGETS=jsfx_state_check plugin/build.sh && plugin/build/jsfx_state_check   # makes sound; saved state round-trips
 python3 tools/range.py 1=0 2=0 3=5           # one combination across the keyboard
 python3 tools/sweep.py 60 > sweep.txt        # ~2 min; grep QUIET|TAIL|PITCH
 python3 tools/trims.py > t.txt && python3 tools/apply_trims.py t.txt   # repeat until ~0

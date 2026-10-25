@@ -23,7 +23,7 @@ jobs:
           key: deps-${{ hashFiles('plugin/build.sh') }}
       - name: Build VST3 and CLAP (Apple Silicon and Intel)
         run: EXTRA_TARGETS="JsfxPlugin_Standalone jsfx_state_check" plugin/build.sh
-      - name: Saved state round-trips (no host)
+      - name: Makes sound; a saved state reloads exactly (no host)
         run: plugin/build/jsfx_state_check
       - name: Sign ad hoc
         run: |
