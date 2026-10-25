@@ -69,5 +69,6 @@ clap_juce_extensions_plugin(TARGET JsfxPlugin
 # build.sh with EXTRA_TARGETS=jsfx_state_check
 add_executable(jsfx_state_check EXCLUDE_FROM_ALL "${CMAKE_CURRENT_LIST_DIR}/test/state_check.cpp")
 target_link_libraries(jsfx_state_check PRIVATE JsfxPlugin)
+set_target_properties(jsfx_state_check PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 target_include_directories(jsfx_state_check PRIVATE $<TARGET_PROPERTY:JsfxPlugin,INCLUDE_DIRECTORIES>)
 target_compile_definitions(jsfx_state_check PRIVATE $<TARGET_PROPERTY:JsfxPlugin,COMPILE_DEFINITIONS>)
