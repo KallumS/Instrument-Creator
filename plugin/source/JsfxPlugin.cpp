@@ -155,6 +155,12 @@ JsfxProcessor::JsfxProcessor()
         ysfx_set_sample_rate(m_fx, 44100);
         ysfx_set_block_size(m_fx, 512);
         ysfx_init(m_fx);
+        // Pass the new instance's state through @serialize once, so what it
+        // saves is what it would load: Instrument Creator's @serialize turns
+        // an unset interface size (0) into 100% (1), and a project saved
+        // before that had happened would otherwise read back different.
+        if (ysfx_state_u fresh{ysfx_save_state(m_fx)})
+            ysfx_load_state(m_fx, fresh.get());
         for (int i = 0; i < ysfx_max_sliders; ++i) {
             if (!ysfx_slider_exists(m_fx, (uint32_t)i)) continue;
             m_params[(size_t)i] = new SliderParameter(*this, m_fx, i);

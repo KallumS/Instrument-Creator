@@ -64,3 +64,10 @@ clap_juce_extensions_plugin(TARGET JsfxPlugin
     CLAP_FEATURES ${PLUG_CLAP_FEATURES}
     CLAP_PROCESS_EVENTS_RESOLUTION_SAMPLES 64
     CLAP_USE_JUCE_PARAMETER_RANGES DISCRETE)
+
+# The saved state, round-tripped without a host (test/state_check.cpp):
+# build.sh with EXTRA_TARGETS=jsfx_state_check
+add_executable(jsfx_state_check EXCLUDE_FROM_ALL "${CMAKE_CURRENT_LIST_DIR}/test/state_check.cpp")
+target_link_libraries(jsfx_state_check PRIVATE JsfxPlugin)
+target_include_directories(jsfx_state_check PRIVATE $<TARGET_PROPERTY:JsfxPlugin,INCLUDE_DIRECTORIES>)
+target_compile_definitions(jsfx_state_check PRIVATE $<TARGET_PROPERTY:JsfxPlugin,COMPILE_DEFINITIONS>)

@@ -34,6 +34,7 @@ where useful the alternatives that were rejected.
 | [0022](0022-the-windows-text-follows-apples-writing-guidelines.md) | The window's text follows Apple's writing guidelines |
 | [0023](0023-apples-hig-foundations.md) | The window follows the rest of Apple's HIG Foundations |
 | [0024](0024-the-whole-instrument-as-one-line-drawing.md) | The whole instrument as one line drawing, labelled round it |
+| [0025](0025-plugins-by-wrapping-the-jsfx.md) | VST3 and CLAP by wrapping the JSFX, not rewriting it |
 
 Related: Reverberator's ADRs 0001 (JSFX first), 0002 (physical constants),
 0005 (dispersion budget), 0007 (loudness), 0008 (feed-forward nonlinear paths),

@@ -650,6 +650,35 @@ ADR 0024 and the status lines of 0001, 0012, 0018, 0020 (superseded), 0021
 and 0023, `docs/apple-hig-review.md` (a section for the new parts),
 `blender/README.md` (set aside), `docs/window.png`.
 
+## 25. VST3 and CLAP plugins (24 October 2026)
+
+Asked for: Instrument Creator (and the user's other JSFX, Reverberator) as
+VST3 and CLAP plugins for the Mac, built by GitHub Actions. Done the way §20
+found: wrap, don't rewrite (ADR 0025).
+
+- `plugin/source/JsfxPlugin.cpp`: the .jsfx compiled in as binary data,
+  written to `~/Library/Application Support/Instrument Creator/` and loaded
+  by ysfx from there; one host parameter per slider; ysfx's own `@gfx` view
+  (`graphics_view.cpp`) as the window, nothing around it.
+- Built and compile-checked on Linux first, then on a `macos-14` runner,
+  universal (arm64 + x86_64). A standalone app is built only so the workflow
+  can open the window and take a picture of it.
+- pluginval (strictness 5) passed first time on Reverberator.
+  clap-validator found two real faults there, fixed in the shared wrapper
+  before Instrument Creator's build: a value the host set came back from a
+  saved state slightly different (sliders snap to their step), and a state
+  saved before any audio ran missed the host's changes. Its `state-invalid`
+  test is skipped (JUCE cannot report a failed load).
+- On Instrument Creator, clap-validator then found a saved state that read
+  back different: before the window has run, `ui_zoom` is 0, and loading
+  runs `@serialize`, which turns 0 into 1 (100%). Harmless (REAPER does the
+  same), but a project should save what it loads, so the wrapper now passes
+  a new instance's state through `@serialize` once at start.
+  `plugin/test/state_check.cpp` (in CI as `jsfx_state_check`) reproduces
+  what clap-validator does without a host; it failed before the fix.
+- Not yet seen in a DAW: playing it, the window inside a host, automation
+  recorded from the window, a Retina screen.
+
 ## Where things stand
 
 Sound (unchanged since session 1):
@@ -678,6 +707,9 @@ Window (session 3): Apple's writing guidelines (§21, ADR 0022) and the rest
 of its HIG Foundations (§22, ADR 0023): controls at the top, keyboard use,
 7:1 text, Interface Size, Reduce Motion, the system font. Checked by
 `tools/hig_check.py` (139 checks, every rule sabotaged and caught).
+
+Plugins (24 October): VST3 and CLAP for the Mac, wrapping the .jsfx (§25,
+ADR 0025); built and validated on GitHub's Macs, not yet played in a DAW.
 
 Open items:
 
