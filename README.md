@@ -1,5 +1,9 @@
 # Instrument Creator
 
+> **This is the `plugin` branch: the VST3 and CLAP plugins.** The REAPER version lives on
+> `main` and does not include any of this. Changes to the REAPER version are
+> made on `main` and merged into `plugin`; `plugin` is never merged into `main`.
+
 Build instruments that don't exist, from parts, and play them from a MIDI
 keyboard in REAPER. A glass trumpet. A violin made of ice. A marimba of marble
 bars, a tuba of rubber, a jelly gong.
