@@ -8,6 +8,39 @@
 //   EXTRA_TARGETS=jsfx_state_check plugin/build.sh && plugin/build/jsfx_state_check
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <iostream>
+#include "../source/JsfxPlugin.h"
+
+// Counts the parameter changes the plugin reports to the host.
+struct Reports : juce::AudioProcessorListener {
+    int n = 0;
+    void audioProcessorParameterChanged(juce::AudioProcessor *, int, float) override { ++n; }
+    void audioProcessorChanged(juce::AudioProcessor *, const ChangeDetails &) override {}
+};
+
+// A host sets parameters; the plugin must not report them back as if the
+// JSFX had moved them (clap-validator's host crashed on exactly that).
+static int echoCheck()
+{
+    std::unique_ptr<juce::AudioProcessor> base(createPluginFilter());
+    auto &p = dynamic_cast<JsfxProcessor &>(*base);
+    Reports reports;
+    p.addListener(&reports);
+    p.prepareToPlay(48000, 256);
+    juce::AudioBuffer<float> audio(2, 256);
+    juce::MidiBuffer midi;
+    juce::Random rng(99);
+    for (int round = 0; round < 50; ++round) {
+        for (auto *param : p.getParameters()) param->setValue(rng.nextFloat());
+        for (int b = 0; b < 3; ++b) {
+            audio.clear();
+            midi.clear();
+            p.processBlock(audio, midi);
+        }
+        for (int t = 0; t < 12; ++t) p.pollScript();
+    }
+    p.removeListener(&reports);
+    return reports.n;
+}
 
 static juce::String xml(const juce::MemoryBlock &m)
 {
@@ -61,6 +94,10 @@ int main()
     std::cout << "sound: peak " << juce::Decibels::gainToDecibels(peak) << " dB after the first 0.1 s"
               << (peak > 0.001f && peak < 4.0f ? "" : "  FAILED (silent or blown up)") << "\n";
     if (!(peak > 0.001f && peak < 4.0f)) ++failures;
+    int echoes = echoCheck();
+    std::cout << "host changes reported back as the plugin's own: " << echoes
+              << (echoes ? "  FAILED" : "") << "\n";
+    if (echoes) ++failures;
     for (int round = 0; round < 5; ++round) {
         juce::Random rng(1234 + round);
         std::unique_ptr<juce::AudioProcessor> a(createPluginFilter());

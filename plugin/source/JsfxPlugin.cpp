@@ -282,7 +282,9 @@ void JsfxProcessor::processBlock(juce::AudioBuffer<float> &buffer, juce::MidiBuf
 
 // Thirty times a second, on the message thread: tell the host about sliders
 // the window moved, so automation records them and the project saves them.
-void JsfxProcessor::timerCallback()
+void JsfxProcessor::timerCallback() { pollScript(); }
+
+void JsfxProcessor::pollScript()
 {
     if (!m_error.isEmpty()) return;
 

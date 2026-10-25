@@ -52,6 +52,11 @@ public:
     // a host change waiting for the audio thread (SliderParameter::setValue)
     void markHostChange(int slider);
 
+    // What the timer does thirty times a second: report to the host the
+    // sliders the JSFX itself moved. Public so test/state_check.cpp can run it
+    // without a message loop.
+    void pollScript();
+
 private:
     void timerCallback() override;
     void syncParameterFromSlider(int slider);
