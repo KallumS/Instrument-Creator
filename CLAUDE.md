@@ -70,6 +70,8 @@ tools/check.py            stability sweep (age 0/100, 3 sample rates, extremes, 
 tools/trims.py            loudness trims; tools/apply_trims.py adds them to the plugin
 tools/age_test.py         what Age does to every preset (level, ring, brightness, tuning)
 tools/spectrograms.py     spectrogram grid of the presets
+plugin/                   the VST3/CLAP plugin: the .jsfx in a JUCE wrapper run by ysfx (ADR 0025)
+.github/workflows/plugin.yml   builds, validates and zips the plugins on a Mac runner
 ```
 
 Python tools need numpy, scipy, matplotlib (`pip install numpy scipy
@@ -92,12 +94,15 @@ ranges, defaults and log midpoints are repeated in `ctl_min/max/def/mid`;
 change both.
 
 Option lists are append-only (ADR 0014): add new options and materials at the
-end, never reorder. Presets set sliders 1-19 and never touch Age.
+end, never reorder. Sliders are append-only too: the plugin's parameter IDs
+are `slider<n>` (ADR 0025). Presets set sliders 1-19 and never touch Age.
 
 ## Commands
 
 ```bash
 tools/build_host.sh                          # ~1 min, needs cmake, g++, freetype, fontconfig
+plugin/build.sh                              # VST3 + CLAP into plugin/out (~10 min first time)
+EXTRA_TARGETS=jsfx_state_check plugin/build.sh && plugin/build/jsfx_state_check   # saved state round-trips
 python3 tools/range.py 1=0 2=0 3=5           # one combination across the keyboard
 python3 tools/sweep.py 60 > sweep.txt        # ~2 min; grep QUIET|TAIL|PITCH
 python3 tools/trims.py > t.txt && python3 tools/apply_trims.py t.txt   # repeat until ~0
@@ -310,6 +315,19 @@ line A.
 - **Nothing from session 2 has been seen in REAPER**: More, Retina mode
   (the 3D pictures and the tiles are gone since session 5). Menus, clicking,
   dragging and automation are tested only in ysfx (`tools/click.cpp`).
-- JSFX only, for REAPER. VST3 / CLAP / AU versions were looked at and set
-  aside by the user (SESSION-LOG §20: wrap with ysfx's JUCE plugin, build on
-  macOS, mind AGPL).
+- The VST3 and CLAP plugins (ADR 0025, SESSION-LOG §25) have been built,
+  validated (pluginval, clap-validator) and opened on GitHub's Macs, but not
+  yet seen in a DAW. AU is not built.
+
+## The plugin (ADR 0025)
+
+- `plugin/` wraps the .jsfx unchanged. The wrapper source
+  (`plugin/source/`, `plugin/wrapper.cmake`) is shared with Reverberator:
+  change it in both.
+- `plugin/build.sh` makes the same two ysfx key fixes as
+  `tools/build_host.sh`, and asserts they applied; a ysfx update that moves
+  that code fails the build rather than shipping REAPER-unlike keys.
+- The GitHub archive host is blocked from the cloud container, so JUCE and
+  ysfx are cloned with git. CI's artifacts and logs cannot reach the
+  container as files; the workflow pushes its screenshot to a throwaway
+  `ci-screenshots` branch, which can be fetched with git.

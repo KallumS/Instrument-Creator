@@ -38,6 +38,27 @@ No compiling, no installer.
 It is an instrument, so it goes first in the FX chain and makes its own sound.
 Reverberator makes a very good partner after it.
 
+## Using it as a VST3 or CLAP plugin (Mac)
+
+Instrument Creator also comes as a VST3 and a CLAP instrument for any DAW on
+a Mac (Apple Silicon and Intel). It is the same `Instrument-Creator.jsfx`
+inside, run by the same engine REAPER uses, with the same window, so it
+sounds and looks the same.
+
+1. Download `Instrument-Creator-macOS.zip` from the repository's
+   **Releases** (or, for the latest build, **Actions → Plugins → the newest
+   run → Artifacts**) and unzip it.
+2. Follow `INSTALL.txt` inside: copy the two plugins into
+   `~/Library/Audio/Plug-Ins/VST3` and `~/Library/Audio/Plug-Ins/CLAP`, then
+   paste one Terminal line that clears macOS's download flag (the plugins are
+   not signed with an Apple developer certificate).
+3. Rescan plugins in your DAW, put **Instrument Creator** (by KallumS) on an
+   instrument track and play it from a MIDI keyboard or a MIDI clip.
+
+Every part, material and control is also a parameter your DAW can automate,
+and the project remembers the whole instrument, Age and the window's
+preferences included.
+
 ## Using the window
 
 The window reads from the top: your instrument's name and the buttons, then
@@ -408,6 +429,11 @@ tools/build/click Instrument-Creator.jsfx - 940 720 55,83,0 55,83,1 30,83,1 30,8
 python3 tools/hig_check.py               # the window against Apple's guidelines (under a minute)
 python3 tools/spectrograms.py out.png    # spectrograms of every preset
 ```
+
+The plugins are built by `plugin/build.sh` (on a Mac for the real thing; it
+also compiles on Linux as a check) and by `.github/workflows/plugin.yml` on
+every push, which also runs pluginval and clap-validator on them. Pushing a
+tag such as `v1.0` publishes the zip as a release.
 
 The Python tools need `numpy`, `scipy` and `matplotlib`; the 3D renderer
 (set aside) needs Blender's Python module (`pip install bpy`) and `Pillow`.
