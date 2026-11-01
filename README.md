@@ -40,6 +40,9 @@ Reverberator makes a very good partner after it.
 
 ## Using it as a VST3 or CLAP plugin (Mac)
 
+The plugins are made from this same Instrument-Creator.jsfx on the `plugin` branch of this
+repository, which also builds them on GitHub.
+
 Instrument Creator also comes as a VST3 and a CLAP instrument for any DAW on
 a Mac (Apple Silicon and Intel). It is the same `Instrument-Creator.jsfx`
 inside, run by the same engine REAPER uses, with the same window, so it
