@@ -713,12 +713,14 @@ ADR 0025); built and validated on GitHub's Macs, not yet played in a DAW.
 
 Open items:
 
-- **Nothing from session 5 has been seen in REAPER** (§24): ask for a
-  screenshot of the window, of a picker open, and of a layered instrument
-  (Ice Violin); whether clicking a label or a part opens the picker and a
-  choice applies; whether the drawing keeps up (it is a few thousand
-  antialiased lines a frame); how the round corners and 1.4 px lines look on
-  the Retina screen.
+- **Session 5's window in REAPER** (§24): the user's screenshots (macOS,
+  Retina, 24 October; pull request 7 merged) show Bamboo Saxophone, its
+  Modulation picker open from a click, and Ice Violin, all as in ysfx, at
+  full resolution, in what looks like San Francisco. Still to hear: whether
+  it feels quick, and the keyboard. Seen in the Ice Violin shot, for a later
+  polish: the Soundboard radiator floats as a plate between the strings and
+  the body; the bow's frog sits on that plate; the soundbox outline has a
+  small notch at its right end (its side line drawn at 98% of its length).
 - **Nothing from session 4 has been seen in REAPER** (§23): ask whether
   Edit → Undo after a preset or Surprise Me brings the old instrument back,
   and how 200% looks in a window too small for it.

@@ -306,9 +306,10 @@ line A.
   REAPER draws any visible slider above `@gfx` and takes that height from the
   window, which is why every slider is now hidden (ADR 0019). The layout
   still fits any height (it reserves the preview panel first).
-- **Nothing from session 5 has been seen in REAPER** (ADR 0024, 24 October):
-  the line drawing, the labels, the picker, the round corners, and how fast
-  the drawing is (3-5 ms a frame in ysfx, against 2 for the old window).
+- **Session 5's window seen in REAPER** (macOS, Retina, 24 October): the
+  drawing in both builds, the labels and lines, the picker (opened by a
+  click), round corners and the system font look as in ysfx, at full
+  Retina resolution. Not yet reported: how quick it feels, and the keyboard.
 - **Nothing from the final HIG sweep has been seen in REAPER** (ADR 0023,
   21 October): the undo points either side of a preset or Surprise Me, the
   sizes fitted to a small window, the new edges on a Retina screen.
