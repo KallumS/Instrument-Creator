@@ -1,5 +1,11 @@
 # CLAUDE.md
 
+**Branches.** `main` (this branch) is the REAPER version only. The VST3 and
+CLAP plugins live on `plugin`, which is `main` with the plugin added on top:
+work on the REAPER version goes here and is merged into `plugin`
+(`git merge main`); `plugin` is never merged into `main`. So `plugin/`,
+its workflow and the notes below about building the plugin are on `plugin`.
+
 Working notes for Instrument Creator: a JSFX instrument for REAPER that
 assembles a playable instrument from ten kinds of part and two materials (31
 to choose from), with an Age / rust control that wears it out, and a window
