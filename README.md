@@ -21,6 +21,14 @@ No compiling, no installer.
 
 ## Installing in REAPER
 
+**With ReaPack** (easiest, and it keeps it up to date): Extensions ->
+ReaPack -> Import repositories, paste
+`https://raw.githubusercontent.com/KallumS/Instrument-Creator/main/index.xml`,
+then Browse packages, find Instrument Creator and Install. That link only works
+once this has been merged into the main branch.
+
+**By hand:**
+
 1. Download this repository: on its GitHub page click the green **Code**
    button, then **Download ZIP**, and unzip it.
 2. In REAPER choose **Options → Show REAPER resource path in explorer/finder**.
