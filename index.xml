@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ReaPack index for Instrument Creator.
+
+  Add this repository in REAPER with Extensions > ReaPack > Import repositories,
+  pasting the raw URL of this file on the default branch:
+
+    https://raw.githubusercontent.com/KallumS/Instrument-Creator/main/index.xml
+
+  That URL only resolves once this file is on the default branch.
+
+  Each <source> is pinned to a commit rather than a branch, so an installed
+  version is the exact set of files that was tested and cannot change
+  underneath anyone. Publishing a new version means adding a <version> block
+  with a fresh commit hash - never editing an existing one.
+
+  One package: the JSFX.
+
+  ReaPack keys an installed package by its NAME, so renaming a file is not an
+  upgrade. Rename sparingly.
+-->
+<index version="1" name="Instrument Creator">
+  <category name="Synthesis">
+
+    <reapack name="Instrument-Creator.jsfx" type="effect" desc="Instrument Creator">
+      <version name="1.0" author="kallums" time="2026-11-01T14:46:59Z">
+        <changelog><![CDATA[First release through ReaPack. Build instruments that don't exist from parts - energy source, exciter, vibrating element, coupler, resonator, radiator - and the materials they are made of, and play them from a MIDI keyboard.]]></changelog>
+        <source main="main">https://raw.githubusercontent.com/KallumS/Instrument-Creator/17cace48bd243bef3162a2a1d7b177f71e4e882f/Instrument-Creator.jsfx</source>
+      </version>
+      <metadata>
+        <description><![CDATA[{\pard Instrument Creator\par
+Build instruments that don't exist, from parts, and play them from a MIDI keyboard: a glass trumpet, a violin made of ice, a marimba of marble bars.\par
+Pick one option for each part and what the element and resonator are made of; the sound is worked out from the physics of the parts.\par
+}]]></description>
+        <link rel="website">https://github.com/KallumS/Instrument-Creator</link>
+      </metadata>
+    </reapack>
+
+  </category>
+</index>
