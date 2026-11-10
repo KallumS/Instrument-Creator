@@ -21,6 +21,8 @@ No compiling, no installer.
 
 **In Ableton Live:** `ableton/` has Instrument Creator as a Max for Live instrument. See [`ableton/README.md`](ableton/README.md).
 
+![Instrument Creator in Ableton Live](ableton/window.png)
+
 ## Installing in REAPER
 
 **With ReaPack** (easiest, and it keeps it up to date): Extensions ->

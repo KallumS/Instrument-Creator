@@ -790,3 +790,5 @@ Candidate next steps, roughly in order of value:
 ## 2026-11-10 - Ableton Live device
 
 The user is switching to Ableton and asked for each REAPER project as Max for Live, one branch per repository (branch `ableton`). The DSP is translated to gen~ by `ableton/kit/jsfx2gen.js`, the window is the JSFX's own on Middaw's runtime, MIDI reaches gen~ through a buffer~, and the device answers the window's Play C4. A bug found on the way: gen~'s memory is fixed, and the first size was measured without notes; chords at 192 kHz need about 197,000 places. It is 524,288 now, and a test fails if that is ever too few. Eight tests in Node, every energy source matched sample for sample. Not done: opening it in Live.
+
+Later the same day the user asked for the docs to be brought up to date and a current picture in each repository. `ableton/window.png` is now drawn at Retina's 2x with text measured as Arial measures it, and `node ableton/window.js` redraws it from the repository (it was a scratch script), showing as it opens. The root README shows it under the Ableton paragraph, and CLAUDE.md has a section on the device: building, testing, the picture, the shared kit.
