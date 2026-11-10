@@ -1,0 +1,24 @@
+{
+  "name": "Instrument Creator",
+  "slug": "InstrumentCreator",
+  "kind": "instrument",
+  "template": "jsfx_audio",
+  "width": 260,
+  "hello": "Show Window opens Instrument Creator's own window.",
+  "device": {
+    "main": "Instrument-Creator.jsfx",
+    "audio": true
+  },
+  "files": {
+    "Instrument-Creator.jsfx": "../Instrument-Creator.jsfx"
+  },
+  "buttons": [],
+  "scripts": [
+    "kit/runtime/jsfx.js",
+    "kit/gfx.js",
+    "kit/live.js",
+    "actions.js",
+    "kit/jsfx_device.js"
+  ],
+  "memory": 524288
+}

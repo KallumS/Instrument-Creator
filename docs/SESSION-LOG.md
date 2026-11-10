@@ -786,3 +786,7 @@ Candidate next steps, roughly in order of value:
    `tools/hig_bite.py` for a new rule); after adding an option, draw it in
    its `wf_*` function for both builds (ADR 0024); then update
    PARTS-AND-MATERIALS.md, the README, CLAUDE.md and this log.
+
+## 2026-11-10 - Ableton Live device
+
+The user is switching to Ableton and asked for each REAPER project as Max for Live, one branch per repository (branch `ableton`). The DSP is translated to gen~ by `ableton/kit/jsfx2gen.js`, the window is the JSFX's own on Middaw's runtime, MIDI reaches gen~ through a buffer~, and the device answers the window's Play C4. A bug found on the way: gen~'s memory is fixed, and the first size was measured without notes; chords at 192 kHz need about 197,000 places. It is 524,288 now, and a test fails if that is ever too few. Eight tests in Node, every energy source matched sample for sample. Not done: opening it in Live.
