@@ -1281,9 +1281,11 @@ var Gfx = (function () {
   Host.prototype.gfx_getfont = function () { return this.font; };
   Host.prototype.applyFont = function () {
     var f = this.fonts[this.font] || this.fonts[0], fl = f.flags;
+    // REAPER's names for the system face are not names Max can ask for
+    var face = /^\./.test(f.name) || /^segoe/i.test(f.name) ? 'Arial' : f.name;
     var bold = fl === 98 || ((fl >> 8) & 255) === 98 || ((fl >> 16) & 255) === 98;
     var italic = fl === 105 || ((fl >> 8) & 255) === 105 || ((fl >> 16) & 255) === 105;
-    this.g.select_font_face(f.name, italic ? 'italic' : 'normal', bold ? 'bold' : 'normal');
+    this.g.select_font_face(face, italic ? 'italic' : 'normal', bold ? 'bold' : 'normal');
     this.g.set_font_size(f.size);
     this.size = f.size;
     if (this.slots) this.set('texth', Math.round(f.size));
@@ -1717,7 +1719,7 @@ var ACTIONS = {
  * names in "mqname" (three values a message, the count at 0).
  */
 inlets = 1;
-outlets = DEVICE.audio ? 4 : 3;
+outlets = DEVICE.audio ? (DEVICE.drops ? 5 : 4) : 3;
 mgraphics.init();
 mgraphics.relative_coords = 0;
 mgraphics.autofill = 0;
@@ -1776,6 +1778,10 @@ function toGen() {
   fx.file.sliders.forEach(function (sl) {
     var v = fx.sliderByIndex(sl.index);
     if (GEN.sent[sl.index] !== v) { GEN.sent[sl.index] = v; outlet(3, 'slider' + sl.index, v); }
+  });
+  (DEVICE.fromWindow || []).forEach(function (n) {
+    var v = fx.getVar(n);
+    if (GEN.sent['w_' + n] !== v) { GEN.sent['w_' + n] = v; outlet(3, 'w_' + n, v); }
   });
   if ((GEN.every++ % 12) === 0) {
     outlet(3, 'tempo', D.song.tempo); outlet(3, 'play_state', D.song.playing ? 1 : 0);

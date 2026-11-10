@@ -3,7 +3,7 @@
  * the translator writes is understood: Data, Buffer and Param declarations,
  * functions, if/else, for, while, break, peek/poke and gen's maths.
  *
- *   const g = load(code, { sampleRate, mq });   // mq: a Float64Array for Buffer mq
+ *   const g = load(code, { sampleRate, mq, buffers });   // Float64Arrays for Buffer mq and any other Buffer
  *   g.set('slider2', 50);  const [l, r] = g.step(inL, inR); */
 'use strict';
 
@@ -18,7 +18,7 @@ function load(code, opts) {
     const l = lines[i];
     let m;
     if ((m = /^Data (\w+)\((\d+)\);$/.exec(l))) decl.push('var ' + m[1] + ' = new Float64Array(' + m[2] + ');');
-    else if ((m = /^Buffer (\w+);$/.exec(l))) decl.push('var ' + m[1] + ' = __mq;');
+    else if ((m = /^Buffer (\w+);$/.exec(l))) decl.push('var ' + m[1] + ' = __buffers[' + JSON.stringify(m[1]) + '] || new Float64Array(1);');
     else if ((m = /^Param (\w+)\(([^,)]+)/.exec(l))) { params[m[1]] = Number(m[2].replace(/[()]/g, '')); decl.push('var ' + m[1] + ' = ' + params[m[1]] + ';'); }
     else if (/^\/\/ every sample/.test(l)) { i++; break; }
     else if ((m = /^(\w+)\(([^)]*)\) \{(.*)$/.exec(l))) {
@@ -61,7 +61,8 @@ function load(code, opts) {
     'function set(name, v) { switch (name) {' + Object.keys(params).map((p) => ' case ' + JSON.stringify(p) + ': ' + p + ' = v; break;').join('') + ' } }',
     'return { step: step, set: set, V: V, M: M };'
   ].join('\n');
-  try { return new Function('__mq', src)(opts.mq || new Float64Array(1024)); }
+  const buffers = Object.assign({ mq: opts.mq || new Float64Array(1024) }, opts.buffers || {});
+  try { return new Function('__buffers', src)(buffers); }
   catch (e) { e.message += ' (in the GenExpr as JavaScript)'; throw e; }
 }
 

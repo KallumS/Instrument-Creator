@@ -130,6 +130,23 @@ def midi_effect(desc, width):
     return p
 
 
+def inline_midi(desc, width):
+    """A small window shown on the device itself (ScaleView): MIDI through the
+    [v8ui], no Show Window."""
+    gw, gh = desc.get("window", [200, 100])
+    p = Patch()
+    mi = p.add("midiin", at=(20, 20), size=(50, 22), outs=1, outtype=["int"])
+    dev = p.add("live.thisdevice", at=(120, 20), size=(90, 22), outs=3, outtype=["bang", "int", "int"])
+    ui = p.add(maxclass="v8ui", at=(20, 80), size=(gw, gh), ins=1, outs=3, filename=desc["_bundle"],
+               parameter_enable=0, border=0, presentation=1, presentation_rect=[0.0, 0.0, float(gw), float(gh)])
+    mo = p.add("midiout", at=(20, 420), size=(55, 22), ins=1, outs=0)
+    st = p.state(at=(200, 420))
+    pre = p.add("prepend restore", at=(200, 460), size=(95, 22), outs=1)
+    p.wire(mi, 0, ui, 0); p.wire(dev, 0, ui, 0); p.wire(ui, 0, mo, 0)
+    p.wire(ui, 1, st, 0); p.wire(st, 0, pre, 0); p.wire(pre, 0, ui, 0)
+    return p
+
+
 def jsfx_midi(desc, width):
     """A JSFX's own window, in a subpatcher the strip's Show Window opens; its
     code runs whether the window is open or not. The strip has the device's
@@ -138,7 +155,7 @@ def jsfx_midi(desc, width):
     inner = Patch()
     pc_in = inner.add("inlet", at=(20, 20), size=(30, 30), maxclass="inlet", ins=0, outs=1, comment="window")
     data_in = inner.add("inlet", at=(120, 20), size=(30, 30), maxclass="inlet", ins=0, outs=1, comment="MIDI, bang, restore, actions")
-    nout = 4 if desc.get("_audio") else 3
+    nout = (5 if desc.get("drops") else 4) if desc.get("_audio") else 3
     ui = inner.add(maxclass="v8ui", at=(120, 80), size=(gw, gh), ins=1, outs=nout, filename=desc["_bundle"],
                    parameter_enable=0, border=0, presentation=1, presentation_rect=[0.0, 0.0, float(gw), float(gh)])
     outs = [inner.add("outlet", at=(120 + 120 * i, 120 + gh), size=(30, 30), maxclass="outlet", ins=1, outs=0) for i in range(nout)]
@@ -218,7 +235,8 @@ def jsfx_audio(desc, width):
     import subprocess
     main = os.path.join(desc["_base"], desc["files"][desc["device"]["main"]])
     tr = json.loads(subprocess.check_output(["node", os.path.join(KIT, "jsfx2gen.js"), main,
-                                             str(desc.get("memory", 1048576)), str(desc.get("block", 32))]))
+                                             str(desc.get("memory", 1048576)), str(desc.get("block", 32)),
+                                             ",".join(desc.get("from_window", []))]))
     desc["_gen"] = tr
     p = jsfx_midi(dict(desc, _audio=True), width)
     # jsfx_midi's boxes: midiin, live.thisdevice, p window, midiout, pattr, prepend, comment, buttons...
@@ -243,10 +261,40 @@ def jsfx_audio(desc, width):
     p.wire(names, 0, win, 1)
     p.wire(dev, 0, bind, 0)
     p.wire(bind, 0, gen, 0)
+    if desc.get("memory") == "buffer":
+        # EEL2's memory as a buffer~ the window writes (Buffer M in the gen~ code)
+        size = desc.get("buffer_samples", 8388608)
+        p.add("buffer~ ---mem @samps %d" % size, at=(620, 300), size=(200, 22), outs=2)
+        mn = p.add(maxclass="message", at=(620, 260), size=(140, 22), text="memname ---mem", outs=1)
+        mb = p.add(maxclass="message", at=(220, 180), size=(100, 22), text="M ---mem", outs=1)
+        p.wire(dev, 0, mn, 0); p.wire(mn, 0, win, 1)
+        p.wire(dev, 0, mb, 0); p.wire(mb, 0, gen, 0)
+    # Sounds dropped on the strip: a buffer~ each, which decodes them; the window reads it
+    drops = desc.get("drops", [])
+    if drops:
+        rt = p.add("route " + " ".join(d[1] for d in drops), at=(820, 200), size=(120, 22), outs=len(drops) + 1)
+        p.wire(win, 4, rt, 0)
+    for i, (label, key) in enumerate(drops):
+        bx = 8 + i * ((width - 24) // 2 + 8)
+        drop = p.add(maxclass="live.drop", at=(820 + 140 * i, 20), size=(120, 40), ins=1, outs=2, outtype=["", ""],
+                     parameter_enable=0, presentation=1,
+                     presentation_rect=[float(bx), 108.0, float((width - 24) // 2), 52.0])
+        lab = p.add(maxclass="comment", at=(820 + 140 * i, 0), size=(120, 20), ins=1, outs=0, text=label,
+                    presentation=1, presentation_rect=[float(bx), 90.0, float((width - 24) // 2), 18.0],
+                    textcolor=[0.867, 0.882, 0.906, 1.0], fontsize=10.0)
+        dp = p.add("prepend drop " + key, at=(820 + 140 * i, 70), size=(110, 22), outs=1)
+        p.wire(drop, 0, dp, 0); p.wire(dp, 0, win, 1)
+        buf = p.add("buffer~ ---src" + key, at=(820 + 140 * i, 260), size=(120, 22), outs=2)
+        p.wire(rt, i, buf, 0)
+        done = p.add("t b", at=(820 + 140 * i, 300), size=(30, 22), outs=1, outtype=["bang"])
+        msg = p.add(maxclass="message", at=(820 + 140 * i, 340), size=(110, 22), text="loaded " + key, outs=1)
+        p.wire(buf, 1, done, 0); p.wire(done, 0, msg, 0); p.wire(msg, 0, win, 1)
+        nm = p.add(maxclass="message", at=(820 + 140 * i, 380), size=(140, 22), text="srcname %s ---src%s" % (key, key), outs=1)
+        p.wire(dev, 0, nm, 0); p.wire(nm, 0, win, 1)
     return p
 
 
-TEMPLATES = {"midi_effect": midi_effect, "jsfx_midi": jsfx_midi, "jsfx_audio": jsfx_audio}
+TEMPLATES = {"midi_effect": midi_effect, "jsfx_midi": jsfx_midi, "jsfx_audio": jsfx_audio, "inline_midi": inline_midi}
 
 
 def amxd(kind, patcher):
@@ -265,6 +313,8 @@ def build(desc_path, check=False):
     slug = desc.get("slug") or desc["name"].replace(" ", "")
     desc["_bundle"] = slug + ".js"
     width = desc.get("width", 860)
+    if desc.get("template") == "inline_midi":
+        width = desc.get("window", [200, 100])[0]
     desc["_base"] = base
     if desc.get("template") in ("jsfx_midi", "jsfx_audio") and "window" not in desc:
         import re

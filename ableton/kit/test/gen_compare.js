@@ -19,7 +19,7 @@ function compare(text, o) {
   const realRandom = Math.random;
   const mq = new Float64Array(1 + 3 * Gen.MQ_CAP);
   const tr = Gen.translate(text, { readImport: o.readImport, block: B, memory: o.memory });
-  const g = load(o.code || tr.code, { sampleRate: SR, mq });
+  const g = load(o.code || tr.code, { sampleRate: SR, mq, buffers: o.buffers });
   const fx = new J.JSFX(text, { readImport: o.readImport, sampleRate: SR });
   Object.keys(o.sliders || {}).forEach((k) => { fx.setSliderByIndex(+k, o.sliders[k]); g.set('slider' + k, o.sliders[k]); });
   const inputs = tr.inputs, outputs = tr.outputs;

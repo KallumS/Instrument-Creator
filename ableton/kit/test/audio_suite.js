@@ -39,7 +39,7 @@ module.exports = function (o) {
     assert.ok(r.peak > 0.01, 'it made a sound: peak ' + r.peak);
   });
 
-  test(o.name + ': gen~ has memory enough for chords at 192 kHz', () => {
+  if (/Data M\(/.test(code || '')) test(o.name + ': gen~ has memory enough for chords at 192 kHz', () => {
     const declared = Number(/Data M\((\d+)\)/.exec(code)[1]);
     const big = code.replace(/Data M\(\d+\)/, 'Data M(8388608)');
     let highest = 0;

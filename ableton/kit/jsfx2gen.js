@@ -478,6 +478,8 @@
     C.emit('// @block, every ' + block + ' samples');
     C.block('if (peek(V, ' + S('clock') + ') <= 0)', function () {
       C.wr(S('clock'), String(block));
+      // what the window set (opts.fromWindow), as @block would have seen it there
+      (opts.fromWindow || []).forEach(function (n) { C.wr(C.slot(n), 'w_' + n); });
       C.wr(C.slot('tempo'), 'tempo'); C.wr(C.slot('play_state'), 'play_state'); C.wr(C.slot('beat_position'), 'beat_position');
       C.wr(C.slot('play_position'), 'beat_position * 60 / max(1, tempo)');
       C.wr(C.slot('ts_num'), 'ts_num'); C.wr(C.slot('ts_denom'), 'ts_denom');
@@ -493,7 +495,9 @@
     var head = [];
     head.push('// ' + (file.desc || 'JSFX') + ' - translated by ableton/kit/jsfx2gen.js. Do not edit; rebuild.');
     head.push('Data V(' + C.count + ');');
-    head.push('Data M(' + (opts.memory || 1048576) + ');');
+    // memory: 'buffer' puts EEL2's memory in a buffer~ (Buffer M) the window can write
+    head.push(opts.memory === 'buffer' ? 'Buffer M;' : 'Data M(' + (opts.memory || 1048576) + ');');
+    (opts.fromWindow || []).forEach(function (n) { head.push('Param w_' + n + '(0);'); });
     head.push(/\bpeek\(mq,/.test(body + C.functions.join('')) ? 'Buffer mq;' : 'Data mq(1);');
     file.sliders.forEach(function (sl) {
       head.push('Param slider' + sl.index + '(' + num(sl.def) + ', min=' + num(Math.min(sl.min, sl.max)) + ', max=' + num(Math.max(sl.min, sl.max)) + ');');
@@ -537,7 +541,8 @@
     var fs = require('fs'), path = require('path'), f = process.argv[2];
     var r = translate(fs.readFileSync(f, 'utf8'), {
       readImport: function (n) { return fs.readFileSync(path.join(path.dirname(f), n), 'utf8'); },
-      memory: Number(process.argv[3]) || undefined, block: Number(process.argv[4]) || undefined });
+      memory: process.argv[3] === 'buffer' ? 'buffer' : Number(process.argv[3]) || undefined, block: Number(process.argv[4]) || undefined,
+      fromWindow: process.argv[5] ? process.argv[5].split(',') : undefined });
     process.stdout.write(JSON.stringify({ code: r.code, params: r.params, inputs: r.inputs, outputs: r.outputs }));
   }
   G.MQ_CAP = MQ_CAP;
