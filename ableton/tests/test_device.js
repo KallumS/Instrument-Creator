@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const suite = require('../kit/test/audio_suite.js');
 const { compare } = require('../kit/test/gen_compare.js');
+require('../kit/test/palette_suite.js')();
 
 const ROOT = path.join(__dirname, '..', '..');
 const JSFX = path.join(ROOT, 'Instrument-Creator.jsfx');

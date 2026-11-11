@@ -14,6 +14,7 @@
   },
   "buttons": [],
   "scripts": [
+    "kit/palette.js",
     "kit/runtime/jsfx.js",
     "kit/gfx.js",
     "kit/live.js",
